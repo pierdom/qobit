@@ -41,6 +41,9 @@ class MpvPlayer:
     def seek(self, delta: float) -> None:
         self._cmd(["seek", delta, "relative"])
 
+    def seek_to(self, position: float) -> None:
+        self._cmd(["seek", position, "absolute"])
+
     def get_property(self, prop: str) -> object:
         result = self._ipc(["get_property", prop])
         if result and result.get("error") == "success":

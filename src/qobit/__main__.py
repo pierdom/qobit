@@ -243,8 +243,8 @@ def main() -> None:
     elif args.command == "auth":
         sys.exit(asyncio.run(cmd_auth(args)))
     else:
-        # Phase 2: launch Textual TUI here
-        parser.print_help()
+        from .ui.app import QobitApp
+        QobitApp().run()
         sys.exit(0)
 
 
