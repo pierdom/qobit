@@ -21,7 +21,9 @@ from .audio.verify import check_bit_perfect
 from .config import (
     get_audio_device,
     get_credentials,
+    get_oauth_session,
     prompt_and_save_credentials,
+    save_oauth_session,
     set_audio_device,
 )
 from .qobuz.client import QobuzClient, QobuzError
@@ -30,14 +32,40 @@ from .qobuz.models import StreamUrl, Track
 _QUALITY_FALLBACK = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
 
 
-async def cmd_play(args: argparse.Namespace) -> int:
-    email, password = get_credentials()
-    if not email or not password:
-        email, password = prompt_and_save_credentials()
-    if not email or not password:
-        print("No credentials — exiting.", file=sys.stderr)
-        return 1
+async def _authenticate(client: QobuzClient) -> bool:
+    """Try saved OAuth session, then browser OAuth, then email/password fallback."""
+    app_id, token, secrets = get_oauth_session()
+    if app_id and token and secrets:
+        print("Resuming session...", end=" ", flush=True)
+        client.restore_session(app_id, token, secrets)
+        print("OK")
+        return True
 
+    print("Authenticating via browser OAuth...")
+    try:
+        await client.login_oauth()
+        save_oauth_session(
+            client._app_id or "", client.user_auth_token or "", client._secret_candidates
+        )
+        return True
+    except QobuzError as e:
+        print(f"OAuth failed: {e}", file=sys.stderr)
+
+    # Last resort: email/password (streaming won't work but search will)
+    email, password = get_credentials()
+    if not email:
+        email, password = prompt_and_save_credentials()
+    if not email:
+        return False
+    try:
+        await client.login(email, password)
+        return True
+    except QobuzError as e:
+        print(f"Login failed: {e}", file=sys.stderr)
+        return False
+
+
+async def cmd_play(args: argparse.Namespace) -> int:
     device = get_audio_device()
     if not device:
         print(
@@ -49,13 +77,9 @@ async def cmd_play(args: argparse.Namespace) -> int:
     preferred = args.quality
 
     async with QobuzClient() as client:
-        print("Authenticating...", end=" ", flush=True)
-        try:
-            await client.login(email, password)
-        except QobuzError as e:
-            print(f"failed: {e}", file=sys.stderr)
+        if not await _authenticate(client):
+            print("Authentication failed — exiting.", file=sys.stderr)
             return 1
-        print("OK")
 
         print(f"Searching: {args.query!r}...", end=" ", flush=True)
         results = await client.search(args.query, type="tracks", limit=5)
@@ -171,21 +195,18 @@ def cmd_set_device(_args: argparse.Namespace) -> int:
 
 
 async def cmd_auth(_args: argparse.Namespace) -> int:
-    email, password = get_credentials()
-    if not email or not password:
-        email, password = prompt_and_save_credentials()
-    if not email or not password:
-        return 1
-
     async with QobuzClient() as client:
         try:
-            print(f"Authenticating as {email}...", end=" ", flush=True)
-            await client.login(email, password)
-            print("OK")
-            return 0
+            await client.login_oauth()
         except QobuzError as e:
-            print(f"failed: {e}", file=sys.stderr)
+            print(f"OAuth failed: {e}", file=sys.stderr)
             return 1
+
+        save_oauth_session(
+            client._app_id or "", client.user_auth_token or "", client._secret_candidates
+        )
+        print("Authentication successful. Session saved.")
+        return 0
 
 
 def main() -> None:

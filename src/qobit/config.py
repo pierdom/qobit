@@ -40,6 +40,20 @@ def set_audio_device(device_id: str) -> None:
     save(cfg)
 
 
+def get_oauth_session() -> tuple[str, str, list[str]]:
+    """Returns (app_id, token, secrets) or empty values if no saved session."""
+    s = load().get("oauth_session", {})
+    secrets = s.get("secrets") or ([s["secret"]] if s.get("secret") else [])
+    return s.get("app_id", ""), s.get("token", ""), secrets
+
+
+def save_oauth_session(app_id: str, token: str, secrets: list[str]) -> None:
+    cfg = load()
+    cfg["oauth_session"] = {"app_id": app_id, "token": token, "secrets": secrets}
+    save(cfg)
+    CONFIG_FILE.chmod(0o600)
+
+
 def prompt_and_save_credentials() -> tuple[str, str]:
     print("\nqobit needs your Qobuz credentials.")
     print("Stored in ~/.config/qobit/config.json (chmod 600 recommended)\n")

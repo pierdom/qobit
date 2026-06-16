@@ -16,7 +16,7 @@ class StreamUrl:
             url=data["url"],
             format_id=data.get("format_id", 6),
             mime_type=data.get("mime_type", "audio/flac"),
-            sampling_rate=float(data.get("sampling_rate", 44100)),
+            sampling_rate=float(data.get("sampling_rate", 44.1)) * 1000,
             bit_depth=data.get("bit_depth"),
             file_size=data.get("file_size"),
         )

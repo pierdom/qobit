@@ -1,11 +1,15 @@
 # Lifted from pierdom/qobuz-mcp — QobuzClient has no MCP dependencies.
-# Added: async context manager (__aenter__/__aexit__).
+# Added: async context manager (__aenter__/__aexit__), OAuth login flow.
 
+import asyncio
 import base64
 import hashlib
 import re
+import socket
 import time
+import webbrowser
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -19,26 +23,27 @@ QUALITY_IDS = {
     "FLAC_24_192": 27,
 }
 
+# Timezone names in bundle are capitalized (Berlin, Abidjan, London) — must be [a-zA-Z_]+
 _BUNDLE_RE = re.compile(r'<script src="(/resources/[^"]+/bundle\.js)"')
 _ALL_APP_IDS_RE = re.compile(r'appId:"(\d+)"')
-_APP_ID_SECRET_RE = re.compile(r'appId:"(\d{9})",appSecret:"(\w{32})"')
-_SEED_TZ_RE = re.compile(r'[a-z]\.initialSeed\("([\w=]+)",window\.utimezone\.([a-z]+)\)')
-_TZ_INFO_RE = re.compile(r'name:"\w+/([a-z]+)",info:"([\w=]+)",extras:"([\w=]+)"')
+_SEED_TZ_RE = re.compile(r'[a-z]\.initialSeed\("([\w=]+)",window\.utimezone\.([a-zA-Z_]+)\)')
+_TZ_INFO_RE = re.compile(r'name:"\w+/([a-zA-Z_]+)",info:"([\w=]+)",extras:"([\w=]+)"')
+_PRIVATE_KEY_RE = re.compile(r'privateKey:\s*"([A-Za-z0-9]{6,30})"')
+_PROD_APP_ID_RE = re.compile(r'production:\{api:\{appId:"(\d+)"')
 
 
 def _derive_secrets(bundle: str) -> list[str]:
-    direct = _APP_ID_SECRET_RE.search(bundle)
-    if direct:
-        return [direct.group(2)]
-
+    """Extract signing secrets via the TZ-seed obfuscation in the bundle."""
     seed_tz_pairs = _SEED_TZ_RE.findall(bundle)
-    tz_info = {name: (info, extras) for name, info, extras in _TZ_INFO_RE.findall(bundle)}
+    # Build lookup with lowercase keys; bundle uses capitalized city names
+    tz_info = {name.lower(): (info, extras) for name, info, extras in _TZ_INFO_RE.findall(bundle)}
 
-    secrets = []
+    secrets: list[str] = []
     for seed, timezone in seed_tz_pairs:
-        if timezone not in tz_info:
+        key = timezone.lower()
+        if key not in tz_info:
             continue
-        info, extras = tz_info[timezone]
+        info, extras = tz_info[key]
         try:
             combined = seed + info + extras
             decoded = base64.standard_b64decode(combined[:-44]).decode("utf-8")
@@ -48,6 +53,50 @@ def _derive_secrets(bundle: str) -> list[str]:
             pass
 
     return secrets
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+async def _wait_for_oauth_code(port: int, timeout: float = 120.0) -> str:
+    """Starts a temporary asyncio HTTP server; returns the OAuth code from the redirect."""
+    loop = asyncio.get_event_loop()
+    code_future: asyncio.Future[str] = loop.create_future()
+
+    async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            data = await asyncio.wait_for(reader.read(4096), timeout=5.0)
+            request_line = data.decode(errors="replace").split("\r\n")[0]
+            parts = request_line.split(" ")
+            path = parts[1] if len(parts) > 1 else "/"
+            qs = parse_qs(urlparse(path).query)
+            code = (qs.get("code_autorisation") or qs.get("code") or [None])[0]
+            body = (
+                b"<html><body><h2>Login successful! You can close this tab.</h2></body></html>"
+                if code
+                else b"<html><body><h2>Processing\xe2\x80\xa6</h2></body></html>"
+            )
+            writer.write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+                b"Connection: close\r\n\r\n" + body
+            )
+            await writer.drain()
+            if code and not code_future.done():
+                code_future.set_result(code)
+        except Exception:
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(_handle, "localhost", port)
+    async with server:
+        try:
+            return await asyncio.wait_for(code_future, timeout=timeout)
+        except asyncio.TimeoutError:
+            raise QobuzError("OAuth login timed out (2 minutes)")
 
 
 class QobuzError(Exception):
@@ -64,6 +113,8 @@ class QobuzClient:
         self._app_secret = app_secret
         self._secret_candidates: list[str] = [app_secret] if app_secret else []
         self.user_auth_token: str | None = None
+        self._private_key: str | None = None
+        self._prod_app_id: str | None = None
         self._http = httpx.AsyncClient(timeout=30.0)
 
     async def __aenter__(self) -> "QobuzClient":
@@ -122,6 +173,14 @@ class QobuzClient:
             s for s in self._secret_candidates if s not in candidates
         ]
 
+        pk_match = _PRIVATE_KEY_RE.search(bundle)
+        if pk_match:
+            self._private_key = pk_match.group(1)
+
+        prod_match = _PROD_APP_ID_RE.search(bundle)
+        if prod_match:
+            self._prod_app_id = prod_match.group(1)
+
         return all_ids
 
     def _base_params(self) -> dict[str, Any]:
@@ -156,10 +215,65 @@ class QobuzClient:
 
     def _sign(self, track_id: str, format_id: int, secret: str) -> tuple[str, int]:
         ts = int(time.time())
-        r_ts = ts - (ts % 600)
-        clean = "".join(c for c in secret if c.isalnum())
-        raw = f"trackgetFileUrlformat_id{format_id}intentstreamtrack_id{track_id}{r_ts}{clean}"
+        raw = f"trackgetFileUrlformat_id{format_id}intentstreamtrack_id{track_id}{ts}{secret}"
         return hashlib.md5(raw.encode()).hexdigest(), ts
+
+    def restore_session(self, app_id: str, token: str, secrets: list[str]) -> None:
+        """Restore a previously saved OAuth session without re-authenticating."""
+        self._app_id = app_id
+        self.user_auth_token = token
+        self._secret_candidates = secrets + [
+            s for s in self._secret_candidates if s not in secrets
+        ]
+
+    async def login_oauth(self) -> None:
+        """Browser-based OAuth flow; sets user_auth_token with streaming permissions."""
+        await self._fetch_bundle_credentials()
+
+        app_id = self._prod_app_id or "798273057"
+        private_key = self._private_key
+        if not private_key:
+            raise QobuzError("Cannot extract privateKey from bundle — OAuth unavailable")
+
+        port = _find_free_port()
+        redirect_url = f"http://localhost:{port}"
+        oauth_url = (
+            f"https://www.qobuz.com/signin/oauth"
+            f"?ext_app_id={app_id}&redirect_url={redirect_url}"
+        )
+
+        print("\nOpening Qobuz login in browser...")
+        print(f"If it doesn't open automatically: {oauth_url}\n")
+        webbrowser.open(oauth_url)
+
+        code = await _wait_for_oauth_code(port)
+
+        r = await self._http.get(
+            API_BASE + "oauth/callback",
+            params={"code": code, "private_key": private_key},
+            headers={"X-App-Id": app_id},
+        )
+        self._raise_for_status(r)
+        interim_token = r.json().get("token")
+        if not interim_token:
+            raise QobuzError(f"OAuth callback returned no token: {r.json()}")
+
+        r = await self._http.post(
+            API_BASE + "user/login",
+            content=b"extra=partner",
+            headers={
+                "X-App-Id": app_id,
+                "X-User-Auth-Token": interim_token,
+                "Content-Type": "text/plain;charset=UTF-8",
+            },
+        )
+        self._raise_for_status(r)
+        data = r.json()
+        self.user_auth_token = data.get("user_auth_token")
+        if not self.user_auth_token:
+            raise QobuzError(f"OAuth session exchange returned no token: {data}")
+
+        self._app_id = app_id
 
     # --- catalogue ---
 
@@ -186,17 +300,30 @@ class QobuzClient:
         candidates = self._secret_candidates or [self._app_secret or ""]
         last_error: QobuzError | None = None
 
+        assert self._app_id, "app_id not resolved — call login() or login_oauth() first"
+        assert self.user_auth_token, "not logged in — call login() or login_oauth() first"
+
         for secret in candidates:
             sig, ts = self._sign(track_id, format_id, secret)
             try:
-                result = await self._get(
-                    "track/getFileUrl",
-                    track_id=track_id,
-                    format_id=format_id,
-                    intent="stream",
-                    request_ts=ts,
-                    request_sig=sig,
+                # Auth via headers so app_id/token are excluded from genSignedRequest's
+                # sorted-param hash (which only covers the URL query params).
+                r = await self._http.get(
+                    API_BASE + "track/getFileUrl",
+                    params={
+                        "track_id": track_id,
+                        "format_id": format_id,
+                        "intent": "stream",
+                        "request_ts": ts,
+                        "request_sig": sig,
+                    },
+                    headers={
+                        "X-App-Id": self._app_id,
+                        "X-User-Auth-Token": self.user_auth_token,
+                    },
                 )
+                self._raise_for_status(r)
+                result = r.json()
                 self._app_secret = secret
                 self._secret_candidates = [secret] + [
                     s for s in self._secret_candidates if s != secret

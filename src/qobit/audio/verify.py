@@ -18,8 +18,9 @@ class VerifyResult:
         if self.error:
             return f"? ({self.error})"
         if self.bit_perfect:
-            khz = int(self.expected_rate / 1000)
-            return f"✓ {self.expected_bit_depth}/{khz} bit-perfect"
+            khz = self.expected_rate / 1000
+            khz_str = f"{int(khz)}" if khz == int(khz) else f"{khz:.1f}"
+            return f"✓ {self.expected_bit_depth}/{khz_str} kHz bit-perfect"
         return f"✗ resampled — expected {self.expected_rate:.0f} Hz, got {self.actual_rate} Hz"
 
 
