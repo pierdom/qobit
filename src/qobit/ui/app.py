@@ -120,6 +120,12 @@ class QobitApp(App[None]):
     SearchView, PlaylistsView, TracksView, ArtistsView, AlbumsView {
         height: 1fr;
     }
+    ListItem.--highlight {
+        background: $accent 35%;
+    }
+    ListItem.--highlight > Label {
+        background: $accent 35%;
+    }
     Screen.-transparent,
     Screen.-transparent * {
         background: ansi_default;
