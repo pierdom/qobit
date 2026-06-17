@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import httpx
 from PIL import Image as PILImage
 from rich.markup import escape
-from textual import on, work
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -53,6 +53,11 @@ class ArtistScreen(Screen):
         padding: 0 2;
         color: $text-muted;
         background: $boost;
+    }
+
+    ArtistScreen #breadcrumb:hover {
+        color: $text;
+        background: $panel;
     }
 
     ArtistScreen #artist-header {
@@ -147,6 +152,10 @@ class ArtistScreen(Screen):
             self.query_one("#artist-image", TGPImage).image = img
         except Exception:
             pass
+
+    @on(events.Click, "#breadcrumb")
+    def _on_breadcrumb_click(self) -> None:
+        self.app.pop_screen()
 
     @on(ListView.Selected, "#top-tracks")
     def _on_selected(self, event: ListView.Selected) -> None:
