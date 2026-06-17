@@ -62,7 +62,7 @@ class ArtistScreen(Screen):
     }
 
     ArtistScreen #artist-header {
-        height: 12;
+        height: 9;
         padding: 1 1 1 2;
         background: $boost;
     }
@@ -75,7 +75,7 @@ class ArtistScreen(Screen):
 
     ArtistScreen #bio-section {
         width: 1fr;
-        height: 1fr;
+        height: 7;
         border: round $panel;
         border-title-color: $text-muted;
         border-title-style: bold;
