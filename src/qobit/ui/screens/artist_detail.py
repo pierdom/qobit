@@ -78,6 +78,7 @@ class ArtistScreen(Screen):
     }
 
     ArtistScreen #bio {
+        width: 1fr;
         height: auto;
         max-height: 12;
         margin-top: 1;
