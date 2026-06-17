@@ -47,7 +47,7 @@ class ArtistTrackRow(ListItem):
         yield Label(f"     [dim]{escape(t.album)}  ·  {t.duration_str}[/dim]", markup=True)
 
 
-class AlbumCard(Widget, can_focus=True):
+class AlbumCard(Widget):
     DEFAULT_CSS = """
     AlbumCard {
         layout: horizontal;
@@ -76,7 +76,7 @@ class AlbumCard(Widget, can_focus=True):
         color: $text-muted;
         overflow: hidden hidden;
     }
-    AlbumCard:focus { background: $accent 10%; }
+    AlbumCard.-selected { background: $accent 10%; }
     """
 
     def __init__(self, album: Album) -> None:
@@ -113,10 +113,10 @@ class AlbumGrid(ScrollableContainer):
     """Scrollable grid of AlbumCards; column count adapts to available width."""
 
     BINDINGS = [
-        Binding("up", "navigate('up')", show=False, priority=True),
-        Binding("down", "navigate('down')", show=False, priority=True),
-        Binding("left", "navigate('left')", show=False, priority=True),
-        Binding("right", "navigate('right')", show=False, priority=True),
+        Binding("up", "move('up')", show=False),
+        Binding("down", "move('down')", show=False),
+        Binding("left", "move('left')", show=False),
+        Binding("right", "move('right')", show=False),
     ]
 
     DEFAULT_CSS = """
@@ -129,35 +129,42 @@ class AlbumGrid(ScrollableContainer):
     """
 
     _cols: int = 3
+    _cursor: int = -1
+
+    def on_focus(self) -> None:
+        if self._cursor == -1:
+            self._move_cursor(0)
 
     def on_resize(self) -> None:
         self._cols = max(1, self.content_size.width // _TILE_MIN_W)
         self.styles.grid_size_columns = self._cols
 
-    def action_navigate(self, direction: str) -> None:
+    def _move_cursor(self, idx: int) -> None:
         cards = list(self.query(AlbumCard))
-        focused = self.app.focused
+        if not cards or idx < 0 or idx >= len(cards):
+            return
+        if self._cursor >= 0 and self._cursor < len(cards):
+            cards[self._cursor].remove_class("-selected")
+        self._cursor = idx
+        cards[idx].add_class("-selected")
+        cards[idx].scroll_visible()
+
+    def action_move(self, direction: str) -> None:
+        cards = list(self.query(AlbumCard))
         if not cards:
             return
-        if not isinstance(focused, AlbumCard) or focused not in cards:
-            if direction == "up":
-                self.scroll_up()
-            elif direction == "down":
-                self.scroll_down()
-            return
-        idx = cards.index(focused)
-        target_idx: int | None = None
+        idx = max(0, self._cursor)
+        target: int | None = None
         if direction == "right" and idx + 1 < len(cards):
-            target_idx = idx + 1
+            target = idx + 1
         elif direction == "left" and idx > 0:
-            target_idx = idx - 1
+            target = idx - 1
         elif direction == "down" and idx + self._cols < len(cards):
-            target_idx = idx + self._cols
+            target = idx + self._cols
         elif direction == "up" and idx - self._cols >= 0:
-            target_idx = idx - self._cols
-        if target_idx is not None:
-            cards[target_idx].focus()
-            cards[target_idx].scroll_visible()
+            target = idx - self._cols
+        if target is not None:
+            self._move_cursor(target)
 
 
 class ArtistScreen(Screen):
@@ -229,7 +236,7 @@ class ArtistScreen(Screen):
         border-title-style: bold;
     }
 
-    ArtistScreen #albums:focus-within {
+    ArtistScreen #albums:focus {
         border: round $accent;
         border-title-color: $accent;
     }
