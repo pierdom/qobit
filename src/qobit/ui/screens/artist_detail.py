@@ -68,11 +68,13 @@ class AlbumCard(Widget, can_focus=True):
         height: 2;
         width: 1fr;
         text-style: bold;
+        overflow: hidden hidden;
     }
     AlbumCard .card-year {
         height: 1;
         width: 1fr;
         color: $text-muted;
+        overflow: hidden hidden;
     }
     AlbumCard:focus { background: $accent 10%; }
     """
@@ -114,6 +116,7 @@ class AlbumGrid(ScrollableContainer):
     AlbumGrid {
         layout: grid;
         grid-size: 3;
+        grid-rows: 4;
         grid-gutter: 1 2;
     }
     """
