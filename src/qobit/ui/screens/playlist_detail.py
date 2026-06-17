@@ -9,6 +9,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
 
 from ...qobuz.models import Playlist, Track
+from ..widgets.transport import TransportBar
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
@@ -54,10 +55,12 @@ class PlaylistScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Label("Loading…", id="header")
         yield ListView(id="tracklist")
+        yield TransportBar()
         yield Footer()
 
     def on_mount(self) -> None:
         self._load()
+        self.app.sync_transport_bar()  # type: ignore[attr-defined]
 
     @work
     async def _load(self) -> None:

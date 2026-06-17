@@ -15,6 +15,7 @@ from textual.widgets import Footer, Label, ListItem, ListView
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import Artist, Track
+from ..widgets.transport import TransportBar
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
@@ -108,10 +109,12 @@ class ArtistScreen(Screen):
                 yield Label("", id="bio")
         yield Label("TOP TRACKS", id="tracks-label")
         yield ListView(id="top-tracks")
+        yield TransportBar()
         yield Footer()
 
     def on_mount(self) -> None:
         self._load()
+        self.app.sync_transport_bar()  # type: ignore[attr-defined]
 
     @work
     async def _load(self) -> None:

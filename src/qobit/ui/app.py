@@ -202,9 +202,22 @@ class QobitApp(App[None]):
 
     def _bar(self) -> TransportBar | None:
         try:
-            return self.query_one(TransportBar)
+            return self.screen.query_one(TransportBar)
         except Exception:
             return None
+
+    def sync_transport_bar(self) -> None:
+        """Prime a newly-mounted TransportBar with current playback state."""
+        bar = self._bar()
+        if bar is None:
+            return
+        if self.now_playing:
+            bar.label = f"{self.now_playing.artist} — {self.now_playing.display_title}"
+            bar.border_title = "⏸  Now Playing" if self.is_paused else "▶  Now Playing"
+        bar.position = self.playback_pos
+        bar.duration = self.playback_dur
+        bar.is_paused = self.is_paused
+        bar.set_class(self.is_playing, "-playing")
 
     def watch_now_playing(self, track: Track | None) -> None:
         bar = self._bar()
