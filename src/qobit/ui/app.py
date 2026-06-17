@@ -345,7 +345,8 @@ class QobitApp(App[None]):
 
     def action_toggle_background(self) -> None:
         self._transparent = not getattr(self, "_transparent", False)
-        self.screen.toggle_class("-transparent")
+        for screen in self.screen_stack:
+            screen.set_class(self._transparent, "-transparent")
         for index, flt in enumerate(self._filters):
             if isinstance(flt, (_ANSIToTruecolor, _TransparentANSIToTruecolor)):
                 theme = flt._terminal_theme

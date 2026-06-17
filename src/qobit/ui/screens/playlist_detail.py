@@ -59,6 +59,7 @@ class PlaylistScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         self._load()
         self.app.sync_transport_bar()  # type: ignore[attr-defined]
 
