@@ -12,7 +12,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
-from textual_image.widget import Image
+from textual_image.widget import TGPImage
 
 from ...qobuz.models import Artist, Track
 from .search import ICON_TRACK
@@ -102,7 +102,7 @@ class ArtistScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Label(f"← {self._source}", id="breadcrumb")
         with Horizontal(id="artist-header"):
-            yield Image(id="artist-image")
+            yield TGPImage(id="artist-image")
             with Vertical(id="artist-info"):
                 yield Label("Loading…", id="artist-name")
                 yield Label("", id="bio")
@@ -140,7 +140,7 @@ class ArtistScreen(Screen):
                 r = await http.get(url)
                 r.raise_for_status()
             img = PILImage.open(io.BytesIO(r.content))
-            self.query_one("#artist-image", Image).image = img
+            self.query_one("#artist-image", TGPImage).image = img
         except Exception:
             pass
 
