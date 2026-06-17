@@ -86,13 +86,6 @@ class ArtistScreen(Screen):
         border-title-color: $accent;
     }
 
-    ArtistScreen #artist-name {
-        text-style: bold;
-        width: 1fr;
-        height: auto;
-        padding-bottom: 1;
-    }
-
     ArtistScreen #bio {
         width: 1fr;
         color: $text-muted;
@@ -122,7 +115,6 @@ class ArtistScreen(Screen):
         with Horizontal(id="artist-header"):
             yield TGPImage(id="artist-image")
             with VerticalScroll(id="bio-section"):
-                yield Label("Loading…", id="artist-name")
                 yield Label("", id="bio")
         yield ListView(id="top-tracks")
         yield TransportBar()
@@ -131,7 +123,7 @@ class ArtistScreen(Screen):
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         self._fit_image_width()
-        self.query_one("#bio-section").border_title = "Bio"
+        self.query_one("#bio-section").border_title = "Loading…"
         self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
         self._load()
         self.app.sync_transport_bar()  # type: ignore[attr-defined]
@@ -150,7 +142,7 @@ class ArtistScreen(Screen):
         app: QobitApp = self.app  # type: ignore[assignment]
         artist = Artist.from_api(await app._client.get_artist_page(self._artist_id))
 
-        self.query_one("#artist-name", Label).update(f"[bold]{escape(artist.name)}[/bold]")
+        self.query_one("#bio-section").border_title = escape(artist.name)
 
         if artist.biography:
             self.query_one("#bio", Label).update(escape(artist.biography))
