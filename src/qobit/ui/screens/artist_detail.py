@@ -12,6 +12,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
+from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import Artist, Track
@@ -129,10 +130,20 @@ class ArtistScreen(Screen):
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
+        self._fit_image_width()
         self.query_one("#bio-section").border_title = "Bio"
         self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
         self._load()
         self.app.sync_transport_bar()  # type: ignore[attr-defined]
+
+    def _fit_image_width(self) -> None:
+        """Set image width so it appears square regardless of cell pixel ratio."""
+        cell = get_cell_size()
+        if cell.width > 0 and cell.height > 0:
+            # header height=12, vertical padding=2 → image height in cells = 10
+            img_h = 12 - 2
+            img_w = round(img_h * cell.height / cell.width)
+            self.query_one("#artist-image").styles.width = img_w
 
     @work
     async def _load(self) -> None:
