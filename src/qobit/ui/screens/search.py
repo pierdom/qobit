@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from textual import on, work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.widget import Widget
 from textual.widgets import Input, Label, ListItem, ListView
 
@@ -38,6 +39,8 @@ class TrackItem(ListItem):
 
 
 class SearchView(Widget):
+    BINDINGS = [Binding("/", "focus_input", show=False)]
+
     DEFAULT_CSS = """
     SearchView {
         height: 1fr;
@@ -57,6 +60,9 @@ class SearchView(Widget):
         yield ListView(id="results")
 
     def on_mount(self) -> None:
+        self.query_one("#search-input").focus()
+
+    def action_focus_input(self) -> None:
         self.query_one("#search-input").focus()
 
     @on(Input.Submitted, "#search-input")

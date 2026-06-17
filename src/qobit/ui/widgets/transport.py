@@ -22,10 +22,10 @@ class TransportBar(Widget):
             super().__init__()
             self.position = position
 
-    label:     reactive[str]   = reactive("")
-    position:  reactive[float] = reactive(0.0)
-    duration:  reactive[float] = reactive(0.0)
-    is_paused: reactive[bool]  = reactive(False)
+    label: reactive[str] = reactive("")
+    position: reactive[float] = reactive(0.0)
+    duration: reactive[float] = reactive(0.0)
+    is_paused: reactive[bool] = reactive(False)
 
     DEFAULT_CSS = """
     TransportBar {
@@ -54,7 +54,8 @@ class TransportBar(Widget):
         else:
             line1 = Text(
                 "No media playing  ·  search above and press Enter",
-                style="dim", no_wrap=True,
+                style="dim",
+                no_wrap=True,
             )
 
         time_str = f" {_fmt(self.position)} / {_fmt(self.duration)}"
@@ -63,12 +64,13 @@ class TransportBar(Widget):
 
         filled = (
             round(bar_w * min(self.position, self.duration) / self.duration)
-            if self.duration > 0 else 0
+            if self.duration > 0
+            else 0
         )
         bar = Text(no_wrap=True)
-        bar.append("█" * filled,           style="$accent")
+        bar.append("█" * filled, style="$accent")
         bar.append("░" * (bar_w - filled), style="dim $accent")
-        bar.append(time_str,               style="dim")
+        bar.append(time_str, style="dim")
 
         return Group(line1, bar)
 
