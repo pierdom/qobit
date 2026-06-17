@@ -9,7 +9,7 @@ from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
 from textual_image.widget import TGPImage
@@ -82,23 +82,37 @@ class ArtistScreen(Screen):
         height: auto;
     }
 
+    ArtistScreen #bio-section {
+        height: auto;
+        max-height: 10;
+        margin: 1 1 0 1;
+        border: round $panel;
+        border-title-color: $text-muted;
+        border-title-style: bold;
+    }
+
+    ArtistScreen #bio-section:focus {
+        border: round $accent;
+        border-title-color: $accent;
+    }
+
     ArtistScreen #bio {
         width: 1fr;
-        height: auto;
-        max-height: 12;
-        margin-top: 1;
         color: $text-muted;
     }
 
-    ArtistScreen #tracks-label {
-        height: 1;
-        padding: 0 2;
-        background: $boost;
-        color: $text-muted;
-        text-style: bold;
+    ArtistScreen #top-tracks {
+        height: 1fr;
+        margin: 1;
+        border: round $panel;
+        border-title-color: $text-muted;
+        border-title-style: bold;
     }
 
-    ArtistScreen ListView { height: 1fr; }
+    ArtistScreen #top-tracks:focus {
+        border: round $accent;
+        border-title-color: $accent;
+    }
     """
 
     def __init__(self, artist_id: str, source: str = "Search") -> None:
@@ -112,14 +126,16 @@ class ArtistScreen(Screen):
             yield TGPImage(id="artist-image")
             with Vertical(id="artist-info"):
                 yield Label("Loading…", id="artist-name")
-                yield Label("", id="bio")
-        yield Label("TOP TRACKS", id="tracks-label")
+        with VerticalScroll(id="bio-section"):
+            yield Label("", id="bio")
         yield ListView(id="top-tracks")
         yield TransportBar()
         yield Footer()
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
+        self.query_one("#bio-section").border_title = "Bio"
+        self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
         self._load()
         self.app.sync_transport_bar()  # type: ignore[attr-defined]
 
