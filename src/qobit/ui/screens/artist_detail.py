@@ -79,7 +79,7 @@ class ArtistScreen(Screen):
 
     ArtistScreen #bio {
         height: auto;
-        max-height: 5;
+        max-height: 12;
         margin-top: 1;
         color: $text-muted;
     }
@@ -125,8 +125,8 @@ class ArtistScreen(Screen):
 
         if artist.biography:
             bio = artist.biography
-            if len(bio) > 400:
-                bio = bio[:400].rsplit(" ", 1)[0] + "…"
+            if len(bio) > 1200:
+                bio = bio[:1200].rsplit(" ", 1)[0] + "…"
             self.query_one("#bio", Label).update(escape(bio))
 
         if artist.image_url:
