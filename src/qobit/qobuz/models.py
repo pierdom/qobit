@@ -102,15 +102,21 @@ class Artist:
     name: str
     albums_count: int | None = None
     image_url: str | None = None
+    biography: str | None = None
+    tracks: list[Track] = field(default_factory=list)
 
     @classmethod
     def from_api(cls, data: dict) -> "Artist":
         image = data.get("image") or {}
+        bio = data.get("biography") or {}
+        tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
         return cls(
             id=str(data["id"]),
             name=data.get("name", ""),
             albums_count=data.get("albums_count"),
-            image_url=image.get("large") or None,
+            image_url=image.get("mega") or image.get("large") or None,
+            biography=bio.get("summary") or None,
+            tracks=tracks,
         )
 
 

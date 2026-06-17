@@ -201,4 +201,4 @@ class SearchView(Widget):
         elif isinstance(item, AlbumItem):
             app.push_screen(AlbumScreen(item.album.id))
         elif isinstance(item, ArtistItem):
-            app.push_screen(ArtistScreen(item.artist.id))
+            app.push_screen(ArtistScreen(item.artist.id, source="Search"))

@@ -54,4 +54,4 @@ class ArtistsView(Widget):
         if isinstance(event.item, ArtistItem):
             from .artist_detail import ArtistScreen
 
-            self.app.push_screen(ArtistScreen(event.item.artist.id))
+            self.app.push_screen(ArtistScreen(event.item.artist.id, source="Artists"))

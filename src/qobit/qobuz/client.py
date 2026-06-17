@@ -292,6 +292,15 @@ class QobuzClient:
             albums_sort="release_date",
         )
 
+    async def get_artist_page(self, artist_id: str, tracks_limit: int = 5) -> dict:
+        """Biography, image, and top tracks for the Artist detail screen."""
+        return await self._get(
+            "artist/get",
+            artist_id=artist_id,
+            extra="tracks",
+            tracks_limit=tracks_limit,
+        )
+
     async def get_streaming_url(self, track_id: str, quality: str = "FLAC_CD") -> dict:
         format_id = QUALITY_IDS.get(quality, QUALITY_IDS["FLAC_CD"])
         candidates = self._secret_candidates or [self._app_secret or ""]
