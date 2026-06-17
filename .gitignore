@@ -15,7 +15,6 @@ env/
 
 # uv
 .uv/
-uv.lock
 
 # Secrets / config (never commit these)
 .env
