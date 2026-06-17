@@ -48,13 +48,6 @@ class ArtistTrackRow(ListItem):
 
 
 class AlbumCard(Widget, can_focus=True):
-    BINDINGS = [
-        Binding("up", "move('up')", show=False),
-        Binding("down", "move('down')", show=False),
-        Binding("left", "move('left')", show=False),
-        Binding("right", "move('right')", show=False),
-    ]
-
     DEFAULT_CSS = """
     AlbumCard {
         layout: horizontal;
@@ -105,10 +98,6 @@ class AlbumCard(Widget, can_focus=True):
         if self._album.image_url:
             self._fetch_art(self._album.image_url)
 
-    def action_move(self, direction: str) -> None:
-        if hasattr(self.parent, "_move_focus"):
-            self.parent._move_focus(direction)
-
     @work
     async def _fetch_art(self, url: str) -> None:
         try:
@@ -122,6 +111,13 @@ class AlbumCard(Widget, can_focus=True):
 
 class AlbumGrid(ScrollableContainer):
     """Scrollable grid of AlbumCards; column count adapts to available width."""
+
+    BINDINGS = [
+        Binding("up", "navigate('up')", show=False, priority=True),
+        Binding("down", "navigate('down')", show=False, priority=True),
+        Binding("left", "navigate('left')", show=False, priority=True),
+        Binding("right", "navigate('right')", show=False, priority=True),
+    ]
 
     DEFAULT_CSS = """
     AlbumGrid {
@@ -138,10 +134,16 @@ class AlbumGrid(ScrollableContainer):
         self._cols = max(1, self.content_size.width // _TILE_MIN_W)
         self.styles.grid_size_columns = self._cols
 
-    def _move_focus(self, direction: str) -> None:
+    def action_navigate(self, direction: str) -> None:
         cards = list(self.query(AlbumCard))
         focused = self.app.focused
-        if not cards or not isinstance(focused, AlbumCard) or focused not in cards:
+        if not cards:
+            return
+        if not isinstance(focused, AlbumCard) or focused not in cards:
+            if direction == "up":
+                self.scroll_up()
+            elif direction == "down":
+                self.scroll_down()
             return
         idx = cards.index(focused)
         target_idx: int | None = None
