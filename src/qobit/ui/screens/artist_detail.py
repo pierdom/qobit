@@ -9,7 +9,7 @@ from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
 from textual_image.widget import TGPImage
@@ -61,31 +61,20 @@ class ArtistScreen(Screen):
     }
 
     ArtistScreen #artist-header {
-        height: auto;
-        padding: 1 2 1 2;
+        height: 12;
+        padding: 1 1 1 2;
         background: $boost;
     }
 
     ArtistScreen #artist-image {
         width: 16;
         height: 8;
-        margin-right: 2;
-    }
-
-    ArtistScreen #artist-info {
-        width: 1fr;
-        height: auto;
-    }
-
-    ArtistScreen #artist-name {
-        text-style: bold;
-        height: auto;
+        margin-right: 1;
     }
 
     ArtistScreen #bio-section {
-        height: auto;
-        max-height: 10;
-        margin: 1 1 0 1;
+        width: 1fr;
+        height: 1fr;
         border: round $panel;
         border-title-color: $text-muted;
         border-title-style: bold;
@@ -94,6 +83,13 @@ class ArtistScreen(Screen):
     ArtistScreen #bio-section:focus {
         border: round $accent;
         border-title-color: $accent;
+    }
+
+    ArtistScreen #artist-name {
+        text-style: bold;
+        width: 1fr;
+        height: auto;
+        padding-bottom: 1;
     }
 
     ArtistScreen #bio {
@@ -124,10 +120,9 @@ class ArtistScreen(Screen):
         yield Label(f"← {self._source}", id="breadcrumb")
         with Horizontal(id="artist-header"):
             yield TGPImage(id="artist-image")
-            with Vertical(id="artist-info"):
+            with VerticalScroll(id="bio-section"):
                 yield Label("Loading…", id="artist-name")
-        with VerticalScroll(id="bio-section"):
-            yield Label("", id="bio")
+                yield Label("", id="bio")
         yield ListView(id="top-tracks")
         yield TransportBar()
         yield Footer()
@@ -147,10 +142,7 @@ class ArtistScreen(Screen):
         self.query_one("#artist-name", Label).update(f"[bold]{escape(artist.name)}[/bold]")
 
         if artist.biography:
-            bio = artist.biography
-            if len(bio) > 1200:
-                bio = bio[:1200].rsplit(" ", 1)[0] + "…"
-            self.query_one("#bio", Label).update(escape(bio))
+            self.query_one("#bio", Label).update(escape(artist.biography))
 
         if artist.image_url:
             self._load_image(artist.image_url)
