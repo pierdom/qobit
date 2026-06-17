@@ -115,7 +115,7 @@ class Artist:
             name=data.get("name", ""),
             albums_count=data.get("albums_count"),
             image_url=image.get("mega") or image.get("large") or None,
-            biography=bio.get("summary") or None,
+            biography=bio.get("content") or bio.get("summary") or None,
             tracks=tracks,
         )
 
