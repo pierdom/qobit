@@ -76,6 +76,7 @@ class QobitApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Tabs(
             *[Tab(label, id=tid) for tid, label in _TABS],
+            id="nav-tabs",
             active="search",
         )
         with ContentSwitcher(initial="view-search"):
@@ -95,7 +96,7 @@ class QobitApp(App[None]):
 
     # ── tab switching ─────────────────────────────────────────────────────────
 
-    @on(Tabs.TabActivated)
+    @on(Tabs.TabActivated, "#nav-tabs")
     def _on_tab_activated(self, event: Tabs.TabActivated) -> None:
         if event.tab is None:
             return
@@ -104,10 +105,10 @@ class QobitApp(App[None]):
             self._focus_search_input()
 
     def action_switch_tab(self, tab_id: str) -> None:
-        self.query_one(Tabs).active = tab_id
+        self.query_one("#nav-tabs", Tabs).active = tab_id
 
     def action_focus_tabs(self) -> None:
-        self.query_one(Tabs).focus()
+        self.query_one("#nav-tabs", Tabs).focus()
 
     def _focus_search_input(self) -> None:
         try:

@@ -112,3 +112,26 @@ class Artist:
             albums_count=data.get("albums_count"),
             image_url=image.get("large") or None,
         )
+
+
+@dataclass
+class Playlist:
+    id: str
+    name: str
+    owner: str
+    tracks_count: int
+    image_url: str | None = None
+    tracks: list[Track] = field(default_factory=list)
+
+    @classmethod
+    def from_api(cls, data: dict) -> "Playlist":
+        tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
+        images = data.get("images") or []
+        return cls(
+            id=str(data["id"]),
+            name=data.get("name", ""),
+            owner=(data.get("owner") or {}).get("name", ""),
+            tracks_count=data.get("tracks_count", len(tracks)),
+            image_url=images[0] if images else None,
+            tracks=tracks,
+        )

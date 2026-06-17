@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from textual import on, work
@@ -9,23 +10,43 @@ from textual.widget import Widget
 from textual.widgets import Input, Label, ListItem, ListView
 
 from ...qobuz.client import QobuzError
-from ...qobuz.models import Track
+from ...qobuz.models import Album, Artist, Playlist, Track
 
 if TYPE_CHECKING:
     from ..app import QobitApp
 
+ICON_TRACK = "♪"
+ICON_ARTIST = "⊙"
+ICON_ALBUM = "◎"
+ICON_PLAYLIST = "≡"
+
+
+# ── result item widgets (shared with library tabs) ────────────────────────────
+
+
+class SectionHeader(ListItem):
+    DEFAULT_CSS = """
+    SectionHeader {
+        height: 1;
+        padding: 0 1;
+        background: $boost;
+    }
+    SectionHeader:hover { background: $boost; }
+    SectionHeader > Label { color: $text-muted; text-style: bold; }
+    """
+
+    def __init__(self, title: str) -> None:
+        super().__init__(disabled=True)
+        self._title = title
+
+    def compose(self) -> ComposeResult:
+        yield Label(self._title.upper())
+
 
 class TrackItem(ListItem):
-    """Two-line track entry in the search results list."""
-
     DEFAULT_CSS = """
-    TrackItem {
-        height: 2;
-        padding: 0 1;
-    }
-    TrackItem Label {
-        width: 1fr;
-    }
+    TrackItem { height: 2; padding: 0 1; }
+    TrackItem Label { width: 1fr; }
     """
 
     def __init__(self, track: Track) -> None:
@@ -34,8 +55,67 @@ class TrackItem(ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(f"[bold]{t.artist}[/bold] — {t.display_title}", markup=True)
-        yield Label(f"[dim]{t.album}  ·  {t.duration_str}[/dim]", markup=True)
+        yield Label(
+            f"[dim]{ICON_TRACK}[/dim]  [bold]{t.artist}[/bold] — {t.display_title}",
+            markup=True,
+        )
+        yield Label(f"     [dim]{t.album}  ·  {t.duration_str}[/dim]", markup=True)
+
+
+class AlbumItem(ListItem):
+    DEFAULT_CSS = """
+    AlbumItem { height: 2; padding: 0 1; }
+    AlbumItem Label { width: 1fr; }
+    """
+
+    def __init__(self, album: Album) -> None:
+        super().__init__()
+        self.album = album
+
+    def compose(self) -> ComposeResult:
+        a = self.album
+        year = str(a.year) if a.year else "—"
+        yield Label(f"[dim]{ICON_ALBUM}[/dim]  [bold]{a.title}[/bold]", markup=True)
+        yield Label(
+            f"     [dim]{a.artist}  ·  {year}  ·  {a.tracks_count} tracks[/dim]",
+            markup=True,
+        )
+
+
+class ArtistItem(ListItem):
+    DEFAULT_CSS = """
+    ArtistItem { height: 2; padding: 0 1; }
+    ArtistItem Label { width: 1fr; }
+    """
+
+    def __init__(self, artist: Artist) -> None:
+        super().__init__()
+        self.artist = artist
+
+    def compose(self) -> ComposeResult:
+        a = self.artist
+        sub = f"{a.albums_count} albums" if a.albums_count else ""
+        yield Label(f"[dim]{ICON_ARTIST}[/dim]  [bold]{a.name}[/bold]", markup=True)
+        yield Label(f"     [dim]{sub}[/dim]", markup=True)
+
+
+class PlaylistItem(ListItem):
+    DEFAULT_CSS = """
+    PlaylistItem { height: 2; padding: 0 1; }
+    PlaylistItem Label { width: 1fr; }
+    """
+
+    def __init__(self, playlist: Playlist) -> None:
+        super().__init__()
+        self.playlist = playlist
+
+    def compose(self) -> ComposeResult:
+        p = self.playlist
+        yield Label(f"[dim]{ICON_PLAYLIST}[/dim]  [bold]{p.name}[/bold]", markup=True)
+        yield Label(f"     [dim]{p.owner}  ·  {p.tracks_count} tracks[/dim]", markup=True)
+
+
+# ── search view ───────────────────────────────────────────────────────────────
 
 
 class SearchView(Widget):
@@ -78,22 +158,47 @@ class SearchView(Widget):
         await lv.clear()
 
         try:
-            data = await app._client.search(query, type="tracks", limit=25)
+            tracks_r, albums_r, artists_r = await asyncio.gather(
+                app._client.search(query, type="tracks", limit=5),
+                app._client.search(query, type="albums", limit=5),
+                app._client.search(query, type="artists", limit=5),
+            )
         except (QobuzError, AssertionError) as e:
             msg = str(e) if isinstance(e, QobuzError) else "Not authenticated — run: qobit auth"
             await lv.append(ListItem(Label(f"[red]{msg}[/red]", markup=True)))
             return
 
-        items = data.get("tracks", {}).get("items", [])
-        if not items:
+        tracks = tracks_r.get("tracks", {}).get("items", [])
+        albums = albums_r.get("albums", {}).get("items", [])
+        artists = artists_r.get("artists", {}).get("items", [])
+
+        if not tracks and not albums and not artists:
             await lv.append(ListItem(Label("[dim]No results.[/dim]", markup=True)))
             return
 
-        for raw in items:
-            await lv.append(TrackItem(Track.from_api(raw)))
+        if tracks:
+            await lv.append(SectionHeader("Tracks"))
+            for raw in tracks:
+                await lv.append(TrackItem(Track.from_api(raw)))
+        if artists:
+            await lv.append(SectionHeader("Artists"))
+            for raw in artists:
+                await lv.append(ArtistItem(Artist.from_api(raw)))
+        if albums:
+            await lv.append(SectionHeader("Albums"))
+            for raw in albums:
+                await lv.append(AlbumItem(Album.from_api(raw)))
 
     @on(ListView.Selected, "#results")
     def _on_selected(self, event: ListView.Selected) -> None:
-        if isinstance(event.item, TrackItem):
-            app: QobitApp = self.app  # type: ignore[assignment]
-            app.play_track(event.item.track)
+        from .album_detail import AlbumScreen
+        from .artist_detail import ArtistScreen
+
+        app: QobitApp = self.app  # type: ignore[assignment]
+        item = event.item
+        if isinstance(item, TrackItem):
+            app.play_track(item.track)
+        elif isinstance(item, AlbumItem):
+            app.push_screen(AlbumScreen(item.album.id))
+        elif isinstance(item, ArtistItem):
+            app.push_screen(ArtistScreen(item.artist.id))
