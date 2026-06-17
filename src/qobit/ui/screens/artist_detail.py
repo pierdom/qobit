@@ -68,7 +68,7 @@ class ArtistScreen(Screen):
 
     ArtistScreen #artist-image {
         width: 16;
-        height: 8;
+        height: 1fr;
         margin-right: 1;
     }
 
