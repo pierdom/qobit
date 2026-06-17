@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import io
 from typing import TYPE_CHECKING
 
+import httpx
+from PIL import Image as PILImage
 from rich.markup import escape
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
+from textual_image.widget import Image
 
 from ...qobuz.models import Artist, Track
 from .search import ICON_TRACK
@@ -56,6 +60,17 @@ class ArtistScreen(Screen):
         background: $boost;
     }
 
+    ArtistScreen #artist-image {
+        width: 16;
+        height: 8;
+        margin-right: 2;
+    }
+
+    ArtistScreen #artist-info {
+        width: 1fr;
+        height: auto;
+    }
+
     ArtistScreen #artist-name {
         text-style: bold;
         height: auto;
@@ -86,9 +101,11 @@ class ArtistScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Label(f"← {self._source}", id="breadcrumb")
-        with Vertical(id="artist-header"):
-            yield Label("Loading…", id="artist-name")
-            yield Label("", id="bio")
+        with Horizontal(id="artist-header"):
+            yield Image(id="artist-image")
+            with Vertical(id="artist-info"):
+                yield Label("Loading…", id="artist-name")
+                yield Label("", id="bio")
         yield Label("TOP TRACKS", id="tracks-label")
         yield ListView(id="top-tracks")
         yield Footer()
@@ -109,9 +126,23 @@ class ArtistScreen(Screen):
                 bio = bio[:400].rsplit(" ", 1)[0] + "…"
             self.query_one("#bio", Label).update(escape(bio))
 
+        if artist.image_url:
+            self._load_image(artist.image_url)
+
         lv = self.query_one("#top-tracks", ListView)
         for i, track in enumerate(artist.tracks, 1):
             await lv.append(ArtistTrackRow(track, i))
+
+    @work
+    async def _load_image(self, url: str) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as http:
+                r = await http.get(url)
+                r.raise_for_status()
+            img = PILImage.open(io.BytesIO(r.content))
+            self.query_one("#artist-image", Image).image = img
+        except Exception:
+            pass
 
     @on(ListView.Selected, "#top-tracks")
     def _on_selected(self, event: ListView.Selected) -> None:
