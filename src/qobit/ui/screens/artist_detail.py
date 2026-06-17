@@ -48,6 +48,13 @@ class ArtistTrackRow(ListItem):
 
 
 class AlbumCard(Widget, can_focus=True):
+    BINDINGS = [
+        Binding("up", "move('up')", show=False),
+        Binding("down", "move('down')", show=False),
+        Binding("left", "move('left')", show=False),
+        Binding("right", "move('right')", show=False),
+    ]
+
     DEFAULT_CSS = """
     AlbumCard {
         layout: horizontal;
@@ -98,6 +105,10 @@ class AlbumCard(Widget, can_focus=True):
         if self._album.image_url:
             self._fetch_art(self._album.image_url)
 
+    def action_move(self, direction: str) -> None:
+        if hasattr(self.parent, "_move_focus"):
+            self.parent._move_focus(direction)
+
     @work
     async def _fetch_art(self, url: str) -> None:
         try:
@@ -127,24 +138,24 @@ class AlbumGrid(ScrollableContainer):
         self._cols = max(1, self.content_size.width // _TILE_MIN_W)
         self.styles.grid_size_columns = self._cols
 
-    def on_key(self, event: events.Key) -> None:
+    def _move_focus(self, direction: str) -> None:
         cards = list(self.query(AlbumCard))
-        if not cards or not isinstance(self.app.focused, AlbumCard):
+        focused = self.app.focused
+        if not cards or not isinstance(focused, AlbumCard) or focused not in cards:
             return
-        idx = cards.index(self.app.focused)
+        idx = cards.index(focused)
         target_idx: int | None = None
-        if event.key == "right" and idx + 1 < len(cards):
+        if direction == "right" and idx + 1 < len(cards):
             target_idx = idx + 1
-        elif event.key == "left" and idx > 0:
+        elif direction == "left" and idx > 0:
             target_idx = idx - 1
-        elif event.key == "down" and idx + self._cols < len(cards):
+        elif direction == "down" and idx + self._cols < len(cards):
             target_idx = idx + self._cols
-        elif event.key == "up" and idx - self._cols >= 0:
+        elif direction == "up" and idx - self._cols >= 0:
             target_idx = idx - self._cols
         if target_idx is not None:
             cards[target_idx].focus()
             cards[target_idx].scroll_visible()
-            event.stop()
 
 
 class ArtistScreen(Screen):
