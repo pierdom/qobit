@@ -54,6 +54,16 @@ def save_oauth_session(app_id: str, token: str, secrets: list[str]) -> None:
     CONFIG_FILE.chmod(0o600)
 
 
+def get_transparent_background() -> bool:
+    return bool(load().get("transparent_background", False))
+
+
+def set_transparent_background(value: bool) -> None:
+    cfg = load()
+    cfg["transparent_background"] = value
+    save(cfg)
+
+
 def prompt_and_save_credentials() -> tuple[str, str]:
     print("\nqobit needs your Qobuz credentials.")
     print("Stored in ~/.config/qobit/config.json (chmod 600 recommended)\n")

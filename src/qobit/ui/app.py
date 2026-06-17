@@ -1,16 +1,28 @@
 from __future__ import annotations
 
 import time
+from functools import lru_cache
 
+from rich.color import Color as _RichColor
+from rich.color import ColorType as _ColorType
+from rich.style import Style as _RichStyle
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.command import Hit, Hits, Provider
+from textual.filter import NO_DIM, dim_color
+from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
 from textual.widgets import ContentSwitcher, Footer, Tab, Tabs
 from textual.worker import get_current_worker
 
 from ..audio.player import MpvPlayer
-from ..config import get_audio_device, get_oauth_session
+from ..config import (
+    get_audio_device,
+    get_oauth_session,
+    get_transparent_background,
+    set_transparent_background,
+)
 from ..qobuz.client import QobuzClient, QobuzError
 from ..qobuz.models import StreamUrl, Track
 from .screens.albums import AlbumsView
@@ -19,6 +31,69 @@ from .screens.playlists import PlaylistsView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
 from .widgets.transport import TransportBar
+
+
+class _TransparentANSIToTruecolor(_ANSIToTruecolor):
+    """ANSIToTruecolor that preserves ansi_default backgrounds so the
+    terminal's own background (transparency/blur) shows through."""
+
+    @lru_cache(1024)
+    def truecolor_style(self, style: "_RichStyle", background: "_RichColor") -> "_RichStyle":
+        terminal_theme = self._terminal_theme
+        changed = False
+
+        color = style.color
+        if color is not None and color.triplet is None:
+            color = _RichColor.from_triplet(color.get_truecolor(terminal_theme, foreground=True))
+            changed = True
+
+        bgcolor = style.bgcolor
+        keep_default_bg = bgcolor is not None and bgcolor.type == _ColorType.DEFAULT
+        if bgcolor is not None and bgcolor.triplet is None and not keep_default_bg:
+            bgcolor = _RichColor.from_triplet(
+                bgcolor.get_truecolor(terminal_theme, foreground=False)
+            )
+            changed = True
+
+        if style.dim and color is not None:
+            if bgcolor is not None and bgcolor.triplet is not None:
+                dim_bg = bgcolor
+            elif background.triplet is not None:
+                dim_bg = background
+            else:
+                dim_bg = _RichColor.from_triplet(
+                    _RichColor.default().get_truecolor(terminal_theme, foreground=False)
+                )
+            color = dim_color(dim_bg, color)
+            style += NO_DIM
+            changed = True
+
+        return style + _RichStyle.from_color(color, bgcolor) if changed else style
+
+
+class QobitCommands(Provider):
+    async def search(self, query: str) -> Hits:
+        matcher = self.matcher(query)
+        label = "Draw theme background"
+        score = matcher.match(label)
+        if score > 0:
+            app: QobitApp = self.app  # type: ignore[assignment]
+            yield Hit(
+                score,
+                matcher.highlight(label),
+                app.action_toggle_background,
+                help="Toggle between theme background and terminal transparency",
+            )
+
+    async def discover(self) -> Hits:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        yield Hit(
+            0,
+            "Draw theme background",
+            app.action_toggle_background,
+            help="Toggle between theme background and terminal transparency",
+        )
+
 
 _TABS = [
     ("playlists", "Playlists"),
@@ -31,6 +106,7 @@ _TABS = [
 
 class QobitApp(App[None]):
     TITLE = "qobit"
+    COMMANDS = App.COMMANDS | {QobitCommands}
     CSS = """
     Screen {
         layout: vertical;
@@ -43,6 +119,10 @@ class QobitApp(App[None]):
     }
     SearchView, PlaylistsView, TracksView, ArtistsView, AlbumsView {
         height: 1fr;
+    }
+    Screen.-transparent,
+    Screen.-transparent * {
+        background: ansi_default;
     }
     """
 
@@ -93,6 +173,8 @@ class QobitApp(App[None]):
         if app_id and token and secrets:
             self._client.restore_session(app_id, token, secrets)
         self._poll_player()
+        if get_transparent_background():
+            self.action_toggle_background()
 
     # ── tab switching ─────────────────────────────────────────────────────────
 
@@ -236,6 +318,28 @@ class QobitApp(App[None]):
 
     def action_focus_search(self) -> None:
         self.query_one(Tabs).active = "search"
+
+    def _refresh_truecolor_filter(self, theme: object) -> None:
+        if not getattr(self, "_transparent", False) or self.native_ansi_color:
+            return super()._refresh_truecolor_filter(theme)  # type: ignore[misc]
+        for index, flt in enumerate(self._filters):
+            if isinstance(flt, _ANSIToTruecolor):
+                self._filters[index] = _TransparentANSIToTruecolor(theme, enabled=True)
+                return
+
+    def action_toggle_background(self) -> None:
+        self._transparent = not getattr(self, "_transparent", False)
+        self.screen.toggle_class("-transparent")
+        for index, flt in enumerate(self._filters):
+            if isinstance(flt, (_ANSIToTruecolor, _TransparentANSIToTruecolor)):
+                theme = flt._terminal_theme
+                if self._transparent:
+                    self._filters[index] = _TransparentANSIToTruecolor(theme, enabled=True)
+                else:
+                    self._filters[index] = _ANSIToTruecolor(theme, enabled=True)
+                break
+        set_transparent_background(self._transparent)
+        self.refresh(layout=True)
 
     async def on_unmount(self) -> None:
         self._player.stop()
