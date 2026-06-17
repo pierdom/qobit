@@ -121,9 +121,30 @@ class AlbumGrid(ScrollableContainer):
     }
     """
 
+    _cols: int = 3
+
     def on_resize(self) -> None:
-        cols = max(1, self.content_size.width // _TILE_MIN_W)
-        self.styles.grid_size_columns = cols
+        self._cols = max(1, self.content_size.width // _TILE_MIN_W)
+        self.styles.grid_size_columns = self._cols
+
+    def on_key(self, event: events.Key) -> None:
+        cards = list(self.query(AlbumCard))
+        if not cards or not isinstance(self.app.focused, AlbumCard):
+            return
+        idx = cards.index(self.app.focused)
+        target_idx: int | None = None
+        if event.key == "right" and idx + 1 < len(cards):
+            target_idx = idx + 1
+        elif event.key == "left" and idx > 0:
+            target_idx = idx - 1
+        elif event.key == "down" and idx + self._cols < len(cards):
+            target_idx = idx + self._cols
+        elif event.key == "up" and idx - self._cols >= 0:
+            target_idx = idx - self._cols
+        if target_idx is not None:
+            cards[target_idx].focus()
+            cards[target_idx].scroll_visible()
+            event.stop()
 
 
 class ArtistScreen(Screen):
