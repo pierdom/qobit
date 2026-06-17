@@ -244,6 +244,7 @@ def main() -> None:
         sys.exit(asyncio.run(cmd_auth(args)))
     else:
         from .ui.app import QobitApp
+
         QobitApp().run()
         sys.exit(0)
 
