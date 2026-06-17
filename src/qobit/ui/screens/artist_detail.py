@@ -9,18 +9,21 @@ from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, HorizontalScroll, VerticalScroll
 from textual.screen import Screen
+from textual.widget import Widget
 from textual.widgets import Footer, Label, ListItem, ListView
 from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
-from ...qobuz.models import Artist, Track
+from ...qobuz.models import Album, Artist, Track
 from ..widgets.transport import TransportBar
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
+
+_CARD_IMG_H = 5  # album card image height in cells
 
 
 class ArtistTrackRow(ListItem):
@@ -41,6 +44,65 @@ class ArtistTrackRow(ListItem):
             markup=True,
         )
         yield Label(f"     [dim]{escape(t.album)}  ·  {t.duration_str}[/dim]", markup=True)
+
+
+class AlbumCard(Widget, can_focus=True):
+    DEFAULT_CSS = """
+    AlbumCard {
+        layout: vertical;
+        width: 12;
+        height: auto;
+        padding: 0 1 0 0;
+    }
+    AlbumCard TGPImage {
+        width: 10;
+        height: 5;
+    }
+    AlbumCard .card-title {
+        width: 1fr;
+        height: 1;
+        text-style: bold;
+        overflow: hidden hidden;
+    }
+    AlbumCard .card-year {
+        width: 1fr;
+        height: 1;
+        color: $text-muted;
+    }
+    AlbumCard:focus {
+        background: $accent 10%;
+    }
+    """
+
+    def __init__(self, album: Album) -> None:
+        super().__init__()
+        self._album = album
+
+    def compose(self) -> ComposeResult:
+        yield TGPImage()
+        yield Label(escape(self._album.title), classes="card-title", markup=True)
+        year = str(self._album.year) if self._album.year else "—"
+        yield Label(f"[dim]{year}[/dim]", classes="card-year", markup=True)
+
+    def on_mount(self) -> None:
+        cell = get_cell_size()
+        if cell.width > 0 and cell.height > 0:
+            img_w = round(_CARD_IMG_H * cell.height / cell.width)
+            img = self.query_one(TGPImage)
+            img.styles.width = img_w
+            self.styles.width = img_w + 1  # +1 right padding
+        if self._album.image_url:
+            self._fetch_art(self._album.image_url)
+
+    @work
+    async def _fetch_art(self, url: str) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as http:
+                r = await http.get(url)
+                r.raise_for_status()
+            self.query_one(TGPImage).image = PILImage.open(io.BytesIO(r.content))
+        except Exception:
+            pass
 
 
 class ArtistScreen(Screen):
@@ -105,7 +167,7 @@ class ArtistScreen(Screen):
     }
 
     ArtistScreen #albums {
-        height: 1fr;
+        height: 9;
         margin: 0 1 1 1;
         border: round $panel;
         border-title-color: $text-muted;
@@ -130,7 +192,7 @@ class ArtistScreen(Screen):
             with VerticalScroll(id="bio-section"):
                 yield Label("", id="bio")
         yield ListView(id="top-tracks")
-        yield ListView(id="albums")
+        yield HorizontalScroll(id="albums")
         yield TransportBar()
         yield Footer()
 
@@ -139,12 +201,11 @@ class ArtistScreen(Screen):
         self._fit_image_width()
         self.query_one("#bio-section").border_title = "Loading…"
         self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
-        self.query_one("#albums", ListView).border_title = "Albums"
+        self.query_one("#albums", HorizontalScroll).border_title = "Albums"
         self._load()
         self.app.sync_transport_bar()  # type: ignore[attr-defined]
 
     def _fit_image_width(self) -> None:
-        """Set image width so it appears square regardless of cell pixel ratio."""
         cell = get_cell_size()
         if cell.width > 0 and cell.height > 0:
             img_h = 7  # must match #artist-image height in CSS
@@ -167,6 +228,10 @@ class ArtistScreen(Screen):
         lv = self.query_one("#top-tracks", ListView)
         for i, track in enumerate(artist.tracks, 1):
             await lv.append(ArtistTrackRow(track, i))
+
+        hs = self.query_one("#albums", HorizontalScroll)
+        for album in artist.albums:
+            await hs.mount(AlbumCard(album))
 
     @work
     async def _load_image(self, url: str) -> None:

@@ -104,12 +104,14 @@ class Artist:
     image_url: str | None = None
     biography: str | None = None
     tracks: list[Track] = field(default_factory=list)
+    albums: list["Album"] = field(default_factory=list)
 
     @classmethod
     def from_api(cls, data: dict) -> "Artist":
         image = data.get("image") or {}
         bio = data.get("biography") or {}
         tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
+        albums = [Album.from_api(a) for a in data.get("albums", {}).get("items", [])]
         return cls(
             id=str(data["id"]),
             name=data.get("name", ""),
@@ -117,6 +119,7 @@ class Artist:
             image_url=image.get("mega") or image.get("large") or None,
             biography=bio.get("content") or bio.get("summary") or None,
             tracks=tracks,
+            albums=albums,
         )
 
 

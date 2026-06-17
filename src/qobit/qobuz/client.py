@@ -292,13 +292,17 @@ class QobuzClient:
             albums_sort="release_date",
         )
 
-    async def get_artist_page(self, artist_id: str, tracks_limit: int = 5) -> dict:
-        """Biography, image, and top tracks for the Artist detail screen."""
+    async def get_artist_page(
+        self, artist_id: str, tracks_limit: int = 5, albums_limit: int = 100
+    ) -> dict:
+        """Biography, image, top tracks and albums for the Artist detail screen."""
         return await self._get(
             "artist/get",
             artist_id=artist_id,
-            extra="tracks",
+            extra="tracks,albums",
             tracks_limit=tracks_limit,
+            albums_limit=albums_limit,
+            albums_sort="release_date",
         )
 
     async def get_streaming_url(self, track_id: str, quality: str = "FLAC_CD") -> dict:
