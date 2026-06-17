@@ -69,7 +69,7 @@ class ArtistScreen(Screen):
 
     ArtistScreen #artist-image {
         width: 16;
-        height: 1fr;
+        height: 7;
         margin-right: 1;
     }
 
@@ -132,8 +132,7 @@ class ArtistScreen(Screen):
         """Set image width so it appears square regardless of cell pixel ratio."""
         cell = get_cell_size()
         if cell.width > 0 and cell.height > 0:
-            # header height=12, vertical padding=2 → image height in cells = 10
-            img_h = 12 - 2
+            img_h = 7  # must match #artist-image height in CSS
             img_w = round(img_h * cell.height / cell.width)
             self.query_one("#artist-image").styles.width = img_w
 
