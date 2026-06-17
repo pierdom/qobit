@@ -103,6 +103,19 @@ class ArtistScreen(Screen):
         border: round $accent;
         border-title-color: $accent;
     }
+
+    ArtistScreen #albums {
+        height: 1fr;
+        margin: 0 1 1 1;
+        border: round $panel;
+        border-title-color: $text-muted;
+        border-title-style: bold;
+    }
+
+    ArtistScreen #albums:focus {
+        border: round $accent;
+        border-title-color: $accent;
+    }
     """
 
     def __init__(self, artist_id: str, source: str = "Search") -> None:
@@ -117,6 +130,7 @@ class ArtistScreen(Screen):
             with VerticalScroll(id="bio-section"):
                 yield Label("", id="bio")
         yield ListView(id="top-tracks")
+        yield ListView(id="albums")
         yield TransportBar()
         yield Footer()
 
@@ -125,6 +139,7 @@ class ArtistScreen(Screen):
         self._fit_image_width()
         self.query_one("#bio-section").border_title = "Loading…"
         self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
+        self.query_one("#albums", ListView).border_title = "Albums"
         self._load()
         self.app.sync_transport_bar()  # type: ignore[attr-defined]
 
