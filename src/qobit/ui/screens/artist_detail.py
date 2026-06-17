@@ -9,7 +9,7 @@ from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, HorizontalScroll, VerticalScroll
+from textual.containers import Horizontal, ScrollableContainer, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Footer, Label, ListItem, ListView
@@ -23,7 +23,8 @@ from .search import ICON_TRACK
 if TYPE_CHECKING:
     from ..app import QobitApp
 
-_CARD_IMG_H = 5  # album card image height in cells
+_CARD_IMG_H = 4  # album card image height in cells
+_TILE_MIN_W = 22  # minimum tile width used to compute column count
 
 
 class ArtistTrackRow(ListItem):
@@ -49,29 +50,31 @@ class ArtistTrackRow(ListItem):
 class AlbumCard(Widget, can_focus=True):
     DEFAULT_CSS = """
     AlbumCard {
-        layout: vertical;
-        width: 12;
-        height: auto;
+        layout: horizontal;
+        height: 4;
         padding: 0 1 0 0;
     }
     AlbumCard TGPImage {
-        width: 10;
-        height: 5;
+        width: 8;
+        height: 4;
+        margin-right: 1;
+    }
+    AlbumCard .card-info {
+        width: 1fr;
+        height: 1fr;
+        layout: vertical;
     }
     AlbumCard .card-title {
+        height: 2;
         width: 1fr;
-        height: 1;
         text-style: bold;
-        overflow: hidden hidden;
     }
     AlbumCard .card-year {
-        width: 1fr;
         height: 1;
+        width: 1fr;
         color: $text-muted;
     }
-    AlbumCard:focus {
-        background: $accent 10%;
-    }
+    AlbumCard:focus { background: $accent 10%; }
     """
 
     def __init__(self, album: Album) -> None:
@@ -80,17 +83,16 @@ class AlbumCard(Widget, can_focus=True):
 
     def compose(self) -> ComposeResult:
         yield TGPImage()
-        yield Label(escape(self._album.title), classes="card-title", markup=True)
-        year = str(self._album.year) if self._album.year else "—"
-        yield Label(f"[dim]{year}[/dim]", classes="card-year", markup=True)
+        with Vertical(classes="card-info"):
+            yield Label(escape(self._album.title), classes="card-title", markup=True)
+            year = str(self._album.year) if self._album.year else "—"
+            yield Label(f"[dim]{year}[/dim]", classes="card-year", markup=True)
 
     def on_mount(self) -> None:
         cell = get_cell_size()
         if cell.width > 0 and cell.height > 0:
             img_w = round(_CARD_IMG_H * cell.height / cell.width)
-            img = self.query_one(TGPImage)
-            img.styles.width = img_w
-            self.styles.width = img_w + 1  # +1 right padding
+            self.query_one(TGPImage).styles.width = img_w
         if self._album.image_url:
             self._fetch_art(self._album.image_url)
 
@@ -103,6 +105,22 @@ class AlbumCard(Widget, can_focus=True):
             self.query_one(TGPImage).image = PILImage.open(io.BytesIO(r.content))
         except Exception:
             pass
+
+
+class AlbumGrid(ScrollableContainer):
+    """Scrollable grid of AlbumCards; column count adapts to available width."""
+
+    DEFAULT_CSS = """
+    AlbumGrid {
+        layout: grid;
+        grid-size: 3;
+        grid-gutter: 1 2;
+    }
+    """
+
+    def on_resize(self) -> None:
+        cols = max(1, self.content_size.width // _TILE_MIN_W)
+        self.styles.grid_size_columns = cols
 
 
 class ArtistScreen(Screen):
@@ -167,14 +185,14 @@ class ArtistScreen(Screen):
     }
 
     ArtistScreen #albums {
-        height: 9;
+        height: 1fr;
         margin: 0 1 1 1;
         border: round $panel;
         border-title-color: $text-muted;
         border-title-style: bold;
     }
 
-    ArtistScreen #albums:focus {
+    ArtistScreen #albums:focus-within {
         border: round $accent;
         border-title-color: $accent;
     }
@@ -192,7 +210,7 @@ class ArtistScreen(Screen):
             with VerticalScroll(id="bio-section"):
                 yield Label("", id="bio")
         yield ListView(id="top-tracks")
-        yield HorizontalScroll(id="albums")
+        yield AlbumGrid(id="albums")
         yield TransportBar()
         yield Footer()
 
@@ -201,7 +219,7 @@ class ArtistScreen(Screen):
         self._fit_image_width()
         self.query_one("#bio-section").border_title = "Loading…"
         self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
-        self.query_one("#albums", HorizontalScroll).border_title = "Albums"
+        self.query_one("#albums", AlbumGrid).border_title = "Albums"
         self._load()
         self.app.sync_transport_bar()  # type: ignore[attr-defined]
 
@@ -229,9 +247,9 @@ class ArtistScreen(Screen):
         for i, track in enumerate(artist.tracks, 1):
             await lv.append(ArtistTrackRow(track, i))
 
-        hs = self.query_one("#albums", HorizontalScroll)
+        grid = self.query_one("#albums", AlbumGrid)
         for album in artist.albums:
-            await hs.mount(AlbumCard(album))
+            await grid.mount(AlbumCard(album))
 
     @work
     async def _load_image(self, url: str) -> None:
