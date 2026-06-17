@@ -190,7 +190,10 @@ class QobitApp(App[None]):
         self.query_one("#nav-tabs", Tabs).active = tab_id
 
     def action_focus_tabs(self) -> None:
-        self.query_one("#nav-tabs", Tabs).focus()
+        if len(self.screen_stack) > 1:
+            self.pop_screen()
+        else:
+            self.query_one("#nav-tabs", Tabs).focus()
 
     def _focus_search_input(self) -> None:
         try:
