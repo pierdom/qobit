@@ -222,9 +222,7 @@ class QobuzClient:
         """Restore a previously saved OAuth session without re-authenticating."""
         self._app_id = app_id
         self.user_auth_token = token
-        self._secret_candidates = secrets + [
-            s for s in self._secret_candidates if s not in secrets
-        ]
+        self._secret_candidates = secrets + [s for s in self._secret_candidates if s not in secrets]
 
     async def login_oauth(self) -> None:
         """Browser-based OAuth flow; sets user_auth_token with streaming permissions."""
@@ -238,8 +236,7 @@ class QobuzClient:
         port = _find_free_port()
         redirect_url = f"http://localhost:{port}"
         oauth_url = (
-            f"https://www.qobuz.com/signin/oauth"
-            f"?ext_app_id={app_id}&redirect_url={redirect_url}"
+            f"https://www.qobuz.com/signin/oauth?ext_app_id={app_id}&redirect_url={redirect_url}"
         )
 
         print("\nOpening Qobuz login in browser...")
@@ -281,7 +278,7 @@ class QobuzClient:
         return await self._get("catalog/search", query=query, type=type, limit=limit)
 
     async def get_album(self, album_id: str) -> dict:
-        return await self._get("album/get", album_id=album_id, extra="tracks")
+        return await self._get("album/get", album_id=album_id)
 
     async def get_track(self, track_id: str) -> dict:
         return await self._get("track/get", track_id=track_id)
