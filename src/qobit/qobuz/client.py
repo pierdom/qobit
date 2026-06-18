@@ -313,6 +313,22 @@ class QobuzClient:
         detail["tracks"] = {"items": items}
         return detail
 
+    async def get_artist_detail(self, artist_id: str, albums_limit: int = 100) -> dict:
+        """Biography, image, and albums from artist/get (no top tracks)."""
+        return await self._get(
+            "artist/get",
+            artist_id=artist_id,
+            extra="albums",
+            limit=albums_limit,
+            albums_sort="release_date",
+        )
+
+    async def get_artist_top_tracks(self, artist_id: str) -> list[dict]:
+        """Popularity-ranked top tracks from artist/page."""
+        page = await self._get("artist/page", artist_id=artist_id)
+        top_tracks = page.get("top_tracks", [])
+        return top_tracks if isinstance(top_tracks, list) else top_tracks.get("items", [])
+
     async def get_streaming_url(self, track_id: str, quality: str = "FLAC_CD") -> dict:
         format_id = QUALITY_IDS.get(quality, QUALITY_IDS["FLAC_CD"])
         candidates = self._secret_candidates or [self._app_secret or ""]

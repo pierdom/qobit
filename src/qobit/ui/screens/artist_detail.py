@@ -398,7 +398,8 @@ class ArtistScreen(Screen):
         self.query_one("#bio-section").border_title = "Loading…"
         self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
         self.query_one("#albums", AlbumGrid).border_title = "Albums & EPs"
-        self._load()
+        self._load_detail()
+        self._load_tracks()
 
     def action_navigate_back(self) -> None:
         if self._album_view_active:
@@ -451,25 +452,28 @@ class ArtistScreen(Screen):
             self.query_one("#album-art").styles.width = img_w
 
     @work
-    async def _load(self) -> None:
+    async def _load_detail(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        artist = Artist.from_api(await app._client.get_artist_page(self._artist_id))
+        artist = Artist.from_api(await app._client.get_artist_detail(self._artist_id))
 
         self.query_one("#bio-section").border_title = escape(artist.name)
-
         if artist.biography:
             self.query_one("#bio", Label).update(escape(artist.biography))
-
         if artist.image_url:
             self._load_artist_image(artist.image_url)
-
-        lv = self.query_one("#top-tracks", ListView)
-        for i, track in enumerate(artist.tracks, 1):
-            await lv.append(ArtistTrackRow(track, i))
 
         grid = self.query_one("#albums", AlbumGrid)
         for album in artist.albums:
             await grid.mount(AlbumCard(album))
+
+    @work
+    async def _load_tracks(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        items = await app._client.get_artist_top_tracks(self._artist_id)
+
+        lv = self.query_one("#top-tracks", ListView)
+        for i, raw in enumerate(items, 1):
+            await lv.append(ArtistTrackRow(Track.from_api(raw), i))
 
     @work
     async def _load_artist_image(self, url: str) -> None:
