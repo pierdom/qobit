@@ -83,6 +83,7 @@ class Album:
     artist: str
     year: int | None
     tracks_count: int
+    artist_id: str | None = None
     genre: str | None = None
     description: str | None = None
     label: str | None = None
@@ -124,10 +125,12 @@ class Album:
             for a in (data.get("awards") or [])
             if (name := (a.get("label") or a.get("name") or "").strip())
         ]
+        artist_data = data.get("artist", {})
         return cls(
             id=str(data["id"]),
             title=data.get("title", ""),
-            artist=data.get("artist", {}).get("name", ""),
+            artist=artist_data.get("name", ""),
+            artist_id=str(artist_data["id"]) if artist_data.get("id") else None,
             year=year,
             tracks_count=data.get("tracks_count", len(tracks)),
             genre=data.get("genre", {}).get("name") or None,

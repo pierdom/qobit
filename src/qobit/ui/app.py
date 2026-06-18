@@ -161,6 +161,9 @@ class QobitApp(App[None]):
         super().__init__()
         self._client = QobuzClient()
         self._player = MpvPlayer(audio_device=get_audio_device())
+        app_id, token, secrets = get_oauth_session()
+        if app_id and token and secrets:
+            self._client.restore_session(app_id, token, secrets)
 
     def compose(self) -> ComposeResult:
         yield Tabs(
@@ -178,9 +181,6 @@ class QobitApp(App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
-        app_id, token, secrets = get_oauth_session()
-        if app_id and token and secrets:
-            self._client.restore_session(app_id, token, secrets)
         self._poll_player()
         if get_transparent_background():
             self.action_toggle_background()
@@ -206,6 +206,15 @@ class QobitApp(App[None]):
             else:
                 self.pop_screen()
         else:
+            cs = self.query_one(ContentSwitcher)
+            if cs.current:
+                try:
+                    active = self.query_one(f"#{cs.current}")
+                    if hasattr(active, "action_navigate_back"):
+                        if active.action_navigate_back():
+                            return
+                except Exception:
+                    pass
             self.query_one("#nav-tabs", Tabs).focus()
 
     @on(ListView.Highlighted)
