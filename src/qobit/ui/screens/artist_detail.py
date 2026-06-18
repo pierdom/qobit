@@ -76,7 +76,8 @@ class AlbumCard(Widget):
         color: $text-muted;
         overflow: hidden hidden;
     }
-    AlbumCard.-selected { background: $accent 30%; border: tall $accent; }
+    AlbumCard.-selected .card-title { color: $accent; text-style: bold underline; }
+    AlbumCard.-selected .card-year { color: $accent; text-style: underline; }
     """
 
     def __init__(self, album: Album) -> None:
