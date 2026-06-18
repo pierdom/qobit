@@ -148,6 +148,9 @@ class QobitApp(App[None]):
         Binding("5", "switch_tab('search')", "Search", show=False),
         # priority=True so this fires even when an Input has focus
         Binding("escape", "focus_tabs", "Nav", show=False, priority=True),
+        # Albums sort — live here at App level so they fire regardless of focus
+        Binding("s", "albums_cycle_sort", show=False),
+        Binding("r", "albums_toggle_reverse", show=False),
     ]
 
     now_playing: reactive[Track | None] = reactive(None)
@@ -197,6 +200,16 @@ class QobitApp(App[None]):
 
     def action_switch_tab(self, tab_id: str) -> None:
         self.query_one("#nav-tabs", Tabs).active = tab_id
+
+    def action_albums_cycle_sort(self) -> None:
+        view = self.query_one("#view-albums", AlbumsView)
+        if view.display:
+            view.action_cycle_sort()
+
+    def action_albums_toggle_reverse(self) -> None:
+        view = self.query_one("#view-albums", AlbumsView)
+        if view.display:
+            view.action_toggle_reverse()
 
     def action_focus_tabs(self) -> None:
         if len(self.screen_stack) > 1:

@@ -95,6 +95,7 @@ class Album:
     awards: list[str] = field(default_factory=list)
     image_url: str | None = None
     tracks: list[Track] = field(default_factory=list)
+    favorited_at: int | None = None
 
     @property
     def total_duration_str(self) -> str:
@@ -144,6 +145,7 @@ class Album:
             awards=awards,
             image_url=image.get("large") or image.get("small") or None,
             tracks=tracks,
+            favorited_at=data.get("favorited_at") or None,
         )
 
 

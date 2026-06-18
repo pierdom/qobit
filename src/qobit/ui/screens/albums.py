@@ -15,25 +15,36 @@ from .artist_detail import AlbumCard, AlbumGrid, ArtistHeader
 if TYPE_CHECKING:
     from ..app import QobitApp
 
+_SORT_OPTIONS: list[tuple[str, str]] = [
+    ("favorited_at", "Date Added"),
+    ("artist", "Artist"),
+    ("title", "Album"),
+    ("year", "Year"),
+]
+_SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
+
 
 class AlbumsView(Widget):
     DEFAULT_CSS = """
     AlbumsView {
         height: 1fr;
         layout: vertical;
-        padding: 1;
     }
     AlbumsView ContentSwitcher { height: 1fr; }
     AlbumsView #albums-grid-view { height: 1fr; }
     AlbumsView AlbumGrid {
+        height: 1fr;
         grid-rows: 6;
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;
+        border-subtitle-color: $accent 40%;
+        border-subtitle-align: right;
     }
     AlbumsView AlbumGrid:focus {
         border: round $accent;
         border-title-color: $accent;
+        border-subtitle-color: $accent;
     }
     AlbumsView #album-breadcrumb {
         height: 1;
@@ -48,6 +59,13 @@ class AlbumsView(Widget):
     """
 
     _album_view_active: bool = False
+    _sort_key: str = "favorited_at"
+    _sort_reverse: bool = True
+    _albums: list[Album]
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self._albums = []
 
     def compose(self) -> ComposeResult:
         with ContentSwitcher(initial="albums-grid-view", id="albums-switcher"):
@@ -59,20 +77,74 @@ class AlbumsView(Widget):
                 yield AlbumDetailPanel(id="album-panel")
 
     def on_mount(self) -> None:
-        self.query_one("#fav-albums-grid", AlbumGrid).border_title = "Favourite Albums"
+        grid = self.query_one("#fav-albums-grid", AlbumGrid)
+        grid.border_title = "Favourite Albums"
+        self._update_subtitle()
         self._load()
 
     def on_show(self) -> None:
         if self._album_view_active:
-            self.query_one("#album-panel", AlbumDetailPanel).focus_tracklist()
+            self.call_after_refresh(
+                self.query_one("#album-panel", AlbumDetailPanel).focus_tracklist
+            )
         else:
-            self.query_one("#fav-albums-grid", AlbumGrid).focus()
+            self.call_after_refresh(
+                self.query_one("#fav-albums-grid", AlbumGrid).focus
+            )
 
     def action_navigate_back(self) -> bool:
         if self._album_view_active:
             self._show_grid()
             return True
         return False
+
+    def action_cycle_sort(self) -> None:
+        idx = (_SORT_KEYS.index(self._sort_key) + 1) % len(_SORT_KEYS)
+        self._sort_key = _SORT_KEYS[idx]
+        self._sort_reverse = self._sort_key == "favorited_at"
+        self._apply_sort()
+
+    def action_toggle_reverse(self) -> None:
+        self._sort_reverse = not self._sort_reverse
+        self._apply_sort()
+
+    def _update_subtitle(self) -> None:
+        arrow = "↓" if self._sort_reverse else "↑"
+        label = dict(_SORT_OPTIONS)[self._sort_key]
+        self.query_one("#fav-albums-grid", AlbumGrid).border_subtitle = f"{arrow} {label}"
+
+    def _apply_sort(self) -> None:
+        self._update_subtitle()
+        self._render_grid()
+
+    def _sorted_albums(self) -> list[Album]:
+        def key(a: Album) -> object:
+            if self._sort_key == "favorited_at":
+                return a.favorited_at or 0
+            if self._sort_key == "artist":
+                return (a.artist or "").lower()
+            if self._sort_key == "title":
+                return (a.title or "").lower()
+            if self._sort_key == "year":
+                return a.year or 0
+            return 0
+
+        return sorted(self._albums, key=key, reverse=self._sort_reverse)
+
+    def _render_grid(self) -> None:
+        grid = self.query_one("#fav-albums-grid", AlbumGrid)
+        grid._cursor = -1
+        self._mount_cards(self._sorted_albums())
+
+    @work
+    async def _mount_cards(self, albums: list[Album]) -> None:
+        grid = self.query_one("#fav-albums-grid", AlbumGrid)
+        await grid.remove_children()
+        if not albums:
+            await grid.mount(Label("[dim]No favourite albums yet.[/dim]", markup=True))
+            return
+        for album in albums:
+            await grid.mount(AlbumCard(album, show_artist=True))
 
     def _open_album(self, album: Album) -> None:
         panel = self.query_one("#album-panel", AlbumDetailPanel)
@@ -97,16 +169,12 @@ class AlbumsView(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
         try:
-            data = await app._client.get_user_favorites(type="albums", limit=50)
-            items = data.get("albums", {}).get("items", [])
+            items = await app._client.get_all_favorite_albums()
         except Exception as e:
             await grid.mount(Label(f"[red]{e}[/red]", markup=True))
             return
-        if not items:
-            await grid.mount(Label("[dim]No favourite albums yet.[/dim]", markup=True))
-            return
-        for raw in items:
-            await grid.mount(AlbumCard(Album.from_api(raw), show_artist=True))
+        self._albums = [Album.from_api(raw) for raw in items]
+        self._render_grid()
 
     @work
     async def _load_artist_info(self, artist_id: str) -> None:
