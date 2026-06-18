@@ -404,7 +404,9 @@ class ArtistScreen(Screen):
         if self._album_view_active:
             self._show_artist_view()
         else:
-            self.app.pop_screen()
+            app: QobitApp = self.app  # type: ignore[assignment]
+            app.action_switch_tab(self._source.lower())
+            app.pop_screen()
 
     def _open_album(self, album: Album) -> None:
         self.query_one("#album-title", Label).update(escape(album.title))

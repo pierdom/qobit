@@ -24,25 +24,6 @@ ICON_PLAYLIST = "≡"
 # ── result item widgets (shared with library tabs) ────────────────────────────
 
 
-class SectionHeader(ListItem):
-    DEFAULT_CSS = """
-    SectionHeader {
-        height: 1;
-        padding: 0 1;
-        background: $boost;
-    }
-    SectionHeader:hover { background: $boost; }
-    SectionHeader > Label { color: $text-muted; text-style: bold; }
-    """
-
-    def __init__(self, title: str) -> None:
-        super().__init__(disabled=True)
-        self._title = title
-
-    def compose(self) -> ComposeResult:
-        yield Label(self._title.upper())
-
-
 class TrackItem(ListItem):
     DEFAULT_CSS = """
     TrackItem { height: 2; padding: 0 1; }
@@ -129,19 +110,38 @@ class SearchView(Widget):
         layout: vertical;
     }
     SearchView Input {
-        margin: 1 1 0 1;
+        margin: 0;
+        border: tall $accent 40%;
+        border-subtitle-align: right;
+        border-subtitle-color: $text-muted;
     }
-    SearchView ListView {
+    SearchView Input:focus {
+        border: tall $accent;
+    }
+    #artists-results, #tracks-results, #albums-results {
         height: 1fr;
-        margin: 0 1 1 1;
+        margin: 0;
+        border: round $accent 40%;
+        border-title-color: $accent 40%;
+        border-title-style: bold;
+    }
+    #artists-results:focus, #tracks-results:focus, #albums-results:focus {
+        border: round $accent;
+        border-title-color: $accent;
     }
     """
 
     def compose(self) -> ComposeResult:
         yield Input(placeholder="Search Qobuz…", id="search-input")
-        yield ListView(id="results")
+        yield ListView(id="artists-results")
+        yield ListView(id="tracks-results")
+        yield ListView(id="albums-results")
 
     def on_mount(self) -> None:
+        self.query_one("#search-input", Input).border_subtitle = "⏎"
+        self.query_one("#artists-results", ListView).border_title = "Artists"
+        self.query_one("#tracks-results", ListView).border_title = "Tracks"
+        self.query_one("#albums-results", ListView).border_title = "Albums"
         self.query_one("#search-input").focus()
 
     def action_focus_input(self) -> None:
@@ -156,8 +156,10 @@ class SearchView(Widget):
     @work
     async def _search(self, query: str) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        lv = self.query_one("#results", ListView)
-        await lv.clear()
+        lv_artists = self.query_one("#artists-results", ListView)
+        lv_tracks = self.query_one("#tracks-results", ListView)
+        lv_albums = self.query_one("#albums-results", ListView)
+        await asyncio.gather(lv_artists.clear(), lv_tracks.clear(), lv_albums.clear())
 
         try:
             tracks_r, albums_r, artists_r = await asyncio.gather(
@@ -167,31 +169,31 @@ class SearchView(Widget):
             )
         except (QobuzError, AssertionError) as e:
             msg = str(e) if isinstance(e, QobuzError) else "Not authenticated — run: qobit auth"
-            await lv.append(ListItem(Label(f"[red]{msg}[/red]", markup=True)))
+            await lv_artists.append(ListItem(Label(f"[red]{msg}[/red]", markup=True)))
+            lv_artists.focus()
             return
 
         tracks = tracks_r.get("tracks", {}).get("items", [])
         albums = albums_r.get("albums", {}).get("items", [])
         artists = artists_r.get("artists", {}).get("items", [])
 
-        if not tracks and not albums and not artists:
-            await lv.append(ListItem(Label("[dim]No results.[/dim]", markup=True)))
-            return
+        for raw in artists:
+            await lv_artists.append(ArtistItem(Artist.from_api(raw)))
+        for raw in tracks:
+            await lv_tracks.append(TrackItem(Track.from_api(raw)))
+        for raw in albums:
+            await lv_albums.append(AlbumItem(Album.from_api(raw)))
 
-        if tracks:
-            await lv.append(SectionHeader("Tracks"))
-            for raw in tracks:
-                await lv.append(TrackItem(Track.from_api(raw)))
-        if artists:
-            await lv.append(SectionHeader("Artists"))
-            for raw in artists:
-                await lv.append(ArtistItem(Artist.from_api(raw)))
-        if albums:
-            await lv.append(SectionHeader("Albums"))
-            for raw in albums:
-                await lv.append(AlbumItem(Album.from_api(raw)))
+        first_non_empty = next(
+            (lv for lv in (lv_artists, lv_tracks, lv_albums) if len(lv) > 0), None
+        )
+        if first_non_empty is not None:
+            first_non_empty.focus()
+        else:
+            await lv_artists.append(ListItem(Label("[dim]No results.[/dim]", markup=True)))
+            lv_artists.focus()
 
-    @on(ListView.Selected, "#results")
+    @on(ListView.Selected)
     def _on_selected(self, event: ListView.Selected) -> None:
         from .album_detail import AlbumScreen
         from .artist_detail import ArtistScreen
