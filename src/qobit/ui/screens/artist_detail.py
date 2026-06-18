@@ -518,9 +518,7 @@ class ArtistScreen(Screen):
             self.query_one("#album-badges", Label).update(f"[dim]{' · '.join(badge_parts)}[/dim]")
 
         if full.awards:
-            self.query_one("#album-awards", Label).update(
-                "  ".join(escape(a) for a in full.awards)
-            )
+            self.query_one("#album-awards", Label).update("  ".join(escape(a) for a in full.awards))
 
         if full.description:
             self.query_one("#album-desc", Label).update(escape(full.description))
