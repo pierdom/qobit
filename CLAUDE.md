@@ -32,7 +32,7 @@ src/qobit/
     │                        session restore, tab routing
     ├── screens/
     │   ├── search.py        SearchView + shared item widgets (TrackItem,
-    │   │                    AlbumItem, ArtistItem, PlaylistItem, SectionHeader)
+    │   │                    AlbumItem, ArtistItem, PlaylistItem)
     │   ├── album_detail.py  AlbumScreen — track list for a single album
     │   ├── artist_detail.py ArtistScreen — bio + top tracks + album grid +
     │   │                    inline album detail panel
@@ -59,8 +59,11 @@ src/qobit/
 - **Library tabs**: Playlists, Tracks, Artists, Albums each load the user's
   Qobuz favourites and navigate to detail screens.
 - **SearchView**: Free-text search across tracks/albums/artists in parallel;
-  results shown in a sectioned list; selecting plays a track, opens an album,
-  or opens an artist.
+  results shown in three bordered sections (Artists / Tracks / Albums) with
+  dimmed-accent borders at rest and full-accent on focus; focus auto-moves to
+  the first non-empty section after a search; "/" refocuses the search input
+  from any result list. Selecting plays a track, opens an album, or opens an
+  artist.
 - **AlbumScreen**: Full track list with numbering and durations; selecting a
   track plays it and pops the screen.
 - **PlaylistScreen**: Full track list; selecting plays and pops.
@@ -70,7 +73,9 @@ src/qobit/
   panels. Clicking or pressing Enter on an AlbumCard opens an inline album
   detail panel (ContentSwitcher, no screen push) showing art, metadata, and
   full track list. Escape navigates back to the artist view before popping the
-  screen.
+  screen and restoring the source tab. Progressive loading: `_load_detail()`
+  and `_load_tracks()` run as concurrent `@work` workers so bio/image/albums
+  and top tracks populate independently as each API call returns.
 - **TransportBar**: Shows now-playing label, progress bar, time counter; reacts
   to playback state reactives via self-wiring `watch()` calls on mount so any
   instance placed anywhere is always live; click-to-seek.
@@ -92,10 +97,10 @@ src/qobit/
 **Play Next queue** — see dedicated section below; this is the next major
 feature.
 
-**Search UI overhaul** — the current flat sectioned list is functional but
-minimal. Needs a proper two-column or card-based layout, richer result rows
-(album art thumbnails, genre tags), and a way to distinguish quality tiers.
-Possible direction: tracks on the left, albums + artists on the right.
+**Search UI overhaul** — the current three-section layout is functional but
+minimal. Needs richer result rows (album art thumbnails, genre tags) and a way
+to distinguish quality tiers. Possible direction: tracks on the left, albums +
+artists on the right.
 
 **AlbumScreen redesign** — currently a bare header + flat track list. Needs:
 album art (Kitty), richer header (artist name clickable → ArtistScreen, year,
@@ -204,8 +209,10 @@ Once the queue exists:
   that the `-hl` override works correctly.
 - **Custom back navigation**: ArtistScreen overrides `action_navigate_back`
   (bound to Escape with `priority=True`) to pop the inline album panel before
-  popping the screen. The `escape` binding in BINDINGS calls this action rather
-  than `app.pop_screen` directly.
+  popping the screen. When fully backing out, it calls
+  `app.action_switch_tab(self._source.lower())` before `pop_screen()` to
+  ensure the originating tab (e.g. "search") is restored — without this,
+  the app's own escape binding can drift the active tab to the first tab.
 
 ## Qobuz API layer
 
@@ -214,11 +221,14 @@ player bundle on login; the working values are cached in config. Streaming URLs
 expire in ~10 minutes — re-fetch on track start, not on app start. Quality
 fallback order: FLAC_24_192 → FLAC_24_96 → FLAC_CD.
 
-`get_artist_page` calls `artist/page` (popularity-ranked `top_tracks`) and
-`artist/get` (biography, image, albums) concurrently via `asyncio.gather`, then
-merges them: `detail["tracks"] = {"items": items}`. `Track.from_api` handles
-both `performer.name` (string, from `artist/get`) and `artist.name.display`
-(nested dict, from `artist/page`) artist name formats.
+ArtistScreen uses two separate client methods that fire concurrently:
+`get_artist_detail` calls `artist/get` (biography, image, albums in
+reverse-chronological order); `get_artist_top_tracks` calls `artist/page`
+(popularity-ranked top tracks). `Track.from_api` handles both
+`performer.name` (string, from `artist/get`) and `artist.name.display`
+(nested dict, from `artist/page`) artist name formats. The legacy
+`get_artist_page` method still exists (merges both into one call) but is no
+longer used by the UI.
 
 ## Image protocol
 
