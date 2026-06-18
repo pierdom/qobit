@@ -204,8 +204,8 @@ class ArtistScreen(Screen):
     ArtistScreen #bio-section {
         width: 1fr;
         height: 7;
-        border: round $panel;
-        border-title-color: $text-muted;
+        border: round $accent 40%;
+        border-title-color: $accent 40%;
         border-title-style: bold;
     }
 
@@ -222,8 +222,8 @@ class ArtistScreen(Screen):
     ArtistScreen #top-tracks {
         height: 1fr;
         margin: 1;
-        border: round $panel;
-        border-title-color: $text-muted;
+        border: round $accent 40%;
+        border-title-color: $accent 40%;
         border-title-style: bold;
     }
 
@@ -235,8 +235,8 @@ class ArtistScreen(Screen):
     ArtistScreen #albums {
         height: 1fr;
         margin: 0 1 1 1;
-        border: round $panel;
-        border-title-color: $text-muted;
+        border: round $accent 40%;
+        border-title-color: $accent 40%;
         border-title-style: bold;
     }
 
