@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from rich.console import Group
 from rich.text import Text
 from textual import events
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
+
+if TYPE_CHECKING:
+    from ..app import QobitApp
 
 
 def _fmt(secs: float) -> str:
@@ -15,7 +20,10 @@ def _fmt(secs: float) -> str:
 
 
 class TransportBar(Widget):
-    """Playback progress bar with click-to-seek.  Mirrors tuidash PlaybackBar."""
+    """Playback progress bar with click-to-seek.  Mirrors tuidash PlaybackBar.
+
+    Self-wiring: subscribes to QobitApp reactives on mount so any instance
+    placed anywhere in the widget tree is always live."""
 
     class SeekTo(Message):
         def __init__(self, position: float) -> None:
@@ -43,6 +51,48 @@ class TransportBar(Widget):
         background: $boost;
     }
     """
+
+    def on_mount(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        self.watch(app, "now_playing", self._on_now_playing, init=True)
+        self.watch(app, "is_playing", self._on_is_playing, init=True)
+        self.watch(app, "is_paused", self._on_is_paused, init=True)
+        self.watch(app, "playback_pos", self._on_pos, init=True)
+        self.watch(app, "playback_dur", self._on_dur, init=True)
+        self.watch(app, "status_msg", self._on_status_msg, init=True)
+
+    def _on_now_playing(self, track: object) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if track:
+            self.label = f"{track.artist} — {track.display_title}"  # type: ignore[union-attr]
+            self.border_title = "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
+        else:
+            self.label = ""
+            self.border_title = ""
+
+    def _on_is_playing(self, playing: bool) -> None:
+        self.set_class(playing, "-playing")
+
+    def _on_is_paused(self, paused: bool) -> None:
+        self.is_paused = paused
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if app.now_playing:
+            self.border_title = "⏸  Now Playing" if paused else "▶  Now Playing"
+
+    def _on_pos(self, pos: float) -> None:
+        self.position = pos
+
+    def _on_dur(self, dur: float) -> None:
+        self.duration = dur
+
+    def _on_status_msg(self, msg: str) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if msg:
+            self.label = msg
+        elif app.now_playing:
+            self.label = f"{app.now_playing.artist} — {app.now_playing.display_title}"
+        else:
+            self.label = ""
 
     # ── rendering ────────────────────────────────────────────────────────────
 

@@ -20,6 +20,8 @@ class PlaylistTrackRow(ListItem):
     DEFAULT_CSS = """
     PlaylistTrackRow { height: 2; padding: 0 1; }
     PlaylistTrackRow Label { width: 1fr; }
+    PlaylistTrackRow .primary { text-style: bold; }
+    PlaylistTrackRow .secondary { color: $text-muted; }
     """
 
     def __init__(self, track: Track) -> None:
@@ -28,11 +30,8 @@ class PlaylistTrackRow(ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(
-            f"[dim]{ICON_TRACK}[/dim]  [bold]{t.artist}[/bold] — {t.display_title}",
-            markup=True,
-        )
-        yield Label(f"     [dim]{t.album}  ·  {t.duration_str}[/dim]", markup=True)
+        yield Label(f"{ICON_TRACK}  {t.artist} — {t.display_title}", classes="primary")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
 
 
 class PlaylistScreen(Screen):
@@ -61,7 +60,6 @@ class PlaylistScreen(Screen):
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         self._load()
-        self.app.sync_transport_bar()  # type: ignore[attr-defined]
 
     @work
     async def _load(self) -> None:

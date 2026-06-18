@@ -292,18 +292,26 @@ class QobuzClient:
             albums_sort="release_date",
         )
 
-    async def get_artist_page(
-        self, artist_id: str, tracks_limit: int = 5, albums_limit: int = 100
-    ) -> dict:
-        """Biography, image, top tracks and albums for the Artist detail screen."""
-        return await self._get(
-            "artist/get",
-            artist_id=artist_id,
-            extra="tracks,albums",
-            tracks_limit=tracks_limit,
-            albums_limit=albums_limit,
-            albums_sort="release_date",
+    async def get_artist_page(self, artist_id: str, albums_limit: int = 100) -> dict:
+        """Biography, image, popularity-ranked top tracks, and albums for the Artist detail screen.
+
+        Calls artist/page (popularity-ranked top_tracks) and artist/get (albums, image, bio)
+        concurrently, then merges them so Artist.from_api sees a unified response.
+        """
+        page, detail = await asyncio.gather(
+            self._get("artist/page", artist_id=artist_id),
+            self._get(
+                "artist/get",
+                artist_id=artist_id,
+                extra="albums",
+                limit=albums_limit,
+                albums_sort="release_date",
+            ),
         )
+        top_tracks = page.get("top_tracks", [])
+        items = top_tracks if isinstance(top_tracks, list) else top_tracks.get("items", [])
+        detail["tracks"] = {"items": items}
+        return detail
 
     async def get_streaming_url(self, track_id: str, quality: str = "FLAC_CD") -> dict:
         format_id = QUALITY_IDS.get(quality, QUALITY_IDS["FLAC_CD"])

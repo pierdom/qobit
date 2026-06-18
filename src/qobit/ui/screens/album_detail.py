@@ -30,10 +30,7 @@ class TrackRow(ListItem):
     def compose(self) -> ComposeResult:
         t = self.track
         num = f"{self._number:2}. {ICON_TRACK}"
-        yield Label(
-            f"[dim]{num}[/dim]  {t.display_title}  [dim]{t.duration_str}[/dim]",
-            markup=True,
-        )
+        yield Label(f"{num}  {t.display_title}  {t.duration_str}", classes="primary")
 
 
 class AlbumScreen(Screen):
@@ -62,7 +59,6 @@ class AlbumScreen(Screen):
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         self._load()
-        self.app.sync_transport_bar()  # type: ignore[attr-defined]
 
     @work
     async def _load(self) -> None:

@@ -13,7 +13,7 @@ from textual.command import Hit, Hits, Provider
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
-from textual.widgets import ContentSwitcher, Footer, Tab, Tabs
+from textual.widgets import ContentSwitcher, Footer, Label, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
 from ..audio.player import MpvPlayer
@@ -126,6 +126,9 @@ class QobitApp(App[None]):
     ListItem.--highlight > Label {
         background: $accent 35%;
     }
+    Label.-hl {
+        color: $accent;
+    }
     Screen.-transparent,
     Screen.-transparent * {
         background: ansi_default;
@@ -197,77 +200,27 @@ class QobitApp(App[None]):
 
     def action_focus_tabs(self) -> None:
         if len(self.screen_stack) > 1:
-            self.pop_screen()
+            screen = self.screen
+            if hasattr(screen, "action_navigate_back"):
+                screen.action_navigate_back()
+            else:
+                self.pop_screen()
         else:
             self.query_one("#nav-tabs", Tabs).focus()
+
+    @on(ListView.Highlighted)
+    def _on_list_highlighted(self, event: ListView.Highlighted) -> None:
+        for label in event.list_view.query(Label):
+            label.remove_class("-hl")
+        if event.item:
+            for label in event.item.query(Label):
+                label.add_class("-hl")
 
     def _focus_search_input(self) -> None:
         try:
             self.query_one("#search-input").focus()
         except Exception:
             pass
-
-    # ── reactive watches → update TransportBar reactives directly ────────────
-
-    def _bar(self) -> TransportBar | None:
-        try:
-            return self.screen.query_one(TransportBar)
-        except Exception:
-            return None
-
-    def sync_transport_bar(self) -> None:
-        """Prime a newly-mounted TransportBar with current playback state."""
-        bar = self._bar()
-        if bar is None:
-            return
-        if self.now_playing:
-            bar.label = f"{self.now_playing.artist} — {self.now_playing.display_title}"
-            bar.border_title = "⏸  Now Playing" if self.is_paused else "▶  Now Playing"
-        bar.position = self.playback_pos
-        bar.duration = self.playback_dur
-        bar.is_paused = self.is_paused
-        bar.set_class(self.is_playing, "-playing")
-
-    def watch_now_playing(self, track: Track | None) -> None:
-        bar = self._bar()
-        if bar is None:
-            return
-        if track:
-            bar.label = f"{track.artist} — {track.display_title}"
-            bar.border_title = "⏸  Now Playing" if self.is_paused else "▶  Now Playing"
-        else:
-            bar.label = ""
-            bar.border_title = ""
-
-    def watch_is_playing(self, playing: bool) -> None:
-        if bar := self._bar():
-            bar.set_class(playing, "-playing")
-
-    def watch_is_paused(self, paused: bool) -> None:
-        if bar := self._bar():
-            bar.is_paused = paused
-            if self.now_playing:
-                bar.border_title = "⏸  Now Playing" if paused else "▶  Now Playing"
-
-    def watch_playback_pos(self, pos: float) -> None:
-        if bar := self._bar():
-            bar.position = pos
-
-    def watch_playback_dur(self, dur: float) -> None:
-        if bar := self._bar():
-            bar.duration = dur
-
-    def watch_status_msg(self, msg: str) -> None:
-        if bar := self._bar():
-            bar.label = (
-                msg
-                if msg
-                else (
-                    f"{self.now_playing.artist} — {self.now_playing.display_title}"
-                    if self.now_playing
-                    else ""
-                )
-            )
 
     # ── seek from mouse click on bar ─────────────────────────────────────────
 
