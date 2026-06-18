@@ -23,62 +23,85 @@ uv tool install .
 Or for development:
 
 ```bash
-uv sync
+uv sync --group dev
 uv run qobit
 ```
 
-## Configuration
+## First run
 
-Credentials are read from environment variables first, then from
-`~/.config/qobit/config.json`:
+Authenticate once — this opens a browser to Qobuz and saves the session:
 
 ```bash
-export QOBUZ_EMAIL="you@example.com"
-export QOBUZ_PASSWORD="yourpassword"
+qobit auth
 ```
 
-Or run `qobit auth` to be prompted and save to the config file.
-
-## Audio device setup
-
-List available devices and pick your DAC:
+Pick your output device (required for bit-perfect output):
 
 ```bash
 qobit devices       # list mpv audio device IDs
 qobit set-device    # interactive picker — saves to config
 ```
 
-The selected device ID is stored in `~/.config/qobit/config.json` under
-`audio_device`. On Linux, prefer `alsa/hw:CARD=<name>,DEV=0` for direct
-ALSA access (bypasses PulseAudio/PipeWire). On macOS, use
-`coreaudio/<device>` — qobit enables exclusive/hog mode automatically.
+Then launch the TUI:
 
-## Usage
+```bash
+qobit
+```
+
+## TUI navigation
+
+| Key | Action |
+|-----|--------|
+| `1`–`5` | Switch tab (Playlists / Tracks / Artists / Albums / Search) |
+| `Escape` | Back / focus tab bar |
+| `Enter` | Play track / open detail screen |
+| `Space` | Pause / resume |
+| `[` / `]` | Seek −10 s / +10 s |
+| `q` | Quit |
+
+Within the Artist detail screen the Albums & EPs grid is navigated with arrow
+keys.
+
+## CLI commands
 
 ```bash
 qobit play "Daft Punk Random Access Memories"   # search and play first result
 qobit play "Kind of Blue" --quality FLAC_24_96  # prefer specific quality
-qobit auth                                       # test authentication
+qobit auth                                       # authenticate / refresh session
 qobit devices                                    # list output devices
 qobit set-device                                 # pick and save output device
 ```
 
-The TUI (`qobit` with no arguments) is coming in Phase 2.
+## Audio device setup
+
+On Linux, prefer `alsa/hw:CARD=<name>,DEV=0` for direct ALSA access (bypasses
+PulseAudio/PipeWire). On macOS, use `coreaudio/<device-uid>` — qobit enables
+Core Audio exclusive/hog mode automatically.
 
 ## Quality tiers
 
-| Flag          | Format            |
-|---------------|-------------------|
-| `FLAC_24_192` | FLAC 24-bit/192kHz (default, falls back if unavailable) |
-| `FLAC_24_96`  | FLAC 24-bit/96kHz |
-| `FLAC_CD`     | FLAC 16-bit/44.1kHz |
-| `MP3_320`     | MP3 320kbps |
+| Flag | Format |
+|------|--------|
+| `FLAC_24_192` | FLAC 24-bit / 192 kHz (default, falls back if unavailable) |
+| `FLAC_24_96` | FLAC 24-bit / 96 kHz |
+| `FLAC_CD` | FLAC 16-bit / 44.1 kHz |
+| `MP3_320` | MP3 320 kbps |
+
+Fallback order: FLAC_24_192 → FLAC_24_96 → FLAC_CD.
 
 ## Bit-perfect verification
 
 After playback starts, qobit queries mpv's actual output sample rate via IPC
-and compares it to the stream metadata. A `✓ 24/192 bit-perfect` badge means
-the device is receiving exactly the bits from the file with no resampling.
+and compares it to the stream metadata. A `✓ 24/192 bit-perfect` badge in the
+CLI means the device is receiving exactly the bits from the file with no
+resampling.
+
+## Config paths
+
+```
+~/.config/qobit/config.json       credentials, audio_device, theme
+~/.local/share/qobit/mpv.sock     IPC socket (created per playback session)
+```
 
 ## License
 
