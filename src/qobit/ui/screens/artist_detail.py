@@ -76,7 +76,7 @@ class AlbumCard(Widget):
         color: $text-muted;
         overflow: hidden hidden;
     }
-    AlbumCard.-selected { background: $accent 10%; }
+    AlbumCard.-selected { background: $accent 30%; border: tall $accent; }
     """
 
     def __init__(self, album: Album) -> None:
@@ -153,7 +153,10 @@ class AlbumGrid(ScrollableContainer):
         cards = list(self.query(AlbumCard))
         if not cards:
             return
-        idx = max(0, self._cursor)
+        if self._cursor == -1:
+            self._move_cursor(0)
+            return
+        idx = self._cursor
         target: int | None = None
         if direction == "right" and idx + 1 < len(cards):
             target = idx + 1
