@@ -111,7 +111,11 @@ class Artist:
         image = data.get("image") or {}
         bio = data.get("biography") or {}
         tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
-        albums = [Album.from_api(a) for a in data.get("albums", {}).get("items", [])]
+        albums = sorted(
+            [Album.from_api(a) for a in data.get("albums", {}).get("items", [])],
+            key=lambda a: a.year or 0,
+            reverse=True,
+        )
         return cls(
             id=str(data["id"]),
             name=data.get("name", ""),
