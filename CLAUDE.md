@@ -34,14 +34,16 @@ src/qobit/
     │   ├── search.py        SearchView + shared item widgets (TrackItem,
     │   │                    AlbumItem, ArtistItem, PlaylistItem, SectionHeader)
     │   ├── album_detail.py  AlbumScreen — track list for a single album
-    │   ├── artist_detail.py ArtistScreen — bio + top tracks + album grid [WIP]
+    │   ├── artist_detail.py ArtistScreen — bio + top tracks + album grid +
+    │   │                    inline album detail panel
     │   ├── playlist_detail.py PlaylistScreen — track list for a playlist
     │   ├── albums.py        AlbumsView — favourite albums library tab
     │   ├── artists.py       ArtistsView — favourite artists library tab
     │   ├── tracks.py        TracksView — favourite tracks library tab
     │   └── playlists.py     PlaylistsView — user playlists library tab
     └── widgets/
-        └── transport.py     TransportBar — progress bar + click-to-seek
+        └── transport.py     TransportBar — progress bar + click-to-seek,
+                             self-wires to QobitApp reactives on mount
 ```
 
 ## Current state
@@ -62,11 +64,16 @@ src/qobit/
 - **AlbumScreen**: Full track list with numbering and durations; selecting a
   track plays it and pops the screen.
 - **PlaylistScreen**: Full track list; selecting plays and pops.
-- **ArtistScreen** (WIP — see below): Biography, top tracks list, Albums & EPs
-  grid with album art (Kitty protocol), keyboard arrow navigation, reverse-
-  chronological sort, dimmed-accent borders for unfocused panels.
-- **TransportBar**: Shows now-playing label, progress bar, time counter, reacts
-  to playback state reactives; click-to-seek.
+- **ArtistScreen**: Biography, popularity-ranked top tracks (from `artist/page`
+  endpoint), Albums & EPs grid with album art (Kitty protocol), keyboard arrow
+  navigation, reverse-chronological sort, dimmed-accent borders for unfocused
+  panels. Clicking or pressing Enter on an AlbumCard opens an inline album
+  detail panel (ContentSwitcher, no screen push) showing art, metadata, and
+  full track list. Escape navigates back to the artist view before popping the
+  screen.
+- **TransportBar**: Shows now-playing label, progress bar, time counter; reacts
+  to playback state reactives via self-wiring `watch()` calls on mount so any
+  instance placed anywhere is always live; click-to-seek.
 - **Transparent background**: Toggle via command palette (`Draw theme
   background`); preserved across sessions.
 - **Bit-perfect flags**: `--af-clr`, `--audio-pitch-correction=no`,
@@ -75,12 +82,10 @@ src/qobit/
 ### Work in progress
 
 **ArtistScreen** (`ui/screens/artist_detail.py`)
-- Missing: clicking an AlbumCard must open AlbumScreen. Not yet wired.
 - Missing: playing a top track should enqueue the remaining top tracks
   (Play Next — see below).
 - Missing: context menu on AlbumCard / track rows (add to queue, play album).
-- UI still rough: biography text needs better overflow handling; artist image
-  sizing is approximate.
+- UI still rough: biography text needs better overflow handling.
 
 ### Not yet started / needs design
 
@@ -177,36 +182,30 @@ Once the queue exists:
 - `@work` / `@work(thread=True)` for all async I/O and blocking IPC.
 - `reactive` + `watch_*` for transport state (now_playing, is_playing, etc.).
 - `DEFAULT_CSS` on each widget/screen for colocation of styles.
-- `ContentSwitcher` for tab panel switching without re-mounting.
-- `Screen` push/pop for detail views (AlbumScreen, ArtistScreen, etc.).
+- `ContentSwitcher` for tab panel switching without re-mounting. Also used
+  within ArtistScreen to switch between the artist view and inline album detail
+  panel without pushing a new screen.
+- `Screen` push/pop for detail views (AlbumScreen, PlaylistScreen, ArtistScreen).
 - Container-owns-cursor pattern (AlbumGrid): the container holds focus, tracks
   `_cursor: int`, applies `-selected` CSS class to the active child. Same
   pattern as Textual's own `DataTable`. Necessary because `ScrollableContainer`
   has `can_focus=True`, so Tab targets the container, not its children.
 - `$accent 40%` for dimmed-but-themed borders on unfocused panels; full
   `$accent` on `:focus`. Avoids invisible `$panel` borders.
-
-## Bit-perfect strategy
-
-### Linux
-
-Use `alsa/hw:CARD=<name>,DEV=0`. The ALSA `hw:` plugin gives direct hardware
-access — no PulseAudio, no PipeWire mixing, no dmix resampler. mpv errors
-rather than resamples if the device doesn't support the track's sample rate
-(desired behaviour).
-
-Note for PipeWire users: PipeWire may intercept `hw:` writes on modern distros.
-Workaround (future): D-Bus `org.freedesktop.ReserveDevice1` to pre-empt
-PipeWire, same approach as vicrodh/qbz.
-
-### macOS
-
-Use `coreaudio/<device-uid>` plus `--audio-exclusive=yes`. Core Audio hog mode
-prevents the system mixer from resampling; it switches the device sample rate
-to match the source automatically.
-
-Verify via mpv IPC: `audio-params/samplerate` must match the stream URL's
-`sampling_rate` field.
+- **TransportBar self-wiring**: `on_mount` calls `self.watch(app, "reactive",
+  callback, init=True)` for each QobitApp reactive. Any TransportBar instance
+  placed anywhere in the widget tree is automatically live — no
+  `sync_transport_bar()` calls needed from screens.
+- **ListView highlight**: `QobitApp._on_list_highlighted` catches all
+  `ListView.Highlighted` events app-wide and manages a `-hl` CSS class on the
+  highlighted item's child Labels. `Label.-hl { color: $accent }` in app CSS
+  colours the selected row. All list item widgets (TrackItem, AlbumItem, etc.)
+  use `.primary` / `.secondary` CSS classes instead of Rich inline markup so
+  that the `-hl` override works correctly.
+- **Custom back navigation**: ArtistScreen overrides `action_navigate_back`
+  (bound to Escape with `priority=True`) to pop the inline album panel before
+  popping the screen. The `escape` binding in BINDINGS calls this action rather
+  than `app.pop_screen` directly.
 
 ## Qobuz API layer
 
@@ -214,6 +213,12 @@ Verify via mpv IPC: `audio-params/samplerate` must match the stream URL's
 player bundle on login; the working values are cached in config. Streaming URLs
 expire in ~10 minutes — re-fetch on track start, not on app start. Quality
 fallback order: FLAC_24_192 → FLAC_24_96 → FLAC_CD.
+
+`get_artist_page` calls `artist/page` (popularity-ranked `top_tracks`) and
+`artist/get` (biography, image, albums) concurrently via `asyncio.gather`, then
+merges them: `detail["tracks"] = {"items": items}`. `Track.from_api` handles
+both `performer.name` (string, from `artist/get`) and `artist.name.display`
+(nested dict, from `artist/page`) artist name formats.
 
 ## Image protocol
 
@@ -261,8 +266,9 @@ uv run textual console     # Textual dev console (separate terminal)
 2. Textual TUI shell + search + album/playlist detail + transport bar **✓**
 3. Album art via textual-image (Kitty protocol) **✓** (ArtistScreen; needed in AlbumScreen/PlaylistScreen)
 4. Library tabs: playlists/tracks/artists/albums (placeholder quality) **✓**
-5. **Play Next queue + end-of-track auto-advance** ← next
-6. UI overhaul: Search, AlbumScreen, PlaylistScreen, ArtistScreen polish
-7. Context menus + TrackScreen detail overlay
-8. MPRIS (Linux), macOS MediaRemote, PipeWire ReserveDevice1
-9. Gapless playback, ReplayGain, CMAF fallback
+5. ArtistScreen polish: popularity top tracks, inline album detail panel **✓**
+6. **Play Next queue + end-of-track auto-advance** ← next
+7. UI overhaul: Search, AlbumScreen, PlaylistScreen
+8. Context menus + TrackScreen detail overlay
+9. MPRIS (Linux), macOS MediaRemote, PipeWire ReserveDevice1
+10. Gapless playback, ReplayGain, CMAF fallback
