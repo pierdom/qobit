@@ -14,6 +14,8 @@ class MpvPlayer:
         self._device = audio_device
         self._proc: subprocess.Popen | None = None
         self._sock = _SOCK_PATH
+        # incremented on every stop(); lets _poll_player distinguish natural end from forced stop
+        self._stop_gen: int = 0
 
     # --- public API ---
 
@@ -27,6 +29,7 @@ class MpvPlayer:
         self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def stop(self) -> None:
+        self._stop_gen += 1
         if self._proc and self._proc.poll() is None:
             self._proc.terminate()
             try:

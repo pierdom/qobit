@@ -264,7 +264,7 @@ class AlbumsView(Widget):
     @on(AlbumDetailPanel.TrackSelected)
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        app.play_track(event.track)
+        app.play_track(event.track, queue=event.queue)
 
     @on(events.Click, "#album-breadcrumb")
     def _on_breadcrumb_click(self) -> None:

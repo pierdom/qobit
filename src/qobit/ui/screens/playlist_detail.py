@@ -165,7 +165,11 @@ class PlaylistScreen(Screen):
     def _on_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, PlaylistTrackRow):
             app: QobitApp = self.app  # type: ignore[assignment]
-            app.play_track(event.item.track)
+            lv = self.query_one(".pp-tracklist", ListView)
+            rows = list(lv.query(PlaylistTrackRow))
+            idx = rows.index(event.item)
+            queue = [r.track for r in rows[idx + 1 :]]
+            app.play_track(event.item.track, queue=queue)
 
     @on(events.Click, "#breadcrumb")
     def _on_breadcrumb_click(self) -> None:

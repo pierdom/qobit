@@ -201,7 +201,11 @@ class SearchView(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         item = event.item
         if isinstance(item, TrackItem):
-            app.play_track(item.track)
+            lv = self.query_one("#tracks-results", ListView)
+            rows = list(lv.query(TrackItem))
+            idx = next((i for i, r in enumerate(rows) if r is item), -1)
+            queue = [r.track for r in rows[idx + 1 :]] if idx >= 0 else []
+            app.play_track(item.track, queue=queue)
         elif isinstance(item, AlbumItem):
             app.push_screen(AlbumScreen(item.album.id))
         elif isinstance(item, ArtistItem):

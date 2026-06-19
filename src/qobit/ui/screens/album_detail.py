@@ -54,9 +54,10 @@ class AlbumDetailPanel(Widget):
     """
 
     class TrackSelected(Message):
-        def __init__(self, track: Track) -> None:
+        def __init__(self, track: Track, queue: list[Track]) -> None:
             super().__init__()
             self.track = track
+            self.queue = queue
 
     DEFAULT_CSS = """
     AlbumDetailPanel {
@@ -180,7 +181,10 @@ class AlbumDetailPanel(Widget):
     def _on_list_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, TrackRow):
             event.stop()
-            self.post_message(AlbumDetailPanel.TrackSelected(event.item.track))
+            rows = list(self.query_one(".ap-tracklist", ListView).query(TrackRow))
+            idx = rows.index(event.item)
+            queue = [r.track for r in rows[idx + 1 :]]
+            self.post_message(AlbumDetailPanel.TrackSelected(event.item.track, queue))
 
 
 class AlbumScreen(Screen):
@@ -227,5 +231,9 @@ class AlbumScreen(Screen):
     def _on_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, TrackRow):
             app: QobitApp = self.app  # type: ignore[assignment]
-            app.play_track(event.item.track)
+            lv = self.query_one("#tracklist", ListView)
+            rows = list(lv.query(TrackRow))
+            idx = rows.index(event.item)
+            queue = [r.track for r in rows[idx + 1 :]]
+            app.play_track(event.item.track, queue=queue)
             app.pop_screen()

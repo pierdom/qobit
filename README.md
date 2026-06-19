@@ -59,6 +59,7 @@ qobit
 | `3` | Albums tab |
 | `4` | Playlists tab |
 | `5` | Search tab |
+| `6` | Queue tab |
 | `Escape` | Go back / clear filter / focus tab bar |
 | `↑` `↓` `←` `→` | Move cursor in grids and lists |
 | `Enter` | Open selected item or play selected track |

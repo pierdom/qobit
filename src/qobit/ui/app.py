@@ -28,6 +28,7 @@ from ..qobuz.models import StreamUrl, Track
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
 from .screens.playlists import PlaylistsView
+from .screens.queue import QueueView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
 from .widgets.transport import TransportBar
@@ -101,6 +102,7 @@ _TABS = [
     ("albums", "Albums"),
     ("playlists", "Playlists"),
     ("search", "Search"),
+    ("queue", "Queue"),
 ]
 
 
@@ -117,7 +119,7 @@ class QobitApp(App[None]):
     ContentSwitcher {
         height: 1fr;
     }
-    SearchView, PlaylistsView, TracksView, ArtistsView, AlbumsView {
+    SearchView, PlaylistsView, TracksView, ArtistsView, AlbumsView, QueueView {
         height: 1fr;
         margin: 0 1 1 1;
     }
@@ -150,6 +152,7 @@ class QobitApp(App[None]):
         Binding("3", "switch_tab('albums')", "Albums", show=False),
         Binding("4", "switch_tab('playlists')", "Playlists", show=False),
         Binding("5", "switch_tab('search')", "Search", show=False),
+        Binding("6", "switch_tab('queue')", "Queue", show=False),
         # priority=True so this fires even when an Input has focus
         Binding("escape", "focus_tabs", "Nav", show=False, priority=True),
     ]
@@ -160,11 +163,13 @@ class QobitApp(App[None]):
     playback_pos: reactive[float] = reactive(0.0)
     playback_dur: reactive[float] = reactive(0.0)
     status_msg: reactive[str] = reactive("")
+    queue_version: reactive[int] = reactive(0)
 
     def __init__(self) -> None:
         super().__init__()
         self._client = QobuzClient()
         self._player = MpvPlayer(audio_device=get_audio_device())
+        self._play_queue: list[Track] = []
         app_id, token, secrets = get_oauth_session()
         if app_id and token and secrets:
             self._client.restore_session(app_id, token, secrets)
@@ -181,6 +186,7 @@ class QobitApp(App[None]):
             yield ArtistsView(id="view-artists")
             yield AlbumsView(id="view-albums")
             yield SearchView(id="view-search")
+            yield QueueView(id="view-queue")
         yield TransportBar()
         yield Footer()
 
@@ -245,8 +251,10 @@ class QobitApp(App[None]):
     @work(thread=True)
     def _poll_player(self) -> None:
         worker = get_current_worker()
+        _seen_gen: int = 0
         while not worker.is_cancelled:
             if self._player.running:
+                _seen_gen = self._player._stop_gen
                 pos = self._player.get_property("time-pos")
                 dur = self._player.get_property("duration")
                 paused = self._player.get_property("pause")
@@ -259,15 +267,32 @@ class QobitApp(App[None]):
                 if not self.is_playing:
                     self.call_from_thread(setattr, self, "is_playing", True)
             elif self.is_playing:
+                natural_end = self._player._stop_gen == _seen_gen
                 self.call_from_thread(setattr, self, "is_playing", False)
                 self.call_from_thread(setattr, self, "is_paused", False)
                 self.call_from_thread(setattr, self, "playback_pos", 0.0)
+                if natural_end:
+                    self.call_from_thread(self._advance_queue)
             time.sleep(0.5)
 
     # ── play (async worker — shares event loop with httpx) ───────────────────
 
     @work
-    async def play_track(self, track: Track) -> None:
+    async def play_track(self, track: Track, queue: list[Track] | None = None) -> None:
+        if queue is not None:
+            self._play_queue = list(queue)
+            self.queue_version += 1
+        await self._do_play(track)
+
+    @work
+    async def _advance_queue(self) -> None:
+        if not self._play_queue:
+            return
+        next_track = self._play_queue.pop(0)
+        self.queue_version += 1
+        await self._do_play(next_track)
+
+    async def _do_play(self, track: Track) -> None:
         self.status_msg = f"Loading {track.display_title}…"
         stream: StreamUrl | None = None
         for quality in ("FLAC_24_192", "FLAC_24_96", "FLAC_CD"):

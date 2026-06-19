@@ -353,13 +353,17 @@ class ArtistsView(Widget):
     @on(AlbumDetailPanel.TrackSelected)
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        app.play_track(event.track)
+        app.play_track(event.track, queue=event.queue)
 
     @on(ListView.Selected, "#top-tracks")
     def _on_top_track_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, ArtistTrackRow):
             app: QobitApp = self.app  # type: ignore[assignment]
-            app.play_track(event.item.track)
+            lv = self.query_one("#top-tracks", ListView)
+            rows = list(lv.query(ArtistTrackRow))
+            idx = rows.index(event.item)
+            queue = [r.track for r in rows[idx + 1 :]]
+            app.play_track(event.item.track, queue=queue)
 
     @on(events.Click, "#artist-breadcrumb")
     def _on_artist_breadcrumb_click(self) -> None:

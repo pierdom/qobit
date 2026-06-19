@@ -234,4 +234,8 @@ class TracksView(Widget):
     def _on_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, FavTrackRow):
             app: QobitApp = self.app  # type: ignore[assignment]
-            app.play_track(event.item.track)
+            lv = self.query_one("#fav-tracks", ListView)
+            rows = list(lv.query(FavTrackRow))
+            idx = rows.index(event.item)
+            queue = [r.track for r in rows[idx + 1 :]]
+            app.play_track(event.item.track, queue=queue)
