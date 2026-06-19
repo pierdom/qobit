@@ -55,6 +55,14 @@ class MediaKeys:
             except Exception:
                 pass
 
+    def set_artwork(self, image: object) -> None:
+        """Pass a PIL.Image.Image once it has been fetched."""
+        if self._backend is not None:
+            try:
+                self._backend.set_artwork(image)
+            except Exception:
+                pass
+
     def close(self) -> None:
         if self._backend is not None:
             try:
@@ -77,6 +85,7 @@ class _MacOSBackend:
         from MediaPlayer import (  # type: ignore[import]
             MPMediaItemPropertyAlbumTitle,
             MPMediaItemPropertyArtist,
+            MPMediaItemPropertyArtwork,
             MPMediaItemPropertyPlaybackDuration,
             MPMediaItemPropertyTitle,
             MPNowPlayingInfoCenter,
@@ -94,6 +103,7 @@ class _MacOSBackend:
             "duration": MPMediaItemPropertyPlaybackDuration,
             "elapsed": MPNowPlayingInfoPropertyElapsedPlaybackTime,
             "rate": MPNowPlayingInfoPropertyPlaybackRate,
+            "artwork": MPMediaItemPropertyArtwork,
         }
         _ok = MPRemoteCommandHandlerStatusSuccess
 
@@ -120,6 +130,10 @@ class _MacOSBackend:
         cc.nextTrackCommand().enabled = True
         cc.previousTrackCommand().enabled = True
 
+        self._current_info: dict | None = None
+        self._artwork: object = None
+        self._artwork_handler: object = None  # keep ObjC block alive
+
     def update(
         self,
         track: Track | None,
@@ -130,6 +144,9 @@ class _MacOSBackend:
     ) -> None:
         if track is None:
             self._np_center.setNowPlayingInfo_(None)
+            self._current_info = None
+            self._artwork = None
+            self._artwork_handler = None
             return
         k = self._keys
         info: dict = {
@@ -141,7 +158,35 @@ class _MacOSBackend:
         }
         if duration:
             info[k["duration"]] = duration
+        if self._artwork is not None:
+            info[k["artwork"]] = self._artwork
+        self._current_info = info
         self._np_center.setNowPlayingInfo_(info)
+
+    def set_artwork(self, image: object) -> None:
+        import io
+
+        from AppKit import NSImage  # type: ignore[import]
+        from Foundation import NSData, NSMakeSize  # type: ignore[import]
+        from MediaPlayer import MPMediaItemArtwork  # type: ignore[import]
+
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")  # type: ignore[union-attr]
+        raw = buf.getvalue()
+        ns_data = NSData.dataWithBytes_length_(raw, len(raw))
+        ns_image = NSImage.alloc().initWithData_(ns_data)
+
+        def _handler(size: object) -> object:
+            return ns_image
+
+        self._artwork_handler = _handler  # prevent GC of the ObjC block
+        self._artwork = MPMediaItemArtwork.alloc().initWithBoundsSize_requestHandler_(
+            NSMakeSize(800.0, 800.0), _handler
+        )
+
+        if self._current_info is not None:
+            self._current_info[self._keys["artwork"]] = self._artwork
+            self._np_center.setNowPlayingInfo_(self._current_info)
 
     def close(self) -> None:
         self._np_center.setNowPlayingInfo_(None)
@@ -275,13 +320,16 @@ class _MPRISBackend:
         GLib = self._GLib
         if not self._track:
             return {"mpris:trackid": GLib.Variant("o", "/org/mpris/MediaPlayer2/NoTrack")}
-        return {
+        meta = {
             "mpris:trackid": GLib.Variant("o", "/org/mpris/MediaPlayer2/CurrentTrack"),
             "xesam:title": GLib.Variant("s", self._track.display_title),
             "xesam:artist": GLib.Variant("as", [self._track.artist]),
             "xesam:album": GLib.Variant("s", self._track.album),
             "mpris:length": GLib.Variant("x", self._duration_us),
         }
+        if self._track.image_url:
+            meta["mpris:artUrl"] = GLib.Variant("s", self._track.image_url)
+        return meta
 
     @property
     def Volume(self) -> float:
@@ -357,6 +405,9 @@ class _MPRISBackend:
             self._is_paused = is_paused
             self._position_us = int(position * 1_000_000)
             self._duration_us = int(duration * 1_000_000)
+
+    def set_artwork(self, image: object) -> None:
+        pass  # Linux: artwork URL is already included in Metadata via track.image_url
 
     def close(self) -> None:
         try:

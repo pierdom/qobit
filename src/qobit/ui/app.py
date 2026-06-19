@@ -329,6 +329,16 @@ class QobitApp(App[None]):
         self._media_keys.update(
             track, self.is_playing, self.is_paused, self.playback_pos, self.playback_dur
         )
+        if track and track.image_url:
+            self._fetch_media_key_art(track.image_url)
+
+    @work
+    async def _fetch_media_key_art(self, url: str) -> None:
+        from ._images import fetch_image
+
+        image = await fetch_image(url)
+        if image is not None:
+            self._media_keys.set_artwork(image)
 
     def watch_is_playing(self, playing: bool) -> None:
         self._media_keys.update(
