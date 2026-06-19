@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from textual import events, on, work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Label, ListView
@@ -30,6 +31,10 @@ _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
 
 class ArtistsView(Widget):
+    BINDINGS = [
+        Binding("/", "start_filter", "Filter", show=False),
+    ]
+
     DEFAULT_CSS = """
     ArtistsView {
         height: 1fr;
@@ -100,6 +105,9 @@ class ArtistsView(Widget):
     _loaded: bool = False
     _sort_key: str = "favorited_at"
     _sort_reverse: bool = True
+    _filter_active: bool = False
+    _filter_query: str = ""
+    _render_version: int = 0
     _artists: list[Artist]
     _current_artist: Artist | None
 
@@ -144,6 +152,8 @@ class ArtistsView(Widget):
         else:
             self.call_after_refresh(self.query_one("#fav-artists-grid", ArtistGrid).focus)
 
+    # ── filter ───────────────────────────────────────────────────────────────
+
     def action_navigate_back(self) -> bool:
         if self._view == "album":
             self._show_artist_content()
@@ -151,10 +161,39 @@ class ArtistsView(Widget):
         if self._view == "artist":
             self._show_grid()
             return True
+        if self._filter_active or self._filter_query:
+            self._filter_active = False
+            self._filter_query = ""
+            self._update_subtitle()
+            self._render_grid()
+            return True
         return False
 
-    def action_cycle_sort(self) -> None:
+    def action_start_filter(self) -> None:
         if self._view != "grid":
+            return
+        self._filter_active = True
+        self._update_subtitle()
+
+    def on_key(self, event: events.Key) -> None:
+        if not self._filter_active or self._view != "grid":
+            return
+        if event.is_printable and event.character:
+            self._filter_query += event.character
+            event.stop()
+            self._update_subtitle()
+            self._render_grid()
+        elif event.key in ("backspace", "ctrl+h"):
+            if self._filter_query:
+                self._filter_query = self._filter_query[:-1]
+                event.stop()
+                self._update_subtitle()
+                self._render_grid()
+
+    # ── sort ─────────────────────────────────────────────────────────────────
+
+    def action_cycle_sort(self) -> None:
+        if self._filter_active or self._view != "grid":
             return
         idx = (_SORT_KEYS.index(self._sort_key) + 1) % len(_SORT_KEYS)
         self._sort_key = _SORT_KEYS[idx]
@@ -162,19 +201,27 @@ class ArtistsView(Widget):
         self._apply_sort()
 
     def action_toggle_reverse(self) -> None:
-        if self._view != "grid":
+        if self._filter_active or self._view != "grid":
             return
         self._sort_reverse = not self._sort_reverse
         self._apply_sort()
 
     def _update_subtitle(self) -> None:
-        arrow = "↓" if self._sort_reverse else "↑"
-        label = dict(_SORT_OPTIONS)[self._sort_key]
-        self.query_one("#fav-artists-grid", ArtistGrid).border_subtitle = f"{arrow} {label}"
+        grid = self.query_one("#fav-artists-grid", ArtistGrid)
+        if self._filter_active:
+            grid.border_subtitle = f"/ {self._filter_query}_"
+        elif self._filter_query:
+            grid.border_subtitle = f"⌕ {self._filter_query}"
+        else:
+            arrow = "↓" if self._sort_reverse else "↑"
+            label = dict(_SORT_OPTIONS)[self._sort_key]
+            grid.border_subtitle = f"{arrow} {label}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
         self._render_grid()
+
+    # ── data ─────────────────────────────────────────────────────────────────
 
     def _sorted_artists(self) -> list[Artist]:
         def key(a: Artist) -> object:
@@ -186,23 +233,55 @@ class ArtistsView(Widget):
 
         return sorted(self._artists, key=key, reverse=self._sort_reverse)
 
+    def _filtered_artists(self) -> list[Artist]:
+        artists = self._sorted_artists()
+        if not self._filter_query:
+            return artists
+        q = self._filter_query.lower()
+        return [a for a in artists if q in a.name.lower()]
+
     def _render_grid(self) -> None:
+        self._render_version += 1
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
         grid._cursor = -1
-        self._mount_cards(self._sorted_artists())
+        self._mount_cards(self._filtered_artists(), self._render_version)
 
     @work
-    async def _mount_cards(self, artists: list[Artist]) -> None:
+    async def _mount_cards(self, artists: list[Artist], version: int) -> None:
+        if version != self._render_version:
+            return
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
         await grid.remove_children()
+        if version != self._render_version:
+            return
         if not artists:
-            await grid.mount(Label("[dim]No favourite artists yet.[/dim]", markup=True))
+            msg = (
+                "[dim]No matches.[/dim]"
+                if self._filter_query
+                else "[dim]No favourite artists yet.[/dim]"
+            )
+            await grid.mount(Label(msg, markup=True))
             return
         await grid.mount(*[ArtistCard(artist) for artist in artists])
 
     @work
+    async def _load(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        grid = self.query_one("#fav-artists-grid", ArtistGrid)
+        try:
+            items = await app._client.get_all_favorite_artists()
+        except Exception as e:
+            await grid.mount(Label(f"[red]{e}[/red]", markup=True))
+            return
+        self._artists = [Artist.from_api(raw) for raw in items]
+        self._render_grid()
+
+    # ── navigation ───────────────────────────────────────────────────────────
+
+    @work
     async def _open_artist(self, artist: Artist) -> None:
         self._current_artist = artist
+        self._filter_active = False  # exit typing mode; query persists for return
         self.query_one(ArtistHeader).set_loading(artist.name)
 
         lv = self.query_one("#top-tracks", ListView)
@@ -240,18 +319,6 @@ class ArtistsView(Widget):
         self.query_one("#artists-switcher", ContentSwitcher).current = "artists-grid-view"
         self._view = "grid"
         self.query_one("#fav-artists-grid", ArtistGrid).focus()
-
-    @work
-    async def _load(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
-        grid = self.query_one("#fav-artists-grid", ArtistGrid)
-        try:
-            items = await app._client.get_all_favorite_artists()
-        except Exception as e:
-            await grid.mount(Label(f"[red]{e}[/red]", markup=True))
-            return
-        self._artists = [Artist.from_api(raw) for raw in items]
-        self._render_grid()
 
     @work
     async def _load_artist_detail(self, artist_id: str) -> None:
