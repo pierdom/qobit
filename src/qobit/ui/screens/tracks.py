@@ -44,7 +44,9 @@ class FavTrackRow(ListItem):
 
 class TracksView(Widget):
     BINDINGS = [
-        Binding("/", "start_filter", "Filter", show=False),
+        Binding("s", "cycle_sort", "Sort"),
+        Binding("r", "toggle_reverse", "Rev"),
+        Binding("/", "start_filter", "Filter"),
     ]
 
     DEFAULT_CSS = """
@@ -60,7 +62,7 @@ class TracksView(Widget):
         border-title-style: bold;
         border-subtitle-color: $accent 40%;
         border-subtitle-align: right;
-        margin: 0 1 1 1;
+        margin: 0;
     }
     TracksView #tracks-container.-focused {
         border: round $accent;
@@ -189,7 +191,8 @@ class TracksView(Widget):
             return tracks
         q = self._filter_query.lower()
         return [
-            t for t in tracks
+            t
+            for t in tracks
             if q in t.title.lower() or q in t.artist.lower() or q in t.album.lower()
         ]
 

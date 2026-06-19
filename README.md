@@ -48,19 +48,54 @@ Then launch the TUI:
 qobit
 ```
 
-## TUI navigation
+## Keyboard shortcuts
+
+### Navigation
 
 | Key | Action |
 |-----|--------|
-| `1`–`5` | Switch tab (Playlists / Tracks / Artists / Albums / Search) |
-| `Escape` | Back / focus tab bar |
-| `Enter` | Play track / open detail screen |
+| `1` | Tracks tab |
+| `2` | Artists tab |
+| `3` | Albums tab |
+| `4` | Playlists tab |
+| `5` | Search tab |
+| `Escape` | Go back / clear filter / focus tab bar |
+| `↑` `↓` `←` `→` | Move cursor in grids and lists |
+| `Enter` | Open selected item or play selected track |
+
+### Playback
+
+| Key | Action |
+|-----|--------|
 | `Space` | Pause / resume |
-| `[` / `]` | Seek −10 s / +10 s |
+| `[` | Seek back 10 s |
+| `]` | Seek forward 10 s |
 | `q` | Quit |
 
-Within the Artist detail screen the Albums & EPs grid is navigated with arrow
-keys.
+Click anywhere on the progress bar in the transport strip to seek to that position.
+
+### Library pages (Tracks, Artists, Albums, Playlists)
+
+| Key | Action |
+|-----|--------|
+| `s` | Cycle sort key (Date Added → Artist/Name → Title/Album → Year → …) |
+| `r` | Reverse sort direction |
+| `/` | Open live filter — type to narrow results |
+| `Escape` | Close filter / clear query / go back |
+
+The current filter query is shown in the border subtitle: `/ query_` while
+typing, `⌕ query` when the filter is closed but results are still narrowed.
+Press `Escape` again from the filtered view to clear the query and restore all
+items.
+
+### Search
+
+| Key | Action |
+|-----|--------|
+| `/` | Focus the search input from anywhere on the Search tab |
+| `Enter` | Submit search |
+| `↑` `↓` | Move through results |
+| `Enter` | Play track / open album / open artist |
 
 ## CLI commands
 

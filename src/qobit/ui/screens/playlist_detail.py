@@ -1,19 +1,30 @@
 from __future__ import annotations
 
+import html as _html
+import re
 from typing import TYPE_CHECKING
 
-from textual import on, work
+from rich.markup import escape
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
+from textual_image._terminal import get_cell_size
+from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist, Track
+from .._images import fetch_image
 from ..widgets.transport import TransportBar
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
+
+
+def _strip_html(text: str) -> str:
+    return _html.unescape(re.sub(r"<[^>]+>", " ", text)).strip()
 
 
 class PlaylistTrackRow(ListItem):
@@ -24,14 +35,16 @@ class PlaylistTrackRow(ListItem):
     PlaylistTrackRow .secondary { color: $text-muted; }
     """
 
-    def __init__(self, track: Track) -> None:
+    def __init__(self, track: Track, number: int) -> None:
         super().__init__()
         self.track = track
+        self._number = number
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(f"{ICON_TRACK}  {t.artist} — {t.display_title}", classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        num = f"{self._number:3}. {ICON_TRACK}"
+        yield Label(f"{num}  {t.artist} — {t.display_title}", classes="primary")
+        yield Label(f"        {t.album}  ·  {t.duration_str}", classes="secondary")
 
 
 class PlaylistScreen(Screen):
@@ -39,12 +52,50 @@ class PlaylistScreen(Screen):
 
     DEFAULT_CSS = """
     PlaylistScreen { layout: vertical; }
-    PlaylistScreen #header {
-        height: 4;
+    PlaylistScreen #breadcrumb {
+        height: 1;
+        padding: 0 2;
+        color: $text-muted;
+        background: $boost;
+    }
+    PlaylistScreen #breadcrumb:hover {
+        color: $text;
+        background: $panel;
+    }
+    PlaylistScreen #playlist-panel {
+        height: 1fr;
+        margin: 0 1 1 1;
+        layout: vertical;
+        border: round $accent 40%;
+        border-title-color: $accent 40%;
+        border-title-style: bold;
+    }
+    PlaylistScreen #playlist-panel:focus-within {
+        border: round $accent;
+        border-title-color: $accent;
+    }
+    PlaylistScreen .pp-header {
+        height: 16;
+        layout: horizontal;
         padding: 1 2;
         background: $boost;
     }
-    PlaylistScreen ListView { height: 1fr; }
+    PlaylistScreen .pp-art {
+        width: 16;
+        height: 14;
+        margin-right: 2;
+    }
+    PlaylistScreen .pp-meta { width: 1fr; height: 14; }
+    PlaylistScreen .pp-name { height: auto; text-style: bold; }
+    PlaylistScreen .pp-sub { height: auto; color: $text-muted; margin-top: 1; }
+    PlaylistScreen .pp-desc { height: auto; color: $text-muted; margin-top: 1; }
+    PlaylistScreen .pp-tracklist {
+        height: 1fr;
+        border-top: solid $accent 40%;
+    }
+    PlaylistScreen #playlist-panel:focus-within .pp-tracklist {
+        border-top: solid $accent;
+    }
     """
 
     def __init__(self, playlist_id: str) -> None:
@@ -52,30 +103,70 @@ class PlaylistScreen(Screen):
         self._playlist_id = playlist_id
 
     def compose(self) -> ComposeResult:
-        yield Label("Loading…", id="header")
-        yield ListView(id="tracklist")
+        yield Label("← Playlists", id="breadcrumb")
+        with Vertical(id="playlist-panel"):
+            with Horizontal(classes="pp-header"):
+                yield TGPImage(classes="pp-art")
+                with VerticalScroll(classes="pp-meta"):
+                    yield Label("", classes="pp-name", markup=True)
+                    yield Label("", classes="pp-sub", markup=True)
+                    yield Label("", classes="pp-desc", markup=True)
+            yield ListView(classes="pp-tracklist")
         yield TransportBar()
         yield Footer()
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
+        cell = get_cell_size()
+        if cell.width > 0 and cell.height > 0:
+            img_w = round(14 * cell.height / cell.width)
+            self.query_one(".pp-art", TGPImage).styles.width = img_w
+        self.query_one("#playlist-panel").border_title = "Loading…"
         self._load()
 
     @work
     async def _load(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         playlist = Playlist.from_api(await app._client.get_playlist(self._playlist_id))
-        self.query_one("#header", Label).update(
-            f"[bold]{playlist.name}[/bold]\n"
-            f"[dim]{playlist.owner}  ·  {playlist.tracks_count} tracks[/dim]"
-        )
-        lv = self.query_one("#tracklist", ListView)
-        for track in playlist.tracks:
-            await lv.append(PlaylistTrackRow(track))
 
-    @on(ListView.Selected, "#tracklist")
+        panel = self.query_one("#playlist-panel")
+        panel.border_title = escape(playlist.name)
+
+        self.query_one(".pp-name", Label).update(escape(playlist.name))
+
+        sub_parts = [f"by {escape(playlist.owner)}", f"{playlist.tracks_count} tracks"]
+        if playlist.duration_str:
+            sub_parts.append(playlist.duration_str)
+        if playlist.date_str:
+            sub_parts.append(playlist.date_str)
+        self.query_one(".pp-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+
+        if playlist.description:
+            cleaned = escape(_strip_html(playlist.description))
+            self.query_one(".pp-desc", Label).update(f"[dim]{cleaned}[/dim]")
+
+        if playlist.image_url:
+            self._fetch_art(playlist.image_url)
+
+        if playlist.tracks:
+            lv = self.query_one(".pp-tracklist", ListView)
+            rows = [PlaylistTrackRow(t, i) for i, t in enumerate(playlist.tracks, 1)]
+            await lv.mount(*rows)
+
+        self.query_one(".pp-tracklist", ListView).focus()
+
+    @work
+    async def _fetch_art(self, url: str) -> None:
+        img = await fetch_image(url)
+        if img is not None:
+            self.query_one(".pp-art", TGPImage).image = img
+
+    @on(ListView.Selected, ".pp-tracklist")
     def _on_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, PlaylistTrackRow):
             app: QobitApp = self.app  # type: ignore[assignment]
             app.play_track(event.item.track)
-            app.pop_screen()
+
+    @on(events.Click, "#breadcrumb")
+    def _on_breadcrumb_click(self) -> None:
+        self.app.pop_screen()

@@ -32,7 +32,9 @@ _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
 class ArtistsView(Widget):
     BINDINGS = [
-        Binding("/", "start_filter", "Filter", show=False),
+        Binding("s", "cycle_sort", "Sort"),
+        Binding("r", "toggle_reverse", "Rev"),
+        Binding("/", "start_filter", "Filter"),
     ]
 
     DEFAULT_CSS = """
@@ -50,6 +52,7 @@ class ArtistsView(Widget):
         border-title-style: bold;
         border-subtitle-color: $accent 40%;
         border-subtitle-align: right;
+        padding: 0 1 0 1;
     }
     ArtistsView ArtistGrid:focus {
         border: round $accent;
@@ -84,6 +87,7 @@ class ArtistsView(Widget):
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;
+        padding: 0 1 0 1;
     }
     ArtistsView #artist-albums-grid:focus {
         border: round $accent;

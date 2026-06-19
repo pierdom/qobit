@@ -192,6 +192,27 @@ class Playlist:
     tracks_count: int
     image_url: str | None = None
     tracks: list[Track] = field(default_factory=list)
+    duration: int = 0
+    created_at: int | None = None
+    updated_at: int | None = None
+    description: str | None = None
+
+    @property
+    def duration_str(self) -> str:
+        if not self.duration:
+            return ""
+        h, r = divmod(self.duration, 3600)
+        m, s = divmod(r, 60)
+        return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+    @property
+    def date_str(self) -> str:
+        from datetime import datetime
+
+        ts = self.updated_at or self.created_at
+        if not ts:
+            return ""
+        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
 
     @classmethod
     def from_api(cls, data: dict) -> "Playlist":
@@ -204,4 +225,8 @@ class Playlist:
             tracks_count=data.get("tracks_count", len(tracks)),
             image_url=images[0] if images else None,
             tracks=tracks,
+            duration=data.get("duration", 0),
+            created_at=data.get("created_at") or None,
+            updated_at=data.get("updated_at") or None,
+            description=data.get("description") or None,
         )

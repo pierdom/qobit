@@ -27,7 +27,9 @@ _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
 class AlbumsView(Widget):
     BINDINGS = [
-        Binding("/", "start_filter", "Filter", show=False),
+        Binding("s", "cycle_sort", "Sort"),
+        Binding("r", "toggle_reverse", "Rev"),
+        Binding("/", "start_filter", "Filter"),
     ]
 
     DEFAULT_CSS = """
@@ -45,6 +47,7 @@ class AlbumsView(Widget):
         border-title-style: bold;
         border-subtitle-color: $accent 40%;
         border-subtitle-align: right;
+        padding: 0 1 0 1;
     }
     AlbumsView AlbumGrid:focus {
         border: round $accent;
@@ -188,10 +191,7 @@ class AlbumsView(Widget):
         if not self._filter_query:
             return albums
         q = self._filter_query.lower()
-        return [
-            a for a in albums
-            if q in (a.title or "").lower() or q in (a.artist or "").lower()
-        ]
+        return [a for a in albums if q in (a.title or "").lower() or q in (a.artist or "").lower()]
 
     def _render_grid(self) -> None:
         self._render_version += 1

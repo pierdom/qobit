@@ -102,7 +102,7 @@ class PlaylistItem(ListItem):
 
 
 class SearchView(Widget):
-    BINDINGS = [Binding("/", "focus_input", show=False)]
+    BINDINGS = [Binding("/", "focus_input", "Search")]
 
     DEFAULT_CSS = """
     SearchView {
@@ -111,12 +111,12 @@ class SearchView(Widget):
     }
     SearchView Input {
         margin: 0;
-        border: tall $accent 40%;
+        border: round $accent 40%;
         border-subtitle-align: right;
         border-subtitle-color: $text-muted;
     }
     SearchView Input:focus {
-        border: tall $accent;
+        border: round $accent;
     }
     #artists-results, #tracks-results, #albums-results {
         height: 1fr;

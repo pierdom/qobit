@@ -56,7 +56,7 @@ class AlbumCard(Widget):
     AlbumCard {
         layout: horizontal;
         height: 4;
-        padding: 0 1 0 0;
+        padding: 0;
     }
     AlbumCard.full {
         height: 6;
@@ -217,7 +217,7 @@ class ArtistCard(Widget):
     ArtistCard {
         layout: horizontal;
         height: 5;
-        padding: 0 1 0 0;
+        padding: 0;
     }
     ArtistCard TGPImage {
         width: 8;

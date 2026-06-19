@@ -427,6 +427,23 @@ class QobuzClient:
     async def get_user_playlists(self, limit: int = 50) -> dict:
         return await self._get("playlist/getUserPlaylists", limit=limit)
 
+    async def get_all_user_playlists(self) -> list[dict]:
+        """Fetch all user playlists, paginating as needed."""
+        first = await self._get("playlist/getUserPlaylists", limit=50, offset=0)
+        data = first.get("playlists", {})
+        total: int = data.get("total", 0)
+        items: list[dict] = list(data.get("items", []))
+        if total > 50:
+            results = await asyncio.gather(
+                *[
+                    self._get("playlist/getUserPlaylists", limit=50, offset=off)
+                    for off in range(50, total, 50)
+                ]
+            )
+            for r in results:
+                items.extend(r.get("playlists", {}).get("items", []))
+        return items
+
     async def get_playlist(self, playlist_id: str) -> dict:
         return await self._get(
             "playlist/get",

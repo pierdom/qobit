@@ -119,6 +119,10 @@ class QobitApp(App[None]):
     }
     SearchView, PlaylistsView, TracksView, ArtistsView, AlbumsView {
         height: 1fr;
+        margin: 0 1 1 1;
+    }
+    TransportBar {
+        margin: 0 1;
     }
     ListItem.--highlight {
         background: $accent 35%;
@@ -137,7 +141,7 @@ class QobitApp(App[None]):
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
-        Binding("space", "pause", "Pause", show=False),
+        Binding("space", "pause", "Pause"),
         Binding("[", "seek_back", "◀10s"),
         Binding("]", "seek_fwd", "10s▶"),
         # 1-5 work when Tabs has focus; escape brings focus to Tabs from anywhere
@@ -148,9 +152,6 @@ class QobitApp(App[None]):
         Binding("5", "switch_tab('search')", "Search", show=False),
         # priority=True so this fires even when an Input has focus
         Binding("escape", "focus_tabs", "Nav", show=False, priority=True),
-        # Grid sort — context-aware; fires for whichever grid tab is active
-        Binding("s", "cycle_sort", show=False),
-        Binding("r", "toggle_reverse", show=False),
     ]
 
     now_playing: reactive[Track | None] = reactive(None)
@@ -200,24 +201,6 @@ class QobitApp(App[None]):
 
     def action_switch_tab(self, tab_id: str) -> None:
         self.query_one("#nav-tabs", Tabs).active = tab_id
-
-    def action_cycle_sort(self) -> None:
-        tracks = self.query_one("#view-tracks", TracksView)
-        albums = self.query_one("#view-albums", AlbumsView)
-        artists = self.query_one("#view-artists", ArtistsView)
-        for view in (tracks, albums, artists):
-            if view.display:
-                view.action_cycle_sort()
-                return
-
-    def action_toggle_reverse(self) -> None:
-        tracks = self.query_one("#view-tracks", TracksView)
-        albums = self.query_one("#view-albums", AlbumsView)
-        artists = self.query_one("#view-artists", ArtistsView)
-        for view in (tracks, albums, artists):
-            if view.display:
-                view.action_toggle_reverse()
-                return
 
     def action_focus_tabs(self) -> None:
         if len(self.screen_stack) > 1:
