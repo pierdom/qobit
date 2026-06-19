@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from textual import on, work
+from textual import events, on, work
 from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Vertical
 from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
@@ -41,13 +43,18 @@ class FavTrackRow(ListItem):
 
 
 class TracksView(Widget):
+    BINDINGS = [
+        Binding("/", "start_filter", "Filter", show=False),
+    ]
+
     DEFAULT_CSS = """
     TracksView {
         height: 1fr;
         layout: vertical;
     }
-    TracksView ListView {
+    TracksView #tracks-container {
         height: 1fr;
+        layout: vertical;
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;
@@ -55,16 +62,23 @@ class TracksView(Widget):
         border-subtitle-align: right;
         margin: 0 1 1 1;
     }
-    TracksView ListView:focus {
+    TracksView #tracks-container.-focused {
         border: round $accent;
         border-title-color: $accent;
         border-subtitle-color: $accent;
+    }
+    TracksView ListView {
+        height: 1fr;
+        border: none;
     }
     """
 
     _loaded: bool = False
     _sort_key: str = "favorited_at"
     _sort_reverse: bool = True
+    _filter_active: bool = False
+    _filter_query: str = ""
+    _render_version: int = 0
     _tracks: list[Track]
 
     def __init__(self, *args: object, **kwargs: object) -> None:
@@ -72,11 +86,12 @@ class TracksView(Widget):
         self._tracks = []
 
     def compose(self) -> ComposeResult:
-        yield ListView(id="fav-tracks")
+        with Vertical(id="tracks-container"):
+            yield ListView(id="fav-tracks")
 
     def on_mount(self) -> None:
-        lv = self.query_one("#fav-tracks", ListView)
-        lv.border_title = "Favourite Tracks"
+        container = self.query_one("#tracks-container", Vertical)
+        container.border_title = "Favourite Tracks"
         self._update_subtitle()
 
     def on_show(self) -> None:
@@ -85,24 +100,74 @@ class TracksView(Widget):
             self._load()
         self.call_after_refresh(self.query_one("#fav-tracks", ListView).focus)
 
+    def on_descendant_focus(self, _: events.DescendantFocus) -> None:
+        self.query_one("#tracks-container", Vertical).add_class("-focused")
+
+    def on_descendant_blur(self, _: events.DescendantBlur) -> None:
+        self.query_one("#tracks-container", Vertical).remove_class("-focused")
+
+    # ── filter ───────────────────────────────────────────────────────────────
+
+    def action_navigate_back(self) -> bool:
+        if self._filter_active or self._filter_query:
+            self._filter_active = False
+            self._filter_query = ""
+            self._update_subtitle()
+            self._render_list()
+            return True
+        return False
+
+    def action_start_filter(self) -> None:
+        self._filter_active = True
+        self._update_subtitle()
+
+    def on_key(self, event: events.Key) -> None:
+        if not self._filter_active:
+            return
+        if event.is_printable and event.character:
+            self._filter_query += event.character
+            event.stop()
+            self._update_subtitle()
+            self._render_list()
+        elif event.key in ("backspace", "ctrl+h"):
+            if self._filter_query:
+                self._filter_query = self._filter_query[:-1]
+                event.stop()
+                self._update_subtitle()
+                self._render_list()
+
+    # ── sort ─────────────────────────────────────────────────────────────────
+
     def action_cycle_sort(self) -> None:
+        if self._filter_active:
+            return
         idx = (_SORT_KEYS.index(self._sort_key) + 1) % len(_SORT_KEYS)
         self._sort_key = _SORT_KEYS[idx]
         self._sort_reverse = self._sort_key == "favorited_at"
         self._apply_sort()
 
     def action_toggle_reverse(self) -> None:
+        if self._filter_active:
+            return
         self._sort_reverse = not self._sort_reverse
         self._apply_sort()
 
     def _update_subtitle(self) -> None:
-        arrow = "↓" if self._sort_reverse else "↑"
-        label = dict(_SORT_OPTIONS)[self._sort_key]
-        self.query_one("#fav-tracks", ListView).border_subtitle = f"{arrow} {label}"
+        container = self.query_one("#tracks-container", Vertical)
+        if self._filter_active:
+            container.border_subtitle = f"/ {self._filter_query}_"
+        elif self._filter_query:
+            container.border_subtitle = f"⌕ {self._filter_query}"
+        else:
+            arrow = "↓" if self._sort_reverse else "↑"
+            label = dict(_SORT_OPTIONS)[self._sort_key]
+            container.border_subtitle = f"{arrow} {label}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
         self._render_list()
+
+    # ── data ─────────────────────────────────────────────────────────────────
 
     def _sorted_tracks(self) -> list[Track]:
         def key(t: Track) -> object:
@@ -118,15 +183,35 @@ class TracksView(Widget):
 
         return sorted(self._tracks, key=key, reverse=self._sort_reverse)
 
+    def _filtered_tracks(self) -> list[Track]:
+        tracks = self._sorted_tracks()
+        if not self._filter_query:
+            return tracks
+        q = self._filter_query.lower()
+        return [
+            t for t in tracks
+            if q in t.title.lower() or q in t.artist.lower() or q in t.album.lower()
+        ]
+
     def _render_list(self) -> None:
-        self._mount_rows(self._sorted_tracks())
+        self._render_version += 1
+        self._mount_rows(self._filtered_tracks(), self._render_version)
 
     @work
-    async def _mount_rows(self, tracks: list[Track]) -> None:
+    async def _mount_rows(self, tracks: list[Track], version: int) -> None:
+        if version != self._render_version:
+            return
         lv = self.query_one("#fav-tracks", ListView)
         await lv.clear()
+        if version != self._render_version:
+            return
         if not tracks:
-            await lv.append(ListItem(Label("[dim]No favourite tracks yet.[/dim]", markup=True)))
+            msg = (
+                "[dim]No matches.[/dim]"
+                if self._filter_query
+                else "[dim]No favourite tracks yet.[/dim]"
+            )
+            await lv.append(ListItem(Label(msg, markup=True)))
             return
         await lv.mount(*[FavTrackRow(t) for t in tracks])
 
