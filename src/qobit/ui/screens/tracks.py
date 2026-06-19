@@ -26,7 +26,7 @@ _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
 class FavTrackRow(ListItem):
     DEFAULT_CSS = """
-    FavTrackRow { height: 2; padding: 0 1; }
+    FavTrackRow { height: 2; padding: 0 0 0 1; }
     FavTrackRow Label { width: 1fr; }
     FavTrackRow .primary { text-style: bold; }
     FavTrackRow .secondary { color: $text-muted; }

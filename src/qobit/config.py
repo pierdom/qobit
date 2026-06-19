@@ -54,6 +54,16 @@ def save_oauth_session(app_id: str, token: str, secrets: list[str]) -> None:
     CONFIG_FILE.chmod(0o600)
 
 
+def get_saved_theme() -> str | None:
+    return load().get("theme") or None
+
+
+def set_saved_theme(value: str) -> None:
+    cfg = load()
+    cfg["theme"] = value
+    save(cfg)
+
+
 def get_transparent_background() -> bool:
     return bool(load().get("transparent_background", False))
 

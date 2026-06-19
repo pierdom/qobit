@@ -188,6 +188,15 @@ src/qobit/
   `uv run`.
 - **Transparent background**: Toggle via command palette (`Draw theme
   background`); preserved across sessions.
+- **Theme persistence**: The active Textual theme (changed via the command
+  palette `Change theme`) is saved to `config.json` (`theme` key) and restored
+  on next launch. `QobitApp.watch_theme` persists via `set_saved_theme`, gated
+  behind a `_theme_ready` flag so the default theme set during init doesn't
+  clobber the saved one before `on_mount` applies it.
+- **Unified scrollbars**: A global `* { scrollbar-* }` block in `QobitApp.CSS`
+  gives every scrollable widget on every page the same design — 1-cell thin,
+  track blended into `$surface`, thumb `$surface-lighten-2` (→ `$accent` while
+  dragging).
 - **Bit-perfect flags**: `--af-clr`, `--audio-pitch-correction=no`,
   `--audio-exclusive=yes` on macOS with CoreAudio device. Also
   `--load-scripts=no` so mpv doesn't auto-load the system `mpv-mpris` plugin —

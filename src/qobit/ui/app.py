@@ -21,7 +21,9 @@ from ..audio.player import MpvPlayer
 from ..config import (
     get_audio_device,
     get_oauth_session,
+    get_saved_theme,
     get_transparent_background,
+    set_saved_theme,
     set_transparent_background,
 )
 from ..qobuz.client import QobuzClient, QobuzError
@@ -114,6 +116,17 @@ class QobitApp(App[None]):
     Screen {
         layout: vertical;
     }
+    /* Unified scrollbar design across every scrollable widget / page. */
+    * {
+        scrollbar-size-vertical: 1;
+        scrollbar-size-horizontal: 1;
+        scrollbar-background: $surface;
+        scrollbar-background-hover: $surface;
+        scrollbar-background-active: $surface;
+        scrollbar-color: $surface-lighten-2;
+        scrollbar-color-hover: $surface-lighten-2;
+        scrollbar-color-active: $accent;
+    }
     Tabs {
         dock: top;
     }
@@ -198,8 +211,17 @@ class QobitApp(App[None]):
 
     async def on_mount(self) -> None:
         self._poll_player()
+        saved_theme = get_saved_theme()
+        if saved_theme and saved_theme in self.available_themes:
+            self.theme = saved_theme
+        # Persist any subsequent theme changes (skip the initial/default ones).
+        self._theme_ready = True
         if get_transparent_background():
             self.action_toggle_background()
+
+    def watch_theme(self, theme: str) -> None:
+        if getattr(self, "_theme_ready", False):
+            set_saved_theme(theme)
 
     # ── tab switching ─────────────────────────────────────────────────────────
 
