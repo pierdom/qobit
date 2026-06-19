@@ -16,6 +16,7 @@ from textual.reactive import reactive
 from textual.widgets import ContentSwitcher, Footer, Label, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
+from ..audio.media_keys import MediaKeys
 from ..audio.player import MpvPlayer
 from ..config import (
     get_audio_device,
@@ -170,6 +171,11 @@ class QobitApp(App[None]):
         self._client = QobuzClient()
         self._player = MpvPlayer(audio_device=get_audio_device())
         self._play_queue: list[Track] = []
+        self._media_keys = MediaKeys(
+            on_play_pause=lambda: self.call_from_thread(self.action_pause),
+            on_next=lambda: self.call_from_thread(self._advance_queue),
+            on_previous=lambda: self.call_from_thread(self.action_previous),
+        )
         app_id, token, secrets = get_oauth_session()
         if app_id and token and secrets:
             self._client.restore_session(app_id, token, secrets)
@@ -317,11 +323,31 @@ class QobitApp(App[None]):
         self.is_paused = False
         self.status_msg = ""
 
+    # ── media key sync ───────────────────────────────────────────────────────
+
+    def watch_now_playing(self, track: Track | None) -> None:
+        self._media_keys.update(
+            track, self.is_playing, self.is_paused, self.playback_pos, self.playback_dur
+        )
+
+    def watch_is_playing(self, playing: bool) -> None:
+        self._media_keys.update(
+            self.now_playing, playing, self.is_paused, self.playback_pos, self.playback_dur
+        )
+
+    def watch_is_paused(self, paused: bool) -> None:
+        self._media_keys.update(
+            self.now_playing, self.is_playing, paused, self.playback_pos, self.playback_dur
+        )
+
     # ── actions ──────────────────────────────────────────────────────────────
 
     def action_pause(self) -> None:
         if self._player.running:
             self._player.pause_toggle()
+
+    def action_previous(self) -> None:
+        self._player.seek_to(0.0)
 
     def action_seek_back(self) -> None:
         self._player.seek(-10.0)
@@ -356,5 +382,6 @@ class QobitApp(App[None]):
         self.refresh(layout=True)
 
     async def on_unmount(self) -> None:
+        self._media_keys.close()
         self._player.stop()
         await self._client.close()

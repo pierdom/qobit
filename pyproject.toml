@@ -21,6 +21,11 @@ qobit = "qobit.__main__:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/qobit"]
 
+[project.optional-dependencies]
+# OS media controls — install the group matching your platform
+macos = ["pyobjc-framework-MediaPlayer>=10.0"]
+linux = ["pydbus>=0.6"]
+
 [dependency-groups]
 dev = ["ruff>=0.4", "textual-dev>=0.80"]
 
