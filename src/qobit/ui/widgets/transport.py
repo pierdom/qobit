@@ -4,10 +4,15 @@ from typing import TYPE_CHECKING
 
 from rich.console import Group
 from rich.text import Text
-from textual import events
+from textual import events, work
+from textual.app import ComposeResult
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
+from textual_image._terminal import get_cell_size
+from textual_image.widget import TGPImage
+
+from .._images import fetch_image
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -19,82 +24,22 @@ def _fmt(secs: float) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-class TransportBar(Widget):
-    """Playback progress bar with click-to-seek.  Mirrors tuidash PlaybackBar.
-
-    Self-wiring: subscribes to QobitApp reactives on mount so any instance
-    placed anywhere in the widget tree is always live."""
-
-    class SeekTo(Message):
-        def __init__(self, position: float) -> None:
-            super().__init__()
-            self.position = position
-
-    label: reactive[str] = reactive("")
-    position: reactive[float] = reactive(0.0)
-    duration: reactive[float] = reactive(0.0)
-    is_paused: reactive[bool] = reactive(False)
+class _TransportContent(Widget):
+    """Label + album + progress bar; rendered to the right of the album art."""
 
     DEFAULT_CSS = """
-    TransportBar {
-        height: 4;
-        border: round $primary-lighten-2;
-        border-title-color: $primary-lighten-2;
-        border-title-style: bold;
-        padding: 0 1;
-    }
-    TransportBar.-playing {
-        border: round $accent;
-        border-title-color: $accent;
-    }
-    TransportBar:hover {
-        background: $boost;
+    _TransportContent {
+        width: 1fr;
+        height: 1fr;
     }
     """
 
-    def on_mount(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
-        self.watch(app, "now_playing", self._on_now_playing, init=True)
-        self.watch(app, "is_playing", self._on_is_playing, init=True)
-        self.watch(app, "is_paused", self._on_is_paused, init=True)
-        self.watch(app, "playback_pos", self._on_pos, init=True)
-        self.watch(app, "playback_dur", self._on_dur, init=True)
-        self.watch(app, "status_msg", self._on_status_msg, init=True)
+    label: reactive[str] = reactive("")
+    album: reactive[str] = reactive("")
+    position: reactive[float] = reactive(0.0)
+    duration: reactive[float] = reactive(0.0)
 
-    def _on_now_playing(self, track: object) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
-        if track:
-            self.label = f"{track.artist} — {track.display_title}"  # type: ignore[union-attr]
-            self.border_title = "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
-        else:
-            self.label = ""
-            self.border_title = ""
-
-    def _on_is_playing(self, playing: bool) -> None:
-        self.set_class(playing, "-playing")
-
-    def _on_is_paused(self, paused: bool) -> None:
-        self.is_paused = paused
-        app: QobitApp = self.app  # type: ignore[assignment]
-        if app.now_playing:
-            self.border_title = "⏸  Now Playing" if paused else "▶  Now Playing"
-
-    def _on_pos(self, pos: float) -> None:
-        self.position = pos
-
-    def _on_dur(self, dur: float) -> None:
-        self.duration = dur
-
-    def _on_status_msg(self, msg: str) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
-        if msg:
-            self.label = msg
-        elif app.now_playing:
-            self.label = f"{app.now_playing.artist} — {app.now_playing.display_title}"
-        else:
-            self.label = ""
-
-    # ── rendering ────────────────────────────────────────────────────────────
+    _bar_w: int = 40
 
     def render(self) -> Group:
         w = self.content_size.width or 40
@@ -108,9 +53,11 @@ class TransportBar(Widget):
                 no_wrap=True,
             )
 
+        line2 = Text(self.album, no_wrap=True, overflow="ellipsis", style="dim")
+
         time_str = f" {_fmt(self.position)} / {_fmt(self.duration)}"
         bar_w = max(1, w - len(time_str))
-        self._bar_w = bar_w  # store for seek calculation
+        self._bar_w = bar_w
 
         filled = (
             round(bar_w * min(self.position, self.duration) / self.duration)
@@ -122,7 +69,7 @@ class TransportBar(Widget):
         bar.append("░" * (bar_w - filled), style="dim $accent")
         bar.append(time_str, style="dim")
 
-        return Group(line1, bar)
+        return Group(line1, line2, bar)
 
     # ── mouse seek ───────────────────────────────────────────────────────────
 
@@ -140,7 +87,109 @@ class TransportBar(Widget):
     def _seek_from_x(self, x: int) -> None:
         if self.duration <= 0:
             return
-        # content starts at x=2 (1 border col + 1 padding col)
         bar_w = getattr(self, "_bar_w", self.content_size.width)
-        ratio = max(0.0, min(1.0, (x - 2) / max(1, bar_w - 1)))
-        self.post_message(self.SeekTo(ratio * self.duration))
+        ratio = max(0.0, min(1.0, x / max(1, bar_w - 1)))
+        self.post_message(TransportBar.SeekTo(ratio * self.duration))
+
+
+class TransportBar(Widget):
+    """Playback transport bar with album art when playing.
+
+    Self-wiring: subscribes to QobitApp reactives on mount so any instance
+    placed anywhere in the widget tree is always live."""
+
+    class SeekTo(Message):
+        def __init__(self, position: float) -> None:
+            super().__init__()
+            self.position = position
+
+    is_paused: reactive[bool] = reactive(False)
+
+    DEFAULT_CSS = """
+    TransportBar {
+        height: 6;
+        border: round $primary-lighten-2;
+        border-title-color: $primary-lighten-2;
+        border-title-style: bold;
+        layout: horizontal;
+        padding: 0 1;
+    }
+    TransportBar.-playing {
+        border: round $accent;
+        border-title-color: $accent;
+    }
+    TransportBar:hover {
+        background: $boost;
+    }
+    TransportBar TGPImage {
+        width: 8;
+        height: 4;
+        margin-right: 1;
+        display: none;
+    }
+    TransportBar.-playing TGPImage {
+        display: block;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield TGPImage(id="tb-art")
+        yield _TransportContent()
+
+    def on_mount(self) -> None:
+        cell = get_cell_size()
+        if cell.width > 0 and cell.height > 0:
+            img_w = round(4 * cell.height / cell.width)
+            self.query_one(TGPImage).styles.width = img_w
+        app: QobitApp = self.app  # type: ignore[assignment]
+        self.watch(app, "now_playing", self._on_now_playing, init=True)
+        self.watch(app, "is_playing", self._on_is_playing, init=True)
+        self.watch(app, "is_paused", self._on_is_paused, init=True)
+        self.watch(app, "playback_pos", self._on_pos, init=True)
+        self.watch(app, "playback_dur", self._on_dur, init=True)
+        self.watch(app, "status_msg", self._on_status_msg, init=True)
+
+    def _on_now_playing(self, track: object) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        content = self.query_one(_TransportContent)
+        if track:
+            content.label = f"{track.artist} — {track.display_title}"  # type: ignore[union-attr]
+            content.album = track.album  # type: ignore[union-attr]
+            self.border_title = "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
+            if track.image_url:  # type: ignore[union-attr]
+                self._fetch_art(track.image_url)  # type: ignore[union-attr]
+        else:
+            content.label = ""
+            content.album = ""
+            self.border_title = ""
+
+    def _on_is_playing(self, playing: bool) -> None:
+        self.set_class(playing, "-playing")
+
+    def _on_is_paused(self, paused: bool) -> None:
+        self.is_paused = paused
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if app.now_playing:
+            self.border_title = "⏸  Now Playing" if paused else "▶  Now Playing"
+
+    def _on_pos(self, pos: float) -> None:
+        self.query_one(_TransportContent).position = pos
+
+    def _on_dur(self, dur: float) -> None:
+        self.query_one(_TransportContent).duration = dur
+
+    def _on_status_msg(self, msg: str) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        content = self.query_one(_TransportContent)
+        if msg:
+            content.label = msg
+        elif app.now_playing:
+            content.label = f"{app.now_playing.artist} — {app.now_playing.display_title}"
+        else:
+            content.label = ""
+
+    @work
+    async def _fetch_art(self, url: str) -> None:
+        img = await fetch_image(url)
+        if img is not None:
+            self.query_one(TGPImage).image = img

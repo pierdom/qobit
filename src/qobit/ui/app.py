@@ -172,9 +172,9 @@ class QobitApp(App[None]):
         yield Tabs(
             *[Tab(label, id=tid) for tid, label in _TABS],
             id="nav-tabs",
-            active="search",
+            active="tracks",
         )
-        with ContentSwitcher(initial="view-search"):
+        with ContentSwitcher(initial="view-tracks"):
             yield PlaylistsView(id="view-playlists")
             yield TracksView(id="view-tracks")
             yield ArtistsView(id="view-artists")
@@ -202,17 +202,19 @@ class QobitApp(App[None]):
         self.query_one("#nav-tabs", Tabs).active = tab_id
 
     def action_cycle_sort(self) -> None:
+        tracks = self.query_one("#view-tracks", TracksView)
         albums = self.query_one("#view-albums", AlbumsView)
         artists = self.query_one("#view-artists", ArtistsView)
-        for view in (albums, artists):
+        for view in (tracks, albums, artists):
             if view.display:
                 view.action_cycle_sort()
                 return
 
     def action_toggle_reverse(self) -> None:
+        tracks = self.query_one("#view-tracks", TracksView)
         albums = self.query_one("#view-albums", AlbumsView)
         artists = self.query_one("#view-artists", ArtistsView)
-        for view in (albums, artists):
+        for view in (tracks, albums, artists):
             if view.display:
                 view.action_toggle_reverse()
                 return

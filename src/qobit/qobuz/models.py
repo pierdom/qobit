@@ -39,6 +39,7 @@ class Track:
     duration: int  # seconds
     version: str | None = None
     image_url: str | None = None
+    favorited_at: int | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "Track":
@@ -64,6 +65,7 @@ class Track:
             duration=data.get("duration", 0),
             version=data.get("version") or None,
             image_url=image.get("large") or image.get("small") or None,
+            favorited_at=data.get("favorited_at") or None,
         )
 
     @property
