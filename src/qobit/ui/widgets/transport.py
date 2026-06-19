@@ -71,18 +71,27 @@ class _TransportContent(Widget):
 
         return Group(line1, line2, bar)
 
-    # ── mouse seek ───────────────────────────────────────────────────────────
+    # ── mouse interaction ─────────────────────────────────────────────────────
+
+    _seeking: bool = False
 
     def on_mouse_down(self, event: events.MouseDown) -> None:
-        self.capture_mouse()
-        self._seek_from_x(event.x)
+        if event.y >= 2:
+            self._seeking = True
+            self.capture_mouse()
+            self._seek_from_x(event.x)
+        else:
+            app: QobitApp = self.app  # type: ignore[assignment]
+            app.action_pause()
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
-        if event.button:
+        if self._seeking and event.button:
             self._seek_from_x(event.x)
 
     def on_mouse_up(self, _: events.MouseUp) -> None:
-        self.release_mouse()
+        if self._seeking:
+            self._seeking = False
+            self.release_mouse()
 
     def _seek_from_x(self, x: int) -> None:
         if self.duration <= 0:
