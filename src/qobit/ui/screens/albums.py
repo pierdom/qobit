@@ -59,6 +59,7 @@ class AlbumsView(Widget):
     """
 
     _album_view_active: bool = False
+    _loaded: bool = False
     _sort_key: str = "favorited_at"
     _sort_reverse: bool = True
     _albums: list[Album]
@@ -80,17 +81,17 @@ class AlbumsView(Widget):
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
         grid.border_title = "Favourite Albums"
         self._update_subtitle()
-        self._load()
 
     def on_show(self) -> None:
+        if not self._loaded:
+            self._loaded = True
+            self._load()
         if self._album_view_active:
             self.call_after_refresh(
                 self.query_one("#album-panel", AlbumDetailPanel).focus_tracklist
             )
         else:
-            self.call_after_refresh(
-                self.query_one("#fav-albums-grid", AlbumGrid).focus
-            )
+            self.call_after_refresh(self.query_one("#fav-albums-grid", AlbumGrid).focus)
 
     def action_navigate_back(self) -> bool:
         if self._album_view_active:
@@ -143,8 +144,7 @@ class AlbumsView(Widget):
         if not albums:
             await grid.mount(Label("[dim]No favourite albums yet.[/dim]", markup=True))
             return
-        for album in albums:
-            await grid.mount(AlbumCard(album, show_artist=True))
+        await grid.mount(*[AlbumCard(album, show_artist=True) for album in albums])
 
     def _open_album(self, album: Album) -> None:
         panel = self.query_one("#album-panel", AlbumDetailPanel)

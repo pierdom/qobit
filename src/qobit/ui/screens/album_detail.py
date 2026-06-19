@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import html as _html
-import io
 import re
 from typing import TYPE_CHECKING
 
-import httpx
-from PIL import Image as PILImage
 from rich.markup import escape
 from textual import on, work
 from textual.app import ComposeResult
@@ -20,6 +17,7 @@ from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import Album, Track
+from .._images import fetch_image
 from ..widgets.transport import TransportBar
 from .search import ICON_TRACK
 
@@ -138,13 +136,9 @@ class AlbumDetailPanel(Widget):
 
     @work
     async def _fetch_art(self, url: str) -> None:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as http:
-                r = await http.get(url)
-                r.raise_for_status()
-            self.query_one(TGPImage).image = PILImage.open(io.BytesIO(r.content))
-        except Exception:
-            pass
+        img = await fetch_image(url)
+        if img is not None:
+            self.query_one(TGPImage).image = img
 
     @work
     async def _fetch_full_album(self, album: Album) -> None:
@@ -174,15 +168,13 @@ class AlbumDetailPanel(Widget):
             self.query_one(".ap-badges", Label).update(f"[dim]{' · '.join(badge_parts)}[/dim]")
 
         if full.awards:
-            self.query_one(".ap-awards", Label).update(
-                "  ".join(escape(a) for a in full.awards)
-            )
+            self.query_one(".ap-awards", Label).update("  ".join(escape(a) for a in full.awards))
         if full.description:
             self.query_one(".ap-desc", Label).update(escape(_strip_html(full.description)))
 
-        lv = self.query_one(".ap-tracklist", ListView)
-        for i, track in enumerate(full.tracks, 1):
-            await lv.append(TrackRow(track, i))
+        if full.tracks:
+            lv = self.query_one(".ap-tracklist", ListView)
+            await lv.mount(*[TrackRow(track, i) for i, track in enumerate(full.tracks, 1)])
 
     @on(ListView.Selected)
     def _on_list_selected(self, event: ListView.Selected) -> None:

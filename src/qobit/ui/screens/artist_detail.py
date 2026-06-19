@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import io
 from typing import TYPE_CHECKING
 
-import httpx
-from PIL import Image as PILImage
 from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, ScrollableContainer, Vertical, VerticalScroll
+from textual.containers import ScrollableContainer, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
 from textual.widget import Widget
@@ -18,6 +15,7 @@ from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import Album, Artist, Track
+from .._images import fetch_image
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
 from .search import ICON_TRACK
@@ -130,13 +128,9 @@ class AlbumCard(Widget):
 
     @work
     async def _fetch_art(self, url: str) -> None:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as http:
-                r = await http.get(url)
-                r.raise_for_status()
-            self.query_one(TGPImage).image = PILImage.open(io.BytesIO(r.content))
-        except Exception:
-            pass
+        img = await fetch_image(url)
+        if img is not None:
+            self.query_one(TGPImage).image = img
 
     def on_click(self) -> None:
         self.post_message(AlbumCard.Selected(self._album))
@@ -194,6 +188,149 @@ class AlbumGrid(ScrollableContainer):
 
     def action_move(self, direction: str) -> None:
         cards = list(self.query(AlbumCard))
+        if not cards:
+            return
+        if self._cursor == -1:
+            self._move_cursor(0)
+            return
+        idx = self._cursor
+        target: int | None = None
+        if direction == "right" and idx + 1 < len(cards):
+            target = idx + 1
+        elif direction == "left" and idx > 0:
+            target = idx - 1
+        elif direction == "down" and idx + self._cols < len(cards):
+            target = idx + self._cols
+        elif direction == "up" and idx - self._cols >= 0:
+            target = idx - self._cols
+        if target is not None:
+            self._move_cursor(target)
+
+
+class ArtistCard(Widget):
+    class Selected(Message):
+        def __init__(self, artist: Artist) -> None:
+            super().__init__()
+            self.artist = artist
+
+    DEFAULT_CSS = """
+    ArtistCard {
+        layout: horizontal;
+        height: 5;
+        padding: 0 1 0 0;
+    }
+    ArtistCard TGPImage {
+        width: 8;
+        height: 5;
+        margin-right: 1;
+    }
+    ArtistCard .card-info {
+        width: 1fr;
+        height: 1fr;
+        layout: vertical;
+    }
+    ArtistCard .card-name {
+        height: 3;
+        width: 1fr;
+        text-style: bold;
+        overflow: hidden hidden;
+    }
+    ArtistCard .card-meta {
+        height: 1;
+        width: 1fr;
+        color: $text-muted;
+        overflow: hidden hidden;
+    }
+    ArtistCard.-selected .card-name { color: $accent; text-style: bold; }
+    ArtistCard.-selected .card-meta { color: $accent; }
+    """
+
+    def __init__(self, artist: Artist) -> None:
+        super().__init__()
+        self._artist = artist
+
+    @property
+    def artist(self) -> Artist:
+        return self._artist
+
+    def compose(self) -> ComposeResult:
+        yield TGPImage()
+        with Vertical(classes="card-info"):
+            yield Label(escape(self._artist.name), classes="card-name", markup=True)
+            count = self._artist.albums_count
+            meta = f"[dim]{count} albums[/dim]" if count else ""
+            yield Label(meta, classes="card-meta", markup=True)
+
+    def on_mount(self) -> None:
+        cell = get_cell_size()
+        if cell.width > 0 and cell.height > 0:
+            img_w = round(5 * cell.height / cell.width)
+            self.query_one(TGPImage).styles.width = img_w
+        if self._artist.image_url:
+            self._fetch_art(self._artist.image_url)
+
+    @work
+    async def _fetch_art(self, url: str) -> None:
+        img = await fetch_image(url)
+        if img is not None:
+            self.query_one(TGPImage).image = img
+
+    def on_click(self) -> None:
+        self.post_message(ArtistCard.Selected(self._artist))
+
+
+class ArtistGrid(ScrollableContainer):
+    """Scrollable grid of ArtistCards; column count adapts to available width."""
+
+    BINDINGS = [
+        Binding("up", "move('up')", show=False),
+        Binding("down", "move('down')", show=False),
+        Binding("left", "move('left')", show=False),
+        Binding("right", "move('right')", show=False),
+        Binding("enter", "open_selected", "Open artist", show=False),
+    ]
+
+    DEFAULT_CSS = """
+    ArtistGrid {
+        layout: grid;
+        grid-size: 3;
+        grid-rows: 5;
+        grid-gutter: 1 2;
+    }
+    """
+
+    _cols: int = 3
+    _cursor: int = -1
+
+    def __init__(self, *args: object, tile_min_width: int = _TILE_MIN_W, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self._tile_min_width = tile_min_width
+
+    def on_focus(self) -> None:
+        if self._cursor == -1:
+            self._move_cursor(0)
+
+    def on_resize(self) -> None:
+        self._cols = max(1, self.content_size.width // self._tile_min_width)
+        self.styles.grid_size_columns = self._cols
+
+    def _move_cursor(self, idx: int) -> None:
+        cards = list(self.query(ArtistCard))
+        if not cards or idx < 0 or idx >= len(cards):
+            return
+        if self._cursor >= 0 and self._cursor < len(cards):
+            cards[self._cursor].remove_class("-selected")
+        self._cursor = idx
+        cards[idx].add_class("-selected")
+        cards[idx].scroll_visible()
+
+    def action_open_selected(self) -> None:
+        cards = list(self.query(ArtistCard))
+        if 0 <= self._cursor < len(cards):
+            self.post_message(ArtistCard.Selected(cards[self._cursor]._artist))
+
+    def action_move(self, direction: str) -> None:
+        cards = list(self.query(ArtistCard))
         if not cards:
             return
         if self._cursor == -1:
@@ -274,13 +411,9 @@ class ArtistHeader(Widget):
 
     @work
     async def _fetch_image(self, url: str) -> None:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as http:
-                r = await http.get(url)
-                r.raise_for_status()
-            self.query_one(TGPImage).image = PILImage.open(io.BytesIO(r.content))
-        except Exception:
-            pass
+        img = await fetch_image(url)
+        if img is not None:
+            self.query_one(TGPImage).image = img
 
 
 class ArtistScreen(Screen):
@@ -403,17 +536,18 @@ class ArtistScreen(Screen):
         app: QobitApp = self.app  # type: ignore[assignment]
         artist = Artist.from_api(await app._client.get_artist_detail(self._artist_id))
         self.query_one(ArtistHeader).populate(artist)
-        grid = self.query_one("#albums", AlbumGrid)
-        for album in artist.albums:
-            await grid.mount(AlbumCard(album))
+        if artist.albums:
+            grid = self.query_one("#albums", AlbumGrid)
+            await grid.mount(*[AlbumCard(album) for album in artist.albums])
 
     @work
     async def _load_tracks(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         items = await app._client.get_artist_top_tracks(self._artist_id)
-        lv = self.query_one("#top-tracks", ListView)
-        for i, raw in enumerate(items, 1):
-            await lv.append(ArtistTrackRow(Track.from_api(raw), i))
+        if items:
+            lv = self.query_one("#top-tracks", ListView)
+            rows = [ArtistTrackRow(Track.from_api(raw), i) for i, raw in enumerate(items, 1)]
+            await lv.mount(*rows)
 
     @on(events.Click, "#breadcrumb")
     def _on_breadcrumb_click(self) -> None:

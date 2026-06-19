@@ -30,18 +30,25 @@ src/qobit/
 └── ui/
     ├── app.py               QobitApp — reactive state, transport controls,
     │                        session restore, tab routing
+    ├── _images.py           Shared image fetch layer: asyncio.Semaphore(6) caps
+    │                        concurrent HTTP fetches; module-level URL→PIL cache
+    │                        prevents re-downloading the same image within a session
     ├── screens/
     │   ├── search.py        SearchView + shared item widgets (TrackItem,
     │   │                    AlbumItem, ArtistItem, PlaylistItem)
     │   ├── album_detail.py  AlbumDetailPanel (shared: art + metadata +
     │   │                    tracklist widget); AlbumScreen (legacy push screen)
     │   ├── artist_detail.py ArtistHeader (shared: image + bio widget);
+    │   │                    ArtistCard + ArtistGrid (shared: artist tile grid);
+    │   │                    AlbumCard + AlbumGrid (shared: album tile grid);
     │   │                    ArtistScreen — top tracks + album grid +
-    │   │                    inline album detail panel; AlbumCard; AlbumGrid
+    │   │                    inline album detail panel
     │   ├── playlist_detail.py PlaylistScreen — track list for a playlist
     │   ├── albums.py        AlbumsView — favourite albums grid + inline
     │   │                    album detail with artist image/bio
-    │   ├── artists.py       ArtistsView — favourite artists library tab
+    │   ├── artists.py       ArtistsView — favourite artists grid + inline
+    │   │                    artist detail (bio + top tracks + album grid) +
+    │   │                    inline album detail; mirrors AlbumsView aesthetic
     │   ├── tracks.py        TracksView — favourite tracks library tab
     │   └── playlists.py     PlaylistsView — user playlists library tab
     └── widgets/
@@ -57,10 +64,12 @@ src/qobit/
   `qobit play <query>` with quality fallback and bit-perfect verification.
 - **Auth**: Browser OAuth flow (primary) + email/password fallback. Session
   saved to `~/.config/qobit/config.json` and restored on next launch.
-- **TUI shell**: 5-tab layout (Playlists / Tracks / Artists / Albums / Search),
+- **TUI shell**: 5-tab layout (Tracks / Artists / Albums / Playlists / Search),
   transport bar with click-to-seek, pause/seek bindings, escape-to-nav.
-- **Library tabs**: Playlists, Tracks, Artists, Albums each load the user's
-  Qobuz favourites and navigate to detail screens.
+  Tabs 1–5 mapped to keyboard shortcuts in the same order.
+- **Library tabs**: Tracks, Artists, Albums, Playlists each load the user's
+  Qobuz favourites. All library tabs **lazy-load** on first `on_show` (not
+  `on_mount`) so startup is instant and tabs don't race each other on open.
 - **SearchView**: Free-text search across tracks/albums/artists in parallel;
   results shown in three bordered sections (Artists / Tracks / Albums) with
   dimmed-accent borders at rest and full-accent on focus; focus auto-moves to
@@ -79,15 +88,31 @@ src/qobit/
   screen and restoring the source tab. Progressive loading: `_load_detail()`
   and `_load_tracks()` run as concurrent `@work` workers so bio/image/albums
   and top tracks populate independently as each API call returns.
-- **AlbumsView**: Favourite albums displayed in a responsive tile grid
-  (AlbumGrid, `tile_min_width=33`), showing album art, title, artist, and year.
-  Selecting an album switches inline (ContentSwitcher) to a full album detail
-  view: ArtistHeader (image + biography) above AlbumDetailPanel (art, metadata,
-  track list). Escape returns to the grid. Same shared widgets as ArtistScreen.
+- **AlbumsView**: Favourite albums in a sortable responsive tile grid
+  (AlbumGrid, `tile_min_width=33`), showing album art, title, artist, year.
+  Sort by Date Added / Artist / Album / Year; `s` cycles sort key, `r` reverses
+  direction. Selecting an album switches inline (ContentSwitcher) to a full
+  album detail view: ArtistHeader (image + biography) above AlbumDetailPanel
+  (art, metadata, track list). Escape returns to the grid.
+- **ArtistsView**: Mirrors AlbumsView aesthetic. Favourite artists in a
+  sortable tile grid (ArtistGrid, `tile_min_width=33`) of ArtistCards (image +
+  name + album count). Sort by Date Added / Name; same `s`/`r` bindings as
+  AlbumsView. Selecting an artist switches inline (ContentSwitcher) to a
+  3-level detail view: ArtistHeader above a nested ContentSwitcher that shows
+  either (a) Top Tracks ListView + Albums & EPs AlbumGrid, or (b)
+  AlbumDetailPanel when an album is selected. Escape navigates back through all
+  three levels: album detail → artist detail → grid.
 - **Shared widgets**: `AlbumDetailPanel` (`album_detail.py`) — reusable art +
-  metadata + tracklist panel used by both ArtistScreen and AlbumsView.
+  metadata + tracklist panel used by ArtistScreen, AlbumsView, ArtistsView.
   `ArtistHeader` (`artist_detail.py`) — reusable image + biography header used
-  by both screens. HTML tags stripped from album descriptions via `_strip_html`.
+  by ArtistScreen, AlbumsView, ArtistsView. `AlbumCard` + `AlbumGrid` and
+  `ArtistCard` + `ArtistGrid` all live in `artist_detail.py` and are shared
+  across screens. HTML tags stripped from album descriptions via `_strip_html`.
+- **Image performance** (`ui/_images.py`): All image fetches go through a
+  shared `fetch_image(url)` coroutine. A module-level `asyncio.Semaphore(6)`
+  caps concurrent HTTP connections; a `dict[url → PIL.Image]` cache prevents
+  re-downloading the same image within a session. Widget code calls
+  `fetch_image` from a `@work` worker and sets `TGPImage.image` on return.
 - **Session restore**: `QobuzClient.restore_session()` called in
   `QobitApp.__init__()` (not `on_mount`) so credentials are available before
   any child widget worker fires.
@@ -101,10 +126,11 @@ src/qobit/
 
 ### Work in progress
 
-**ArtistScreen / AlbumsView** (`ui/screens/artist_detail.py`, `albums.py`)
+**ArtistScreen / AlbumsView / ArtistsView**
 - Missing: playing a top track / album track should enqueue the rest
   (Play Next — see below).
-- Missing: context menu on AlbumCard / track rows (add to queue, play album).
+- Missing: context menu on AlbumCard / ArtistCard / track rows (add to queue,
+  play album, open artist).
 - UI still rough: biography text needs better overflow handling.
 
 ### Not yet started / needs design
@@ -125,13 +151,13 @@ per-track format badge (Hi-Res / CD).
 **PlaylistScreen redesign** — same issues as AlbumScreen: no art, minimal
 header, no queue actions.
 
-**ArtistsView, TracksView, PlaylistsView** — still minimal placeholder
-implementations (fetch favourites, render a flat list, navigate to detail).
-Need the same treatment as AlbumsView: richer rows, art where applicable,
+**TracksView, PlaylistsView** — still minimal placeholder implementations
+(fetch favourites, render a flat list, navigate to detail). Need the same
+treatment as AlbumsView / ArtistsView: richer rows, art where applicable,
 sort and filter options.
 
-**AlbumsView** — grid + inline detail now done; still missing: sort/filter
-options, "Play all" / "Play from here" actions, per-track format badges.
+**AlbumsView / ArtistsView** — grids + inline detail now done; still missing:
+"Play all" / "Play from here" actions, per-track format badges.
 
 **TrackScreen** (individual track detail) — does not exist. Would show full
 metadata: composer, performer, label, format, related albums. Likely a modal
@@ -206,13 +232,15 @@ Once the queue exists:
 - `reactive` + `watch_*` for transport state (now_playing, is_playing, etc.).
 - `DEFAULT_CSS` on each widget/screen for colocation of styles.
 - `ContentSwitcher` for tab panel switching without re-mounting. Also used
-  within ArtistScreen and AlbumsView to switch between the grid/list view and
-  the inline album detail panel without pushing a new screen.
+  within ArtistScreen, AlbumsView, and ArtistsView to switch between views
+  without pushing a new screen. ArtistsView uses a nested ContentSwitcher (one
+  for grid vs artist-detail, one for artist-content vs album-detail).
 - `Screen` push/pop for detail views (AlbumScreen, PlaylistScreen, ArtistScreen).
-- Container-owns-cursor pattern (AlbumGrid): the container holds focus, tracks
-  `_cursor: int`, applies `-selected` CSS class to the active child. Same
-  pattern as Textual's own `DataTable`. Necessary because `ScrollableContainer`
-  has `can_focus=True`, so Tab targets the container, not its children.
+- Container-owns-cursor pattern (AlbumGrid, ArtistGrid): the container holds
+  focus, tracks `_cursor: int`, applies `-selected` CSS class to the active
+  child. Same pattern as Textual's own `DataTable`. Necessary because
+  `ScrollableContainer` has `can_focus=True`, so Tab targets the container,
+  not its children.
 - `$accent 40%` for dimmed-but-themed borders on unfocused panels; full
   `$accent` on `:focus`. Avoids invisible `$panel` borders.
 - **TransportBar self-wiring**: `on_mount` calls `self.watch(app, "reactive",
@@ -229,13 +257,23 @@ Once the queue exists:
   `priority=True`) pops the inline album panel before popping the screen; on
   full back-out calls `app.action_switch_tab(self._source.lower())` before
   `pop_screen()` to restore the originating tab. `AlbumsView.action_navigate_back`
-  returns `bool` — `True` if it consumed the event (popped album detail), `False`
-  to let `QobitApp.action_focus_tabs` fall through to the tab bar. The app-level
-  handler checks `hasattr(active_view, "action_navigate_back")` and short-circuits
-  on `True`, so any view can hook into Escape without touching `app.py`.
+  and `ArtistsView.action_navigate_back` return `bool` — `True` if they
+  consumed the event, `False` to let `QobitApp.action_focus_tabs` fall through
+  to the tab bar. The app-level handler checks
+  `hasattr(active_view, "action_navigate_back")` and short-circuits on `True`,
+  so any view can hook into Escape without touching `app.py`.
 - **Shared widget pattern**: `AlbumDetailPanel` and `ArtistHeader` use `.ap-*`
   / `.ah-*` CSS class selectors (not IDs) so multiple instances can coexist in
   the widget tree without selector conflicts.
+- **Lazy load pattern**: Library tabs call `_load()` inside `on_show` behind a
+  `_loaded: bool` guard rather than `on_mount`. This prevents all tabs from
+  racing at startup; each tab fetches only when the user first opens it.
+- **Batch mount pattern**: Cards and list rows are collected into a list first,
+  then mounted with a single `await container.mount(*items)` call. Mounting
+  one item at a time triggers N layout passes; batching collapses them to one.
+- **Context-aware sort bindings**: `s` / `r` in `app.py` call
+  `action_cycle_sort` / `action_toggle_reverse`, which iterate over
+  (AlbumsView, ArtistsView) and delegate to whichever is currently displayed.
 
 ## Qobuz API layer
 
@@ -244,24 +282,30 @@ player bundle on login; the working values are cached in config. Streaming URLs
 expire in ~10 minutes — re-fetch on track start, not on app start. Quality
 fallback order: FLAC_24_192 → FLAC_24_96 → FLAC_CD.
 
-ArtistScreen uses two separate client methods that fire concurrently:
-`get_artist_detail` calls `artist/get` (biography, image, albums in
-reverse-chronological order); `get_artist_top_tracks` calls `artist/page`
-(popularity-ranked top tracks). `Track.from_api` handles both
-`performer.name` (string, from `artist/get`) and `artist.name.display`
-(nested dict, from `artist/page`) artist name formats. The legacy
-`get_artist_page` method still exists (merges both into one call) but is no
-longer used by the UI.
+ArtistScreen and ArtistsView use two separate client methods that fire
+concurrently: `get_artist_detail` calls `artist/get` (biography, image, albums
+in reverse-chronological order); `get_artist_top_tracks` calls `artist/page`
+(popularity-ranked top tracks). `Track.from_api` handles both `performer.name`
+(string, from `artist/get`) and `artist.name.display` (nested dict, from
+`artist/page`) artist name formats. The legacy `get_artist_page` method still
+exists (merges both into one call) but is no longer used by the UI.
+
+Paginated helpers: `get_all_favorite_albums()` and `get_all_favorite_artists()`
+fetch the complete favourites list by issuing parallel requests for each 50-item
+page after the first.
+
+`Artist` carries a `favorited_at: int | None` field (Unix timestamp) populated
+from the favourites API; used for Date Added sorting in ArtistsView.
 
 ## Image protocol
 
 Kitty graphics protocol only (no iTerm2 IIP, no sixel). Implemented via
 `textual-image`. Target terminals: kitty, Ghostty, iTerm2 3.5+.
 
-`textual_image.widget.TGPImage` is the widget; images are fetched
-asynchronously in `@work` workers. `get_cell_size()` from
-`textual_image._terminal` is used to compute pixel/cell ratios for correct
-image aspect ratios.
+`textual_image.widget.TGPImage` is the widget. All HTTP fetches go through
+`ui/_images.fetch_image(url)`: semaphore-limited (6 concurrent), cached for
+the session. `get_cell_size()` from `textual_image._terminal` is used to
+compute pixel/cell ratios for correct image aspect ratios.
 
 ## Config paths
 
@@ -300,9 +344,10 @@ uv run textual console     # Textual dev console (separate terminal)
 3. Album art via textual-image (Kitty protocol) **✓** (ArtistScreen; needed in AlbumScreen/PlaylistScreen)
 4. Library tabs: playlists/tracks/artists/albums (placeholder quality) **✓**
 5. ArtistScreen polish: popularity top tracks, inline album detail panel **✓**
-6. AlbumsView: tile grid + inline album detail with shared ArtistHeader / AlbumDetailPanel **✓**
+6. AlbumsView + ArtistsView: sortable tile grids + inline detail panels;
+   shared image cache + semaphore; lazy load + batch mount **✓**
 7. **Play Next queue + end-of-track auto-advance** ← next
-8. UI overhaul: Search, AlbumScreen, PlaylistScreen, ArtistsView, TracksView, PlaylistsView
+8. UI overhaul: Search, AlbumScreen, PlaylistScreen, TracksView, PlaylistsView
 9. Context menus + TrackScreen detail overlay
 10. MPRIS (Linux), macOS MediaRemote, PipeWire ReserveDevice1
 11. Gapless playback, ReplayGain, CMAF fallback

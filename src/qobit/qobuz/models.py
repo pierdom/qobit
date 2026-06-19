@@ -158,6 +158,7 @@ class Artist:
     biography: str | None = None
     tracks: list[Track] = field(default_factory=list)
     albums: list["Album"] = field(default_factory=list)
+    favorited_at: int | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "Artist":
@@ -177,6 +178,7 @@ class Artist:
             biography=bio.get("content") or bio.get("summary") or None,
             tracks=tracks,
             albums=albums,
+            favorited_at=data.get("favorited_at") or None,
         )
 
 

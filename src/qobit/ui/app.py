@@ -96,10 +96,10 @@ class QobitCommands(Provider):
 
 
 _TABS = [
-    ("playlists", "Playlists"),
     ("tracks", "Tracks"),
     ("artists", "Artists"),
     ("albums", "Albums"),
+    ("playlists", "Playlists"),
     ("search", "Search"),
 ]
 
@@ -141,16 +141,16 @@ class QobitApp(App[None]):
         Binding("[", "seek_back", "◀10s"),
         Binding("]", "seek_fwd", "10s▶"),
         # 1-5 work when Tabs has focus; escape brings focus to Tabs from anywhere
-        Binding("1", "switch_tab('playlists')", "Playlists", show=False),
-        Binding("2", "switch_tab('tracks')", "Tracks", show=False),
-        Binding("3", "switch_tab('artists')", "Artists", show=False),
-        Binding("4", "switch_tab('albums')", "Albums", show=False),
+        Binding("1", "switch_tab('tracks')", "Tracks", show=False),
+        Binding("2", "switch_tab('artists')", "Artists", show=False),
+        Binding("3", "switch_tab('albums')", "Albums", show=False),
+        Binding("4", "switch_tab('playlists')", "Playlists", show=False),
         Binding("5", "switch_tab('search')", "Search", show=False),
         # priority=True so this fires even when an Input has focus
         Binding("escape", "focus_tabs", "Nav", show=False, priority=True),
-        # Albums sort — live here at App level so they fire regardless of focus
-        Binding("s", "albums_cycle_sort", show=False),
-        Binding("r", "albums_toggle_reverse", show=False),
+        # Grid sort — context-aware; fires for whichever grid tab is active
+        Binding("s", "cycle_sort", show=False),
+        Binding("r", "toggle_reverse", show=False),
     ]
 
     now_playing: reactive[Track | None] = reactive(None)
@@ -201,15 +201,21 @@ class QobitApp(App[None]):
     def action_switch_tab(self, tab_id: str) -> None:
         self.query_one("#nav-tabs", Tabs).active = tab_id
 
-    def action_albums_cycle_sort(self) -> None:
-        view = self.query_one("#view-albums", AlbumsView)
-        if view.display:
-            view.action_cycle_sort()
+    def action_cycle_sort(self) -> None:
+        albums = self.query_one("#view-albums", AlbumsView)
+        artists = self.query_one("#view-artists", ArtistsView)
+        for view in (albums, artists):
+            if view.display:
+                view.action_cycle_sort()
+                return
 
-    def action_albums_toggle_reverse(self) -> None:
-        view = self.query_one("#view-albums", AlbumsView)
-        if view.display:
-            view.action_toggle_reverse()
+    def action_toggle_reverse(self) -> None:
+        albums = self.query_one("#view-albums", AlbumsView)
+        artists = self.query_one("#view-artists", ArtistsView)
+        for view in (albums, artists):
+            if view.display:
+                view.action_toggle_reverse()
+                return
 
     def action_focus_tabs(self) -> None:
         if len(self.screen_stack) > 1:
