@@ -49,10 +49,14 @@ src/qobit/
     │   ├── artists.py       ArtistsView — favourite artists grid + inline
     │   │                    artist detail (bio + top tracks + album grid) +
     │   │                    inline album detail; mirrors AlbumsView aesthetic
-    │   ├── tracks.py        TracksView — favourite tracks library tab
+    │   ├── tracks.py        TracksView — favourite tracks: sortable list
+    │   │                    (Date Added/Artist/Title/Album), full pagination,
+    │   │                    lazy load, in-border live filter (/)
     │   └── playlists.py     PlaylistsView — user playlists library tab
     └── widgets/
-        └── transport.py     TransportBar — progress bar + click-to-seek,
+        └── transport.py     TransportBar — album art + label + album +
+                             progress bar + click-to-seek; _TransportContent
+                             inner widget owns render() and mouse seek;
                              self-wires to QobitApp reactives on mount
 ```
 
@@ -91,17 +95,21 @@ src/qobit/
 - **AlbumsView**: Favourite albums in a sortable responsive tile grid
   (AlbumGrid, `tile_min_width=33`), showing album art, title, artist, year.
   Sort by Date Added / Artist / Album / Year; `s` cycles sort key, `r` reverses
-  direction. Selecting an album switches inline (ContentSwitcher) to a full
-  album detail view: ArtistHeader (image + biography) above AlbumDetailPanel
-  (art, metadata, track list). Escape returns to the grid.
+  direction. `/` enters in-border live filter mode (title + artist); subtitle
+  cycles through `/ query_` (typing), `⌕ query` (filter closed, results
+  active), and the sort indicator. Selecting an album switches inline
+  (ContentSwitcher) to a full album detail view: ArtistHeader (image +
+  biography) above AlbumDetailPanel (art, metadata, track list). Escape walks
+  back: album detail → grid → clear filter.
 - **ArtistsView**: Mirrors AlbumsView aesthetic. Favourite artists in a
   sortable tile grid (ArtistGrid, `tile_min_width=33`) of ArtistCards (image +
   name + album count). Sort by Date Added / Name; same `s`/`r` bindings as
-  AlbumsView. Selecting an artist switches inline (ContentSwitcher) to a
-  3-level detail view: ArtistHeader above a nested ContentSwitcher that shows
-  either (a) Top Tracks ListView + Albums & EPs AlbumGrid, or (b)
-  AlbumDetailPanel when an album is selected. Escape navigates back through all
-  three levels: album detail → artist detail → grid.
+  AlbumsView. `/` in-border filter (artist name). Selecting an artist switches
+  inline (ContentSwitcher) to a 3-level detail view: ArtistHeader above a
+  nested ContentSwitcher that shows either (a) Top Tracks ListView + Albums &
+  EPs AlbumGrid, or (b) AlbumDetailPanel when an album is selected. Escape
+  navigates back through all levels: album detail → artist detail → grid →
+  clear filter.
 - **Shared widgets**: `AlbumDetailPanel` (`album_detail.py`) — reusable art +
   metadata + tracklist panel used by ArtistScreen, AlbumsView, ArtistsView.
   `ArtistHeader` (`artist_detail.py`) — reusable image + biography header used
@@ -116,9 +124,18 @@ src/qobit/
 - **Session restore**: `QobuzClient.restore_session()` called in
   `QobitApp.__init__()` (not `on_mount`) so credentials are available before
   any child widget worker fires.
-- **TransportBar**: Shows now-playing label, progress bar, time counter; reacts
-  to playback state reactives via self-wiring `watch()` calls on mount so any
-  instance placed anywhere is always live; click-to-seek.
+- **TracksView**: Favourite tracks in a sortable dense list (FavTrackRow:
+  artist — title / album · duration). Full pagination via
+  `get_all_favorite_tracks()`. Sort by Date Added / Artist / Title / Album;
+  `s`/`r` bindings. `/` in-border live filter (title + artist + album); same
+  two-state subtitle as AlbumsView. Opens on app startup. `_render_version`
+  counter prevents stale mount workers from overwriting newer results.
+- **TransportBar**: Horizontal layout — album art (TGPImage, hidden until
+  playing) on the left, `_TransportContent` (artist/title + album + progress
+  bar via `render()`) on the right. Art fetched via shared `fetch_image()`
+  cache. Height 6 (4 content lines). `_TransportContent` owns the mouse-seek
+  handlers so click coordinates are local with no offset arithmetic. Self-wires
+  to QobitApp reactives on mount.
 - **Transparent background**: Toggle via command palette (`Draw theme
   background`); preserved across sessions.
 - **Bit-perfect flags**: `--af-clr`, `--audio-pitch-correction=no`,
@@ -151,13 +168,12 @@ per-track format badge (Hi-Res / CD).
 **PlaylistScreen redesign** — same issues as AlbumScreen: no art, minimal
 header, no queue actions.
 
-**TracksView, PlaylistsView** — still minimal placeholder implementations
-(fetch favourites, render a flat list, navigate to detail). Need the same
-treatment as AlbumsView / ArtistsView: richer rows, art where applicable,
-sort and filter options.
+**PlaylistsView** — still a minimal placeholder (flat list, no art, no sort).
+Needs the same treatment as AlbumsView / ArtistsView.
 
-**AlbumsView / ArtistsView** — grids + inline detail now done; still missing:
-"Play all" / "Play from here" actions, per-track format badges.
+**AlbumsView / ArtistsView / TracksView** — grids/list + inline detail + filter
+now done; still missing: "Play all" / "Play from here" actions, per-track
+format badges.
 
 **TrackScreen** (individual track detail) — does not exist. Would show full
 metadata: composer, performer, label, format, related albums. Likely a modal
@@ -273,7 +289,17 @@ Once the queue exists:
   one item at a time triggers N layout passes; batching collapses them to one.
 - **Context-aware sort bindings**: `s` / `r` in `app.py` call
   `action_cycle_sort` / `action_toggle_reverse`, which iterate over
-  (AlbumsView, ArtistsView) and delegate to whichever is currently displayed.
+  (TracksView, AlbumsView, ArtistsView) and delegate to whichever is currently
+  displayed. Each view guards its sort actions against filter mode (`_filter_active`).
+- **In-border live filter**: `/` binding on TracksView, AlbumsView, ArtistsView
+  enters filter mode. Keystrokes are intercepted in `on_key` (bubbles from the
+  focused grid/list since grids don't consume printable chars). The query is
+  displayed in `border_subtitle`: `/ query_` while typing, `⌕ query` when the
+  filter bar is "closed" but results remain active. `action_navigate_back`
+  handles filter teardown as the last level before returning `False`. Opening a
+  detail view sets `_filter_active = False` but preserves `_filter_query` so
+  the `⌕` indicator is still shown on return. `_render_version` counter on each
+  view prevents stale `@work` mount workers from overwriting a newer result.
 
 ## Qobuz API layer
 
@@ -290,12 +316,12 @@ in reverse-chronological order); `get_artist_top_tracks` calls `artist/page`
 `artist/page`) artist name formats. The legacy `get_artist_page` method still
 exists (merges both into one call) but is no longer used by the UI.
 
-Paginated helpers: `get_all_favorite_albums()` and `get_all_favorite_artists()`
-fetch the complete favourites list by issuing parallel requests for each 50-item
-page after the first.
+Paginated helpers: `get_all_favorite_tracks()`, `get_all_favorite_albums()`,
+and `get_all_favorite_artists()` fetch the complete favourites list by issuing
+parallel requests for each 50-item page after the first.
 
-`Artist` carries a `favorited_at: int | None` field (Unix timestamp) populated
-from the favourites API; used for Date Added sorting in ArtistsView.
+`Track`, `Album`, and `Artist` all carry a `favorited_at: int | None` field
+(Unix timestamp) populated from the favourites API; used for Date Added sorting.
 
 ## Image protocol
 
@@ -346,8 +372,10 @@ uv run textual console     # Textual dev console (separate terminal)
 5. ArtistScreen polish: popularity top tracks, inline album detail panel **✓**
 6. AlbumsView + ArtistsView: sortable tile grids + inline detail panels;
    shared image cache + semaphore; lazy load + batch mount **✓**
-7. **Play Next queue + end-of-track auto-advance** ← next
-8. UI overhaul: Search, AlbumScreen, PlaylistScreen, TracksView, PlaylistsView
+7. TracksView: sortable paginated list + album art in TransportBar +
+   in-border live filter; same filter pattern rolled out to Albums + Artists **✓**
+8. **Play Next queue + end-of-track auto-advance** ← next
+9. UI overhaul: Search, AlbumScreen, PlaylistScreen, PlaylistsView
 9. Context menus + TrackScreen detail overlay
 10. MPRIS (Linux), macOS MediaRemote, PipeWire ReserveDevice1
 11. Gapless playback, ReplayGain, CMAF fallback
