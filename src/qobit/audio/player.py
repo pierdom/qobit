@@ -66,6 +66,11 @@ class MpvPlayer:
             f"--input-ipc-server={self._sock}",
             "--af-clr",
             "--audio-pitch-correction=no",
+            # Don't auto-load mpv scripts. The system mpv-mpris plugin would
+            # otherwise publish a second MPRIS player exposing the tagless
+            # stream URL — wrong artist/title/album/art in the DE. qobit owns
+            # the MPRIS surface via audio/media_keys.py instead.
+            "--load-scripts=no",
         ]
         if self._device:
             flags.append(f"--audio-device={self._device}")

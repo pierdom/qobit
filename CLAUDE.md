@@ -172,14 +172,28 @@ src/qobit/
   album, position, rate; artwork fetched async via shared `fetch_image()` and
   converted PIL → NSData → NSImage → `MPMediaItemArtwork`. Linux — full MPRIS2
   implementation via pydbus; GLib main loop in daemon thread; `Metadata`
-  property includes `mpris:artUrl` (HTTPS, clients fetch themselves). Both
-  backends degrade silently when optional deps (`pyobjc-framework-MediaPlayer`
-  / `pydbus`) are absent. Installed via `pip install qobit[macos]` or
-  `qobit[linux]`.
+  property includes `mpris:artUrl` (HTTPS, clients fetch themselves). The
+  backend declares a `signal()` attribute for **every** `<signal>` in the
+  introspection XML (`Seeked` + `PropertiesChanged`) — pydbus's `bus.publish()`
+  raises `AttributeError` for any missing one, which `MediaKeys.__init__`
+  swallows, so a missing signal silently kills the whole backend. `update()`
+  emits `PropertiesChanged` (marshalled onto the GLib thread via
+  `GLib.idle_add`) whenever the track or play/pause state changes, so the DE
+  re-reads `Metadata` / `PlaybackStatus` instead of showing the first track it
+  ever saw. Both backends degrade silently when optional deps
+  (`pyobjc-framework-MediaPlayer` / `pydbus` + `PyGObject`) are absent.
+  Installed via `pip install qobit[macos]` or `qobit[linux]`. Note: the Linux
+  extra needs both `pydbus` and `PyGObject` (`gi`), which under `uv` must live
+  in the project venv — the system `python-gobject` is not visible to
+  `uv run`.
 - **Transparent background**: Toggle via command palette (`Draw theme
   background`); preserved across sessions.
 - **Bit-perfect flags**: `--af-clr`, `--audio-pitch-correction=no`,
-  `--audio-exclusive=yes` on macOS with CoreAudio device.
+  `--audio-exclusive=yes` on macOS with CoreAudio device. Also
+  `--load-scripts=no` so mpv doesn't auto-load the system `mpv-mpris` plugin —
+  it would otherwise publish a *second* MPRIS player exposing the tagless
+  stream URL (wrong artist/title/album/art). qobit owns the MPRIS surface via
+  `audio/media_keys.py`.
 
 ### Work in progress
 

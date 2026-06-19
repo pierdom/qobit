@@ -263,6 +263,15 @@ class _MPRISBackend:
     ) -> None:
         from gi.repository import GLib  # type: ignore[import]
         from pydbus import SessionBus  # type: ignore[import]
+        from pydbus.generic import signal  # type: ignore[import]
+
+        # pydbus requires a signal() attribute for every <signal> declared in
+        # the introspection XML; without Seeked, bus.publish() raises and the
+        # whole backend silently degrades. PropertiesChanged (from the standard
+        # org.freedesktop.DBus.Properties interface) is what makes the DE
+        # re-read Metadata / PlaybackStatus on track change.
+        type(self).Seeked = signal()
+        type(self).PropertiesChanged = signal()
 
         self._on_play_pause = on_play_pause
         self._on_next = on_next
@@ -400,11 +409,33 @@ class _MPRISBackend:
         duration: float,
     ) -> None:
         with self._lock:
+            track_changed = (
+                track is not self._track
+                or is_playing != self._is_playing
+                or is_paused != self._is_paused
+            )
             self._track = track
             self._is_playing = is_playing
             self._is_paused = is_paused
             self._position_us = int(position * 1_000_000)
             self._duration_us = int(duration * 1_000_000)
+
+        if track_changed:
+            # Emit PropertiesChanged on the GLib loop thread so MPRIS clients
+            # (the DE) refresh Metadata / PlaybackStatus instead of showing
+            # whatever they read first.
+            self._GLib.idle_add(self._emit_properties_changed)
+
+    def _emit_properties_changed(self) -> bool:
+        try:
+            self.PropertiesChanged(
+                "org.mpris.MediaPlayer2.Player",
+                {"Metadata": self.Metadata, "PlaybackStatus": self.PlaybackStatus},
+                [],
+            )
+        except Exception:
+            pass
+        return False  # GLib.idle_add: run once
 
     def set_artwork(self, image: object) -> None:
         pass  # Linux: artwork URL is already included in Metadata via track.image_url
