@@ -61,6 +61,10 @@ src/qobit/
     │                        + QueueTrackRow list; watches queue_version +
     │                        now_playing + is_paused; _render_version guards
     └── widgets/
+        ├── lists.py         PagedListView — ListView subclass binding PageUp/
+        │                    PageDown/Home/End to move the highlighted selection
+        │                    (scrolling to follow it) rather than scrolling past
+        │                    a stationary cursor. Used by Tracks + Queue lists.
         └── transport.py     TransportBar — album art + label + album +
                              progress bar; clicking title/album row toggles
                              pause, clicking progress row seeks; _TransportContent
@@ -288,6 +292,14 @@ queue. QueueView is display-only (can skip forward by selecting an item).
   callback, init=True)` for each QobitApp reactive. Any TransportBar instance
   placed anywhere in the widget tree is automatically live — no
   `sync_transport_bar()` calls needed from screens.
+- **Paged list navigation**: `PagedListView` (`ui/widgets/lists.py`) is a
+  `ListView` subclass for long lists (Tracks, Queue). Plain `ListView` only
+  binds up/down/enter, so PageUp/PageDown fall through to `VerticalScroll` and
+  move the viewport while the selection stays put. `PagedListView` binds
+  PageUp/PageDown/Home/End to set `index` by a page (viewport height ÷ uniform
+  row height) and top-aligns the scroll, so the highlight follows the visible
+  page. Setting `index` reuses Textual's `watch_index` (scroll-to + highlight)
+  and still emits `ListView.Highlighted`, so the app-level `-hl` styling works.
 - **ListView highlight**: `QobitApp._on_list_highlighted` catches all
   `ListView.Highlighted` events app-wide and manages a `-hl` CSS class on the
   highlighted item's child Labels. `Label.-hl { color: $accent }` in app CSS

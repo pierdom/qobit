@@ -11,6 +11,7 @@ from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
+from ..widgets.lists import PagedListView
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
@@ -91,7 +92,7 @@ class TracksView(Widget):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="tracks-container"):
-            yield ListView(id="fav-tracks")
+            yield PagedListView(id="fav-tracks")
 
     def on_mount(self) -> None:
         container = self.query_one("#tracks-container", Vertical)

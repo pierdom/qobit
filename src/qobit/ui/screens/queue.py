@@ -8,6 +8,7 @@ from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
+from ..widgets.lists import PagedListView
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
@@ -85,7 +86,7 @@ class QueueView(Widget):
     _render_version: int = 0
 
     def compose(self) -> ComposeResult:
-        yield ListView(id="queue-list")
+        yield PagedListView(id="queue-list")
 
     def on_mount(self) -> None:
         self.query_one("#queue-list", ListView).border_title = "Up Next"
