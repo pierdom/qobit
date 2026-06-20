@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from textual import on, work
 from textual.app import ComposeResult
+from textual.content import Content
 from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
@@ -28,20 +29,21 @@ class NowPlayingRow(ListItem):
         super().__init__()
         self.track = track
         self._is_paused = is_paused
-        self._fav = f"  {ICON_FAV}" if favorite else ""
+        self._favorite = favorite
+
+    def _title(self, icon: str) -> Content:
+        t = self.track
+        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
+        return Content.assemble(f"{icon}  {t.artist} — {t.display_title}", heart)
 
     def compose(self) -> ComposeResult:
         t = self.track
         icon = "⏸" if self._is_paused else "▶"
-        yield Label(f"{icon}  {t.artist} — {t.display_title}{self._fav}", classes="np-title")
+        yield Label(self._title(icon), classes="np-title")
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="np-album")
 
     def set_paused(self, paused: bool) -> None:
-        icon = "⏸" if paused else "▶"
-        t = self.track
-        self.query_one(".np-title", Label).update(
-            f"{icon}  {t.artist} — {t.display_title}{self._fav}"
-        )
+        self.query_one(".np-title", Label).update(self._title("⏸" if paused else "▶"))
 
 
 class QueueTrackRow(ListItem):
@@ -56,12 +58,15 @@ class QueueTrackRow(ListItem):
         super().__init__()
         self.track = track
         self._number = number
-        self._fav = f"  {ICON_FAV}" if favorite else ""
+        self._favorite = favorite
 
     def compose(self) -> ComposeResult:
         t = self.track
+        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
         yield Label(
-            f"{self._number}. {ICON_TRACK}  {t.artist} — {t.display_title}{self._fav}",
+            Content.assemble(
+                f"{self._number}. {ICON_TRACK}  {t.artist} — {t.display_title}", heart
+            ),
             classes="primary",
         )
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")

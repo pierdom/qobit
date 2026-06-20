@@ -9,6 +9,7 @@ from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
+from textual.content import Content
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import Screen
@@ -40,12 +41,16 @@ class TrackRow(ListItem):
         super().__init__()
         self.track = track
         self._number = number
-        self._fav = f"  {ICON_FAV}" if favorite else ""
+        self._favorite = favorite
 
     def compose(self) -> ComposeResult:
         t = self.track
         num = f"{self._number:2}. {ICON_TRACK}"
-        yield Label(f"{num}  {t.display_title}  {t.duration_str}{self._fav}", classes="primary")
+        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
+        yield Label(
+            Content.assemble(f"{num}  {t.display_title}  {t.duration_str}", heart),
+            classes="primary",
+        )
 
 
 class AlbumDetailPanel(Widget):

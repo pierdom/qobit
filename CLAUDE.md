@@ -341,8 +341,11 @@ queue. QueueView is display-only (can skip forward by selecting an item).
   track lists share this single fetch (warmed at mount via `_warm_favorite_ids`).
   Track-list builders (QueueTrackRow/NowPlayingRow, ArtistTrackRow, album
   `TrackRow`) `await app.ensure_favorite_ids()` in their `@work` builder and
-  pass a `favorite: bool` to the row, which appends the glyph as plain text (no
-  inline markup, so the `-hl` highlight still works). The Tracks tab shows no
+  pass a `favorite: bool` to the row. The row's primary label is built with
+  `Content.assemble(text, ("  ♥", "$accent"))` — these labels are Textual
+  *content*-markup labels, so the track text is passed as a literal `Content`
+  part (no markup parsing → titles with `[`/`]` can't corrupt or crash the
+  render) while the heart gets an `$accent` span. The Tracks tab shows no
   heart — everything there is already a favourite.
 - **Lazy load pattern**: Library tabs call `_load()` inside `on_show` behind a
   `_loaded: bool` guard rather than `on_mount`. This prevents all tabs from
