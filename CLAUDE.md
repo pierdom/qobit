@@ -373,6 +373,12 @@ parallel requests for each 50-item page after the first.
 `Track`, `Album`, and `Artist` all carry a `favorited_at: int | None` field
 (Unix timestamp) populated from the favourites API; used for Date Added sorting.
 
+`Album.from_api` backfills its own `image_url` onto each nested track whose
+`image_url` is unset. Track items inside an album payload carry no `album`
+object of their own, so `Track.from_api` can't resolve their cover — without
+this backfill, playing a track from the album view (or its play queue) would
+leave the transport bar and OS media-control art unchanged.
+
 ## Image protocol
 
 Kitty graphics protocol only (no iTerm2 IIP, no sixel). Implemented via

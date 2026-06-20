@@ -121,6 +121,15 @@ class Album:
     def from_api(cls, data: dict) -> "Album":
         tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
         image = data.get("image", {})
+        img_url = image.get("large") or image.get("small") or None
+        # Track items nested under an album carry no album image of their own,
+        # so Track.from_api leaves image_url unset. Backfill from the album so
+        # the now-playing art (transport bar, OS media controls) works when a
+        # track is played straight from the album view or its play queue.
+        if img_url:
+            for t in tracks:
+                if not t.image_url:
+                    t.image_url = img_url
         release = data.get("release_date_original", "") or ""
         year = int(release[:4]) if len(release) >= 4 and release[:4].isdigit() else None
         awards = [
@@ -145,7 +154,7 @@ class Album:
             hires_streamable=bool(data.get("hires_streamable", False)),
             popularity=data.get("popularity") or None,
             awards=awards,
-            image_url=image.get("large") or image.get("small") or None,
+            image_url=img_url,
             tracks=tracks,
             favorited_at=data.get("favorited_at") or None,
         )
