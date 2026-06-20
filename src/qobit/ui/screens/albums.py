@@ -6,6 +6,7 @@ from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Label
 
@@ -74,6 +75,7 @@ class AlbumsView(Widget):
     _filter_query: str = ""
     _render_version: int = 0
     _albums: list[Album]
+    _filter_timer: Timer | None = None
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
@@ -114,7 +116,7 @@ class AlbumsView(Widget):
             self._filter_active = False
             self._filter_query = ""
             self._update_subtitle()
-            self._render_grid()
+            self._apply_filter()
             return True
         return False
 
@@ -131,13 +133,13 @@ class AlbumsView(Widget):
             self._filter_query += event.character
             event.stop()
             self._update_subtitle()
-            self._render_grid()
+            self._schedule_filter()
         elif event.key in ("backspace", "ctrl+h"):
             if self._filter_query:
                 self._filter_query = self._filter_query[:-1]
                 event.stop()
                 self._update_subtitle()
-                self._render_grid()
+                self._schedule_filter()
 
     # ── sort ─────────────────────────────────────────────────────────────────
 
@@ -186,18 +188,44 @@ class AlbumsView(Widget):
 
         return sorted(self._albums, key=key, reverse=self._sort_reverse)
 
-    def _filtered_albums(self) -> list[Album]:
-        albums = self._sorted_albums()
-        if not self._filter_query:
-            return albums
+    def _schedule_filter(self) -> None:
+        """Coalesce a burst of filter keystrokes into a single visibility pass."""
+        if self._filter_timer is not None:
+            self._filter_timer.stop()
+        self._filter_timer = self.set_timer(0.12, self._apply_filter)
+
+    def _apply_filter(self) -> None:
+        if self._filter_timer is not None:
+            self._filter_timer.stop()
+            self._filter_timer = None
+        grid = self.query_one("#fav-albums-grid", AlbumGrid)
         q = self._filter_query.lower()
-        return [a for a in albums if q in (a.title or "").lower() or q in (a.artist or "").lower()]
+        if not q:
+            ids: set[str] | None = None
+        else:
+            ids = {
+                a.id
+                for a in self._albums
+                if q in (a.title or "").lower() or q in (a.artist or "").lower()
+            }
+        any_visible = grid.filter_cards(ids)
+        self._set_empty(grid, not any_visible and bool(self._albums))
+
+    def _set_empty(self, grid: AlbumGrid, show: bool) -> None:
+        existing = list(grid.query("#grid-empty"))
+        if show and not existing:
+            grid.mount(Label("[dim]No matches.[/dim]", id="grid-empty", markup=True))
+        elif not show and existing:
+            existing[0].remove()
 
     def _render_grid(self) -> None:
+        if self._filter_timer is not None:
+            self._filter_timer.stop()
+            self._filter_timer = None
         self._render_version += 1
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
         grid._cursor = -1
-        self._mount_cards(self._filtered_albums(), self._render_version)
+        self._mount_cards(self._sorted_albums(), self._render_version)
 
     @work
     async def _mount_cards(self, albums: list[Album], version: int) -> None:
@@ -208,14 +236,10 @@ class AlbumsView(Widget):
         if version != self._render_version:
             return
         if not albums:
-            msg = (
-                "[dim]No matches.[/dim]"
-                if self._filter_query
-                else "[dim]No favourite albums yet.[/dim]"
-            )
-            await grid.mount(Label(msg, markup=True))
+            await grid.mount(Label("[dim]No favourite albums yet.[/dim]", markup=True))
             return
         await grid.mount(*[AlbumCard(album, show_artist=True) for album in albums])
+        self._apply_filter()
 
     @work
     async def _load(self) -> None:

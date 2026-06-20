@@ -6,6 +6,7 @@ from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Label, ListView
 
@@ -114,6 +115,7 @@ class ArtistsView(Widget):
     _render_version: int = 0
     _artists: list[Artist]
     _current_artist: Artist | None
+    _filter_timer: Timer | None = None
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
@@ -169,7 +171,7 @@ class ArtistsView(Widget):
             self._filter_active = False
             self._filter_query = ""
             self._update_subtitle()
-            self._render_grid()
+            self._apply_filter()
             return True
         return False
 
@@ -186,13 +188,13 @@ class ArtistsView(Widget):
             self._filter_query += event.character
             event.stop()
             self._update_subtitle()
-            self._render_grid()
+            self._schedule_filter()
         elif event.key in ("backspace", "ctrl+h"):
             if self._filter_query:
                 self._filter_query = self._filter_query[:-1]
                 event.stop()
                 self._update_subtitle()
-                self._render_grid()
+                self._schedule_filter()
 
     # ── sort ─────────────────────────────────────────────────────────────────
 
@@ -237,18 +239,37 @@ class ArtistsView(Widget):
 
         return sorted(self._artists, key=key, reverse=self._sort_reverse)
 
-    def _filtered_artists(self) -> list[Artist]:
-        artists = self._sorted_artists()
-        if not self._filter_query:
-            return artists
+    def _schedule_filter(self) -> None:
+        """Coalesce a burst of filter keystrokes into a single visibility pass."""
+        if self._filter_timer is not None:
+            self._filter_timer.stop()
+        self._filter_timer = self.set_timer(0.12, self._apply_filter)
+
+    def _apply_filter(self) -> None:
+        if self._filter_timer is not None:
+            self._filter_timer.stop()
+            self._filter_timer = None
+        grid = self.query_one("#fav-artists-grid", ArtistGrid)
         q = self._filter_query.lower()
-        return [a for a in artists if q in a.name.lower()]
+        ids = None if not q else {a.id for a in self._artists if q in a.name.lower()}
+        any_visible = grid.filter_cards(ids)
+        self._set_empty(grid, not any_visible and bool(self._artists))
+
+    def _set_empty(self, grid: ArtistGrid, show: bool) -> None:
+        existing = list(grid.query("#grid-empty"))
+        if show and not existing:
+            grid.mount(Label("[dim]No matches.[/dim]", id="grid-empty", markup=True))
+        elif not show and existing:
+            existing[0].remove()
 
     def _render_grid(self) -> None:
+        if self._filter_timer is not None:
+            self._filter_timer.stop()
+            self._filter_timer = None
         self._render_version += 1
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
         grid._cursor = -1
-        self._mount_cards(self._filtered_artists(), self._render_version)
+        self._mount_cards(self._sorted_artists(), self._render_version)
 
     @work
     async def _mount_cards(self, artists: list[Artist], version: int) -> None:
@@ -259,14 +280,10 @@ class ArtistsView(Widget):
         if version != self._render_version:
             return
         if not artists:
-            msg = (
-                "[dim]No matches.[/dim]"
-                if self._filter_query
-                else "[dim]No favourite artists yet.[/dim]"
-            )
-            await grid.mount(Label(msg, markup=True))
+            await grid.mount(Label("[dim]No favourite artists yet.[/dim]", markup=True))
             return
         await grid.mount(*[ArtistCard(artist) for artist in artists])
+        self._apply_filter()
 
     @work
     async def _load(self) -> None:

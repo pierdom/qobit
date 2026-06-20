@@ -171,8 +171,26 @@ class AlbumGrid(ScrollableContainer):
         self._cols = max(1, self.content_size.width // self._tile_min_width)
         self.styles.grid_size_columns = self._cols
 
-    def _move_cursor(self, idx: int) -> None:
-        cards = list(self.query(AlbumCard))
+    def _visible_cards(self) -> list[AlbumCard]:
+        return [c for c in self.query(AlbumCard) if c.display]
+
+    def filter_cards(self, visible_ids: set[str] | None) -> bool:
+        """Hide/show mounted cards by album id without remounting (so the
+        Kitty images are never re-transmitted).  ``None`` shows everything.
+        Returns whether any card is visible."""
+        any_visible = False
+        for card in self.query(AlbumCard):
+            vis = visible_ids is None or card._album.id in visible_ids
+            if bool(card.display) != vis:
+                card.display = vis
+            any_visible = any_visible or vis
+        self._cursor = -1
+        self.scroll_home(animate=False)
+        return any_visible
+
+    def _move_cursor(self, idx: int, cards: list[AlbumCard] | None = None) -> None:
+        if cards is None:
+            cards = self._visible_cards()
         if not cards or idx < 0 or idx >= len(cards):
             return
         if self._cursor >= 0 and self._cursor < len(cards):
@@ -182,16 +200,16 @@ class AlbumGrid(ScrollableContainer):
         cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
-        cards = list(self.query(AlbumCard))
+        cards = self._visible_cards()
         if 0 <= self._cursor < len(cards):
             self.post_message(AlbumCard.Selected(cards[self._cursor]._album))
 
     def action_move(self, direction: str) -> None:
-        cards = list(self.query(AlbumCard))
+        cards = self._visible_cards()
         if not cards:
             return
         if self._cursor == -1:
-            self._move_cursor(0)
+            self._move_cursor(0, cards)
             return
         idx = self._cursor
         target: int | None = None
@@ -204,7 +222,7 @@ class AlbumGrid(ScrollableContainer):
         elif direction == "up" and idx - self._cols >= 0:
             target = idx - self._cols
         if target is not None:
-            self._move_cursor(target)
+            self._move_cursor(target, cards)
 
 
 class ArtistCard(Widget):
@@ -314,8 +332,26 @@ class ArtistGrid(ScrollableContainer):
         self._cols = max(1, self.content_size.width // self._tile_min_width)
         self.styles.grid_size_columns = self._cols
 
-    def _move_cursor(self, idx: int) -> None:
-        cards = list(self.query(ArtistCard))
+    def _visible_cards(self) -> list[ArtistCard]:
+        return [c for c in self.query(ArtistCard) if c.display]
+
+    def filter_cards(self, visible_ids: set[str] | None) -> bool:
+        """Hide/show mounted cards by artist id without remounting (so the
+        Kitty images are never re-transmitted).  ``None`` shows everything.
+        Returns whether any card is visible."""
+        any_visible = False
+        for card in self.query(ArtistCard):
+            vis = visible_ids is None or card._artist.id in visible_ids
+            if bool(card.display) != vis:
+                card.display = vis
+            any_visible = any_visible or vis
+        self._cursor = -1
+        self.scroll_home(animate=False)
+        return any_visible
+
+    def _move_cursor(self, idx: int, cards: list[ArtistCard] | None = None) -> None:
+        if cards is None:
+            cards = self._visible_cards()
         if not cards or idx < 0 or idx >= len(cards):
             return
         if self._cursor >= 0 and self._cursor < len(cards):
@@ -325,16 +361,16 @@ class ArtistGrid(ScrollableContainer):
         cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
-        cards = list(self.query(ArtistCard))
+        cards = self._visible_cards()
         if 0 <= self._cursor < len(cards):
             self.post_message(ArtistCard.Selected(cards[self._cursor]._artist))
 
     def action_move(self, direction: str) -> None:
-        cards = list(self.query(ArtistCard))
+        cards = self._visible_cards()
         if not cards:
             return
         if self._cursor == -1:
-            self._move_cursor(0)
+            self._move_cursor(0, cards)
             return
         idx = self._cursor
         target: int | None = None
@@ -347,7 +383,7 @@ class ArtistGrid(ScrollableContainer):
         elif direction == "up" and idx - self._cols >= 0:
             target = idx - self._cols
         if target is not None:
-            self._move_cursor(target)
+            self._move_cursor(target, cards)
 
 
 class ArtistHeader(Widget):

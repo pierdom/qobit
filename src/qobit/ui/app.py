@@ -255,13 +255,21 @@ class QobitApp(App[None]):
                     pass
             self.query_one("#nav-tabs", Tabs).focus()
 
+    _hl_item: object = None
+
     @on(ListView.Highlighted)
     def _on_list_highlighted(self, event: ListView.Highlighted) -> None:
-        for label in event.list_view.query(Label):
-            label.remove_class("-hl")
+        # Only touch the previously highlighted row, not every row in the list —
+        # a full query(Label) over a long list on each arrow press is what made
+        # the track list feel laggy.
+        prev = self._hl_item
+        if prev is not None and prev is not event.item:
+            for label in prev.query(Label):
+                label.remove_class("-hl")
         if event.item:
             for label in event.item.query(Label):
                 label.add_class("-hl")
+        self._hl_item = event.item
 
     def _focus_search_input(self) -> None:
         try:

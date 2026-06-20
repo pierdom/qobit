@@ -6,6 +6,7 @@ from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
@@ -82,6 +83,7 @@ class TracksView(Widget):
     _filter_query: str = ""
     _render_version: int = 0
     _tracks: list[Track]
+    _filter_timer: Timer | None = None
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
@@ -130,13 +132,13 @@ class TracksView(Widget):
             self._filter_query += event.character
             event.stop()
             self._update_subtitle()
-            self._render_list()
+            self._schedule_render()
         elif event.key in ("backspace", "ctrl+h"):
             if self._filter_query:
                 self._filter_query = self._filter_query[:-1]
                 event.stop()
                 self._update_subtitle()
-                self._render_list()
+                self._schedule_render()
 
     # ── sort ─────────────────────────────────────────────────────────────────
 
@@ -196,7 +198,16 @@ class TracksView(Widget):
             if q in t.title.lower() or q in t.artist.lower() or q in t.album.lower()
         ]
 
+    def _schedule_render(self) -> None:
+        """Coalesce a burst of filter keystrokes into a single rebuild."""
+        if self._filter_timer is not None:
+            self._filter_timer.stop()
+        self._filter_timer = self.set_timer(0.18, self._render_list)
+
     def _render_list(self) -> None:
+        if self._filter_timer is not None:
+            self._filter_timer.stop()
+            self._filter_timer = None
         self._render_version += 1
         self._mount_rows(self._filtered_tracks(), self._render_version)
 

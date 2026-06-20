@@ -302,6 +302,15 @@ queue. QueueView is display-only (can skip forward by selecting an item).
   detail view sets `_filter_active = False` but preserves `_filter_query` so
   the `⌕` indicator is still shown on return. `_render_version` counter on each
   view prevents stale `@work` mount workers from overwriting a newer result.
+  **Performance**: filter keystrokes are debounced via a `_filter_timer`
+  (`_schedule_filter`, ~0.12–0.18s) so a burst of typing coalesces into one
+  pass. The image grids (AlbumsView, ArtistsView) **filter by hide/show**, not
+  remount: `_apply_filter` computes the matching id set and calls
+  `AlbumGrid/ArtistGrid.filter_cards(ids)`, which toggles `card.display` on
+  already-mounted cards (so the Kitty images are never re-transmitted). The
+  grids' cursor navigation (`_visible_cards`) operates only over visible cards.
+  Remount (`_render_grid`) is reserved for data load and sort, and re-applies
+  the active filter afterwards. TracksView (no images) still debounced-remounts.
 - **Queue version pattern**: `queue_version: reactive[int]` on `QobitApp` is
   incremented whenever `_play_queue` changes. Widgets that need to re-render
   when the queue changes (e.g. `QueueView`) watch this reactive. Combined with a
