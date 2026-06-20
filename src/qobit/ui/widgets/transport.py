@@ -6,6 +6,7 @@ from rich.console import Group
 from rich.text import Text
 from textual import events, work
 from textual.app import ComposeResult
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -200,5 +201,8 @@ class TransportBar(Widget):
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None:
-            self.query_one(TGPImage).image = img
+        if img is not None and self.is_mounted:
+            try:
+                self.query_one(TGPImage).image = img
+            except NoMatches:
+                pass

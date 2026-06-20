@@ -276,6 +276,14 @@ queue. QueueView is display-only (can skip forward by selecting an item).
   not its children.
 - `$accent 40%` for dimmed-but-themed borders on unfocused panels; full
   `$accent` on `:focus`. Avoids invisible `$panel` borders.
+- **Async image-worker guard**: every `@work` art fetcher (AlbumCard/ArtistCard
+  `_fetch_art`, ArtistHeader/AlbumDetailPanel/PlaylistScreen/TransportBar) does
+  `if img is not None and self.is_mounted:` then a `try … except NoMatches`
+  around `self.query_one(TGPImage).image = img`. The worker resumes after an
+  `await` that may outlive the widget (app teardown, sort/reload remount), so
+  the target `TGPImage` can be gone — without the guard Textual raises
+  `NoMatches`. Faster disk/memory cache hits make the resume timing less
+  predictable, so any new art-fetch worker must replicate this guard.
 - **TransportBar self-wiring**: `on_mount` calls `self.watch(app, "reactive",
   callback, init=True)` for each QobitApp reactive. Any TransportBar instance
   placed anywhere in the widget tree is automatically live — no

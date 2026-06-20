@@ -9,6 +9,7 @@ from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import Screen
 from textual.widget import Widget
@@ -138,8 +139,11 @@ class AlbumDetailPanel(Widget):
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None:
-            self.query_one(TGPImage).image = img
+        if img is not None and self.is_mounted:
+            try:
+                self.query_one(TGPImage).image = img
+            except NoMatches:
+                pass
 
     @work
     async def _fetch_full_album(self, album: Album) -> None:
