@@ -136,9 +136,22 @@ src/qobit/
   across screens. HTML tags stripped from album descriptions via `_strip_html`.
 - **Image performance** (`ui/_images.py`): All image fetches go through a
   shared `fetch_image(url)` coroutine. A module-level `asyncio.Semaphore(6)`
-  caps concurrent HTTP connections; a `dict[url → PIL.Image]` cache prevents
-  re-downloading the same image within a session. Widget code calls
+  caps concurrent HTTP connections; an in-memory `dict[url → PIL.Image]` cache
+  prevents re-downloading the same image within a session. Widget code calls
   `fetch_image` from a `@work` worker and sets `TGPImage.image` on return.
+  Three further layers keep image-rich pages responsive:
+  - **Shared `httpx.AsyncClient`** (`_get_client()`, closed via `close_client()`
+    in `QobitApp.on_unmount`) so the ~50 fetches a grid fires reuse
+    connections/TLS instead of each building a fresh pool.
+  - **Downscale + RGB-normalise on fetch** (`_normalize`): source art (`mega`
+    ~1500px, `large` ~600px) is capped at `_MAX_EDGE=600` (largest on-screen
+    use ≈320px) and colour-converted *once*. textual-image otherwise re-resizes
+    the full source and re-converts mode on every repaint, and re-transmits the
+    whole image to the terminal on each widget `render()`.
+  - **On-disk cache** (`~/.cache/qobit/images/{sha1}.jpg`, normalised JPEG q85):
+    relaunching doesn't re-download the library's art. Disk read/decode and the
+    network decode/normalise both run via `asyncio.to_thread` so a grid of
+    covers never stalls keystrokes. Corrupt/unwritable cache degrades silently.
 - **Session restore**: `QobuzClient.restore_session()` called in
   `QobitApp.__init__()` (not `on_mount`) so credentials are available before
   any child widget worker fires.

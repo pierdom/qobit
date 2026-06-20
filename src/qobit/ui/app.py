@@ -422,6 +422,9 @@ class QobitApp(App[None]):
         self.refresh(layout=True)
 
     async def on_unmount(self) -> None:
+        from ._images import close_client
+
         self._media_keys.close()
         self._player.stop()
         await self._client.close()
+        await close_client()
