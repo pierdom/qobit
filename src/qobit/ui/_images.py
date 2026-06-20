@@ -74,6 +74,28 @@ def _disk_path(url: str) -> Path | None:
     return d / f"{hashlib.sha1(url.encode()).hexdigest()}.jpg"
 
 
+def clear_disk_cache() -> tuple[Path | None, int, int]:
+    """Delete all cached cover art from disk.
+
+    Returns ``(cache_dir, files_removed, bytes_freed)``; ``cache_dir`` is
+    ``None`` if the cache location is unavailable.
+    """
+    d = _cache_dir()
+    if d is None:
+        return None, 0, 0
+    removed = 0
+    freed = 0
+    for p in d.glob("*"):
+        try:
+            if p.is_file():
+                freed += p.stat().st_size
+                p.unlink()
+                removed += 1
+        except Exception:
+            pass
+    return d, removed, freed
+
+
 def _normalize(img: PILImage.Image) -> PILImage.Image:
     """Decode, downscale and colour-normalise once at fetch time.
 

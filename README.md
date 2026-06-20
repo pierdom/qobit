@@ -106,6 +106,7 @@ qobit play "Kind of Blue" --quality FLAC_24_96  # prefer specific quality
 qobit auth                                       # authenticate / refresh session
 qobit devices                                    # list output devices
 qobit set-device                                 # pick and save output device
+qobit clear-cache                                # delete cached cover art from disk
 ```
 
 ## Audio device setup

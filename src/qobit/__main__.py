@@ -5,8 +5,9 @@ Usage:
   qobit devices
   qobit set-device
   qobit auth
+  qobit clear-cache
 
-The TUI (qobit with no arguments) is coming in Phase 2.
+Running qobit with no arguments launches the TUI.
 """
 
 import argparse
@@ -194,6 +195,29 @@ def cmd_set_device(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _human_bytes(n: int) -> str:
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"
+
+
+def cmd_clear_cache(_args: argparse.Namespace) -> int:
+    from .ui._images import clear_disk_cache
+
+    path, removed, freed = clear_disk_cache()
+    if path is None:
+        print("Cache directory unavailable — nothing to clear.", file=sys.stderr)
+        return 1
+    if removed == 0:
+        print(f"Cache already empty: {path}")
+    else:
+        print(f"Cleared {removed} cached image(s) ({_human_bytes(freed)}) from {path}")
+    return 0
+
+
 async def cmd_auth(_args: argparse.Namespace) -> int:
     async with QobuzClient() as client:
         try:
@@ -231,6 +255,7 @@ def main() -> None:
     sub.add_parser("devices", help="List available audio output devices")
     sub.add_parser("set-device", help="Interactively pick and save an audio device")
     sub.add_parser("auth", help="Test authentication")
+    sub.add_parser("clear-cache", help="Delete cached cover art from disk")
 
     args = parser.parse_args()
 
@@ -242,6 +267,8 @@ def main() -> None:
         sys.exit(cmd_set_device(args))
     elif args.command == "auth":
         sys.exit(asyncio.run(cmd_auth(args)))
+    elif args.command == "clear-cache":
+        sys.exit(cmd_clear_cache(args))
     else:
         from .ui.app import QobitApp
 

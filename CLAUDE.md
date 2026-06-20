@@ -73,7 +73,9 @@ src/qobit/
 ### Done
 
 - **Phase 1 (CLI)**: `qobit auth`, `qobit devices`, `qobit set-device`,
-  `qobit play <query>` with quality fallback and bit-perfect verification.
+  `qobit play <query>` with quality fallback and bit-perfect verification,
+  `qobit clear-cache` (deletes the on-disk cover-art cache via
+  `ui/_images.clear_disk_cache`).
 - **Auth**: Browser OAuth flow (primary) + email/password fallback. Session
   saved to `~/.config/qobit/config.json` and restored on next launch.
 - **TUI shell**: 6-tab layout (Tracks / Artists / Albums / Playlists / Search /
