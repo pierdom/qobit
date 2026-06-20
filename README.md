@@ -62,7 +62,7 @@ qobit
 | `6` | Queue tab |
 | `Escape` | Go back / clear filter / focus tab bar |
 | `↑` `↓` `←` `→` | Move cursor in grids and lists |
-| `PageUp` `PageDown` | Jump the selection one page in long lists (Tracks, Queue) |
+| `PageUp` `PageDown` | Jump the selection one page in long lists and grids (Tracks, Queue, Artists, Albums) |
 | `Home` `End` | Jump the selection to the first / last item |
 | `Enter` | Open selected item or play selected track |
 

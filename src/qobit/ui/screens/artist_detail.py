@@ -140,7 +140,55 @@ class AlbumCard(Widget):
         self.post_message(AlbumCard.Selected(self._album))
 
 
-class AlbumGrid(ScrollableContainer):
+class _GridNav:
+    """Shared Page/Home/End navigation for the card grids.
+
+    Moves the cursor by a page (visible rows × columns) and top-aligns the
+    scroll so the selection follows the visible page, mirroring PagedListView.
+    Relies on the host grid providing ``_visible_cards()``, ``_move_cursor()``,
+    ``_cols`` and ``_cursor`` — both AlbumGrid and ArtistGrid do."""
+
+    def _page_rows(self) -> int:
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        if not cards:
+            return 1
+        # Row pitch = gap between a card and the one a full row below it
+        # (height + gutter); fall back to a single card's height.
+        pitch = cards[0].region.height
+        if len(cards) > self._cols:  # type: ignore[attr-defined]
+            step = cards[self._cols].region.y - cards[0].region.y  # type: ignore[attr-defined]
+            if step > 0:
+                pitch = step
+        if pitch <= 0:
+            pitch = 1
+        return max(1, self.scrollable_content_region.height // pitch)  # type: ignore[attr-defined]
+
+    def action_page(self, direction: str) -> None:
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        if not cards:
+            return
+        if self._cursor == -1:  # type: ignore[attr-defined]
+            self._move_cursor(0, cards, top=True)  # type: ignore[attr-defined]
+            return
+        delta = self._page_rows() * self._cols  # type: ignore[attr-defined]
+        if direction == "up":
+            target = max(0, self._cursor - delta)  # type: ignore[attr-defined]
+        else:
+            target = min(len(cards) - 1, self._cursor + delta)  # type: ignore[attr-defined]
+        self._move_cursor(target, cards, top=True)  # type: ignore[attr-defined]
+
+    def action_jump_first(self) -> None:
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        if cards:
+            self._move_cursor(0, cards, top=True)  # type: ignore[attr-defined]
+
+    def action_jump_last(self) -> None:
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        if cards:
+            self._move_cursor(len(cards) - 1, cards, top=True)  # type: ignore[attr-defined]
+
+
+class AlbumGrid(_GridNav, ScrollableContainer):
     """Scrollable grid of AlbumCards; column count adapts to available width."""
 
     BINDINGS = [
@@ -148,6 +196,10 @@ class AlbumGrid(ScrollableContainer):
         Binding("down", "move('down')", show=False),
         Binding("left", "move('left')", show=False),
         Binding("right", "move('right')", show=False),
+        Binding("pageup", "page('up')", show=False),
+        Binding("pagedown", "page('down')", show=False),
+        Binding("home", "jump_first", show=False),
+        Binding("end", "jump_last", show=False),
         Binding("enter", "open_selected", "Open album", show=False),
     ]
 
@@ -192,7 +244,9 @@ class AlbumGrid(ScrollableContainer):
         self.scroll_home(animate=False)
         return any_visible
 
-    def _move_cursor(self, idx: int, cards: list[AlbumCard] | None = None) -> None:
+    def _move_cursor(
+        self, idx: int, cards: list[AlbumCard] | None = None, top: bool = False
+    ) -> None:
         if cards is None:
             cards = self._visible_cards()
         if not cards or idx < 0 or idx >= len(cards):
@@ -201,7 +255,10 @@ class AlbumGrid(ScrollableContainer):
             cards[self._cursor].remove_class("-selected")
         self._cursor = idx
         cards[idx].add_class("-selected")
-        cards[idx].scroll_visible()
+        if top:
+            cards[idx].scroll_visible(animate=False, top=True)
+        else:
+            cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
         cards = self._visible_cards()
@@ -304,7 +361,7 @@ class ArtistCard(Widget):
         self.post_message(ArtistCard.Selected(self._artist))
 
 
-class ArtistGrid(ScrollableContainer):
+class ArtistGrid(_GridNav, ScrollableContainer):
     """Scrollable grid of ArtistCards; column count adapts to available width."""
 
     BINDINGS = [
@@ -312,6 +369,10 @@ class ArtistGrid(ScrollableContainer):
         Binding("down", "move('down')", show=False),
         Binding("left", "move('left')", show=False),
         Binding("right", "move('right')", show=False),
+        Binding("pageup", "page('up')", show=False),
+        Binding("pagedown", "page('down')", show=False),
+        Binding("home", "jump_first", show=False),
+        Binding("end", "jump_last", show=False),
         Binding("enter", "open_selected", "Open artist", show=False),
     ]
 
@@ -356,7 +417,9 @@ class ArtistGrid(ScrollableContainer):
         self.scroll_home(animate=False)
         return any_visible
 
-    def _move_cursor(self, idx: int, cards: list[ArtistCard] | None = None) -> None:
+    def _move_cursor(
+        self, idx: int, cards: list[ArtistCard] | None = None, top: bool = False
+    ) -> None:
         if cards is None:
             cards = self._visible_cards()
         if not cards or idx < 0 or idx >= len(cards):
@@ -365,7 +428,10 @@ class ArtistGrid(ScrollableContainer):
             cards[self._cursor].remove_class("-selected")
         self._cursor = idx
         cards[idx].add_class("-selected")
-        cards[idx].scroll_visible()
+        if top:
+            cards[idx].scroll_visible(animate=False, top=True)
+        else:
+            cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
         cards = self._visible_cards()

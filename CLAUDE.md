@@ -300,6 +300,10 @@ queue. QueueView is display-only (can skip forward by selecting an item).
   row height) and top-aligns the scroll, so the highlight follows the visible
   page. Setting `index` reuses Textual's `watch_index` (scroll-to + highlight)
   and still emits `ListView.Highlighted`, so the app-level `-hl` styling works.
+  The card grids get the same behaviour via the `_GridNav` mixin
+  (`artist_detail.py`), shared by AlbumGrid and ArtistGrid: PageUp/PageDown move
+  the cursor by visible-rows × `_cols` (row pitch measured from card geometry)
+  and Home/End jump to the first/last card, each top-aligning the scroll.
 - **ListView highlight**: `QobitApp._on_list_highlighted` catches all
   `ListView.Highlighted` events app-wide and manages a `-hl` CSS class on the
   highlighted item's child Labels. `Label.-hl { color: $accent }` in app CSS
