@@ -137,6 +137,7 @@ resampling.
 ```
 ~/.config/qobit/config.json       credentials, audio_device, theme
 ~/.local/share/qobit/mpv.sock     IPC socket (created per playback session)
+~/.cache/qobit/images/            cached cover art (safe to delete; honours XDG_CACHE_HOME)
 ```
 
 ## License
