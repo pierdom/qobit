@@ -235,7 +235,7 @@ class TracksView(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         lv = self.query_one("#fav-tracks", ListView)
         try:
-            items = await app._client.get_all_favorite_tracks()
+            items = await app.ensure_favorite_tracks()
         except Exception as e:
             await lv.append(ListItem(Label(f"[red]{e}[/red]", markup=True)))
             return

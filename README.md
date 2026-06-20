@@ -81,6 +81,9 @@ On launch, qobit restores the last track you were playing into the transport
 bar at the position you left off, paused. Press `Space` (or click the transport
 bar) to resume from there.
 
+Tracks already in your favourites show a `♥` in the Queue, album, and artist
+track lists (the Tracks tab is omitted — everything there is a favourite).
+
 ### Library pages (Tracks, Artists, Albums, Playlists)
 
 | Key | Action |

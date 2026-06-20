@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import time
 from functools import lru_cache
@@ -194,6 +195,11 @@ class QobitApp(App[None]):
         self._pending_resume: tuple[Track, float] | None = None
         self._restoring: bool = False
         self._last_state_save: float = 0.0
+        # Favourite tracks, fetched once and shared by TracksView (full list)
+        # and the heart glyph in other track lists (id set). None = not loaded.
+        self._fav_tracks: list[dict] | None = None
+        self._fav_ids: set[str] | None = None
+        self._fav_lock = asyncio.Lock()
         self._media_keys = MediaKeys(
             on_play_pause=lambda: self.call_from_thread(self.action_pause),
             on_next=lambda: self.call_from_thread(self._advance_queue),
@@ -229,6 +235,7 @@ class QobitApp(App[None]):
         if get_transparent_background():
             self.action_toggle_background()
         self._restore_player_state()
+        self._warm_favorite_ids()
 
     def watch_theme(self, theme: str) -> None:
         if getattr(self, "_theme_ready", False):
@@ -287,6 +294,37 @@ class QobitApp(App[None]):
             self.query_one("#search-input").focus()
         except Exception:
             pass
+
+    # ── favourite tracks (heart glyph in track lists) ─────────────────────────
+
+    async def ensure_favorite_tracks(self) -> list[dict]:
+        """Raw favourite-track list, fetched exactly once and cached.
+
+        Double-checked locking serialises concurrent first callers (TracksView's
+        list load, the mount-time heart warm, the QueueView refresh, each
+        track-list builder) so the paginated favourites endpoint is hit once.
+        Raises on fetch failure (without caching) so callers can retry."""
+        if self._fav_tracks is not None:
+            return self._fav_tracks
+        async with self._fav_lock:
+            if self._fav_tracks is None:
+                self._fav_tracks = await self._client.get_all_favorite_tracks()
+            return self._fav_tracks
+
+    async def ensure_favorite_ids(self) -> set[str]:
+        """Set of favourited track ids, derived from the shared favourites
+        cache. Degrades to an empty set if the fetch fails (no hearts)."""
+        if self._fav_ids is None:
+            try:
+                tracks = await self.ensure_favorite_tracks()
+            except Exception:
+                tracks = []
+            self._fav_ids = {str(t.get("id")) for t in tracks}
+        return self._fav_ids
+
+    @work
+    async def _warm_favorite_ids(self) -> None:
+        await self.ensure_favorite_ids()
 
     # ── seek from mouse click on bar ─────────────────────────────────────────
 

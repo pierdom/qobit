@@ -20,7 +20,7 @@ from textual_image.widget import TGPImage
 from ...qobuz.models import Album, Track
 from .._images import fetch_image
 from ..widgets.transport import TransportBar
-from .search import ICON_TRACK
+from .search import ICON_FAV, ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -36,15 +36,16 @@ class TrackRow(ListItem):
     TrackRow Label { width: 1fr; }
     """
 
-    def __init__(self, track: Track, number: int) -> None:
+    def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
         super().__init__()
         self.track = track
         self._number = number
+        self._fav = f"  {ICON_FAV}" if favorite else ""
 
     def compose(self) -> ComposeResult:
         t = self.track
         num = f"{self._number:2}. {ICON_TRACK}"
-        yield Label(f"{num}  {t.display_title}  {t.duration_str}", classes="primary")
+        yield Label(f"{num}  {t.display_title}  {t.duration_str}{self._fav}", classes="primary")
 
 
 class AlbumDetailPanel(Widget):
@@ -178,8 +179,14 @@ class AlbumDetailPanel(Widget):
             self.query_one(".ap-desc", Label).update(escape(_strip_html(full.description)))
 
         if full.tracks:
+            fav_ids = await app.ensure_favorite_ids()
             lv = self.query_one(".ap-tracklist", ListView)
-            await lv.mount(*[TrackRow(track, i) for i, track in enumerate(full.tracks, 1)])
+            await lv.mount(
+                *[
+                    TrackRow(track, i, str(track.id) in fav_ids)
+                    for i, track in enumerate(full.tracks, 1)
+                ]
+            )
 
     @on(ListView.Selected)
     def _on_list_selected(self, event: ListView.Selected) -> None:
@@ -227,9 +234,10 @@ class AlbumScreen(Screen):
             f"[bold]{album.title}[/bold]\n"
             f"[dim]{album.artist}  ·  {year}  ·  {album.tracks_count} tracks[/dim]"
         )
+        fav_ids = await app.ensure_favorite_ids()
         lv = self.query_one("#tracklist", ListView)
         for i, track in enumerate(album.tracks, 1):
-            await lv.append(TrackRow(track, i))
+            await lv.append(TrackRow(track, i, str(track.id) in fav_ids))
 
     @on(ListView.Selected, "#tracklist")
     def _on_selected(self, event: ListView.Selected) -> None:

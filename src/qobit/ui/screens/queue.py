@@ -9,7 +9,7 @@ from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
 from ..widgets.lists import PagedListView
-from .search import ICON_TRACK
+from .search import ICON_FAV, ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -24,21 +24,24 @@ class NowPlayingRow(ListItem):
     NowPlayingRow .np-album { width: 1fr; color: $accent 55%; }
     """
 
-    def __init__(self, track: Track, is_paused: bool) -> None:
+    def __init__(self, track: Track, is_paused: bool, favorite: bool = False) -> None:
         super().__init__()
         self.track = track
         self._is_paused = is_paused
+        self._fav = f"  {ICON_FAV}" if favorite else ""
 
     def compose(self) -> ComposeResult:
         t = self.track
         icon = "⏸" if self._is_paused else "▶"
-        yield Label(f"{icon}  {t.artist} — {t.display_title}", classes="np-title")
+        yield Label(f"{icon}  {t.artist} — {t.display_title}{self._fav}", classes="np-title")
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="np-album")
 
     def set_paused(self, paused: bool) -> None:
         icon = "⏸" if paused else "▶"
         t = self.track
-        self.query_one(".np-title", Label).update(f"{icon}  {t.artist} — {t.display_title}")
+        self.query_one(".np-title", Label).update(
+            f"{icon}  {t.artist} — {t.display_title}{self._fav}"
+        )
 
 
 class QueueTrackRow(ListItem):
@@ -49,15 +52,17 @@ class QueueTrackRow(ListItem):
     QueueTrackRow .secondary { color: $text-muted; }
     """
 
-    def __init__(self, track: Track, number: int) -> None:
+    def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
         super().__init__()
         self.track = track
         self._number = number
+        self._fav = f"  {ICON_FAV}" if favorite else ""
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(
-            f"{self._number}. {ICON_TRACK}  {t.artist} — {t.display_title}", classes="primary"
+            f"{self._number}. {ICON_TRACK}  {t.artist} — {t.display_title}{self._fav}",
+            classes="primary",
         )
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
 
@@ -124,13 +129,18 @@ class QueueView(Widget):
 
         now_playing = app.now_playing
         queue = list(app._play_queue)
+        fav_ids = await app.ensure_favorite_ids()
+        if version != self._render_version:
+            return
         items: list[ListItem] = []
 
         if now_playing:
-            items.append(NowPlayingRow(now_playing, app.is_paused))
+            items.append(NowPlayingRow(now_playing, app.is_paused, str(now_playing.id) in fav_ids))
 
         if queue:
-            items.extend(QueueTrackRow(t, i) for i, t in enumerate(queue, 1))
+            items.extend(
+                QueueTrackRow(t, i, str(t.id) in fav_ids) for i, t in enumerate(queue, 1)
+            )
 
         if not items:
             await lv.append(ListItem(Label("[dim]Queue is empty.[/dim]", markup=True)))

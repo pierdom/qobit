@@ -334,6 +334,16 @@ queue. QueueView is display-only (can skip forward by selecting an item).
 - **Shared widget pattern**: `AlbumDetailPanel` and `ArtistHeader` use `.ap-*`
   / `.ah-*` CSS class selectors (not IDs) so multiple instances can coexist in
   the widget tree without selector conflicts.
+- **Favourites cache + heart glyph**: `QobitApp.ensure_favorite_tracks()`
+  fetches the raw favourite-track list exactly once (double-checked locking via
+  `_fav_lock`) and caches it; `ensure_favorite_ids()` derives the id set from
+  it. TracksView's list load and the `♥` (`ICON_FAV`) indicator in the other
+  track lists share this single fetch (warmed at mount via `_warm_favorite_ids`).
+  Track-list builders (QueueTrackRow/NowPlayingRow, ArtistTrackRow, album
+  `TrackRow`) `await app.ensure_favorite_ids()` in their `@work` builder and
+  pass a `favorite: bool` to the row, which appends the glyph as plain text (no
+  inline markup, so the `-hl` highlight still works). The Tracks tab shows no
+  heart — everything there is already a favourite.
 - **Lazy load pattern**: Library tabs call `_load()` inside `on_show` behind a
   `_loaded: bool` guard rather than `on_mount`. This prevents all tabs from
   racing at startup; each tab fetches only when the user first opens it.

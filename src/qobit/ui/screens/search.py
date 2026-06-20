@@ -19,6 +19,7 @@ ICON_TRACK = "♪"
 ICON_ARTIST = "⊙"
 ICON_ALBUM = "◎"
 ICON_PLAYLIST = "≡"
+ICON_FAV = "♥"  # appended to a track row when it's in the user's favourites
 
 
 # ── result item widgets (shared with library tabs) ────────────────────────────

@@ -19,7 +19,7 @@ from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
-from .search import ICON_TRACK
+from .search import ICON_FAV, ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -36,14 +36,17 @@ class ArtistTrackRow(ListItem):
     ArtistTrackRow .secondary { color: $text-muted; }
     """
 
-    def __init__(self, track: Track, number: int) -> None:
+    def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
         super().__init__()
         self.track = track
         self._number = number
+        self._fav = f"  {ICON_FAV}" if favorite else ""
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(f"{self._number}. {ICON_TRACK}  {t.display_title}", classes="primary")
+        yield Label(
+            f"{self._number}. {ICON_TRACK}  {t.display_title}{self._fav}", classes="primary"
+        )
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
 
 
@@ -657,8 +660,12 @@ class ArtistScreen(Screen):
         app: QobitApp = self.app  # type: ignore[assignment]
         items = await app._client.get_artist_top_tracks(self._artist_id)
         if items:
+            fav_ids = await app.ensure_favorite_ids()
             lv = self.query_one("#top-tracks", ListView)
-            rows = [ArtistTrackRow(Track.from_api(raw), i) for i, raw in enumerate(items, 1)]
+            rows = [
+                ArtistTrackRow(t := Track.from_api(raw), i, str(t.id) in fav_ids)
+                for i, raw in enumerate(items, 1)
+            ]
             await lv.mount(*rows)
 
     @on(events.Click, "#breadcrumb")

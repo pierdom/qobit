@@ -355,8 +355,12 @@ class ArtistsView(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         items = await app._client.get_artist_top_tracks(artist_id)
         if items:
+            fav_ids = await app.ensure_favorite_ids()
             lv = self.query_one("#top-tracks", ListView)
-            rows = [ArtistTrackRow(Track.from_api(raw), i) for i, raw in enumerate(items, 1)]
+            rows = [
+                ArtistTrackRow(t := Track.from_api(raw), i, str(t.id) in fav_ids)
+                for i, raw in enumerate(items, 1)
+            ]
             await lv.mount(*rows)
 
     @on(ArtistCard.Selected)
