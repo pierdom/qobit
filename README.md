@@ -77,6 +77,10 @@ qobit
 
 Click anywhere on the progress bar in the transport strip to seek to that position.
 
+On launch, qobit restores the last track you were playing into the transport
+bar at the position you left off, paused. Press `Space` (or click the transport
+bar) to resume from there.
+
 ### Library pages (Tracks, Artists, Albums, Playlists)
 
 | Key | Action |
@@ -138,9 +142,10 @@ resampling.
 ## Config paths
 
 ```
-~/.config/qobit/config.json       credentials, audio_device, theme
-~/.local/share/qobit/mpv.sock     IPC socket (created per playback session)
-~/.cache/qobit/images/            cached cover art (safe to delete; honours XDG_CACHE_HOME)
+~/.config/qobit/config.json            credentials, audio_device, theme
+~/.local/share/qobit/mpv.sock          IPC socket (created per playback session)
+~/.local/share/qobit/player_state.json last track + position (resumed on launch)
+~/.cache/qobit/images/                 cached cover art (safe to delete; honours XDG_CACHE_HOME)
 ```
 
 ## License

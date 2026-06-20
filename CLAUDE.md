@@ -17,7 +17,8 @@ src/qobit/
 ├── __init__.py              version string
 ├── __main__.py              CLI entry point + TUI launcher (qobit with no args)
 ├── config.py                credentials + device config (env → file → prompt)
-├── store.py                 JSON persistence for runtime state
+├── store.py                 JSON persistence for runtime state (DATA_DIR);
+│                            holds player_state.json (last track + position)
 ├── qobuz/
 │   ├── client.py            QobuzClient (reverse-engineers app_id/secret from
 │   │                        web bundle; email/password + OAuth flows)
@@ -161,6 +162,17 @@ src/qobit/
 - **Session restore**: `QobuzClient.restore_session()` called in
   `QobitApp.__init__()` (not `on_mount`) so credentials are available before
   any child widget worker fires.
+- **Playback state restore**: `_save_player_state()` persists the now-playing
+  track (`dataclasses.asdict`) + position to `player_state.json` on every track
+  change, on a ~5s throttle from the poll thread, and on `on_unmount`.
+  `_restore_player_state()` (in `on_mount`) reloads it into the transport bar
+  **paused and unloaded** — it does *not* spawn mpv (which on macOS would grab
+  the audio device in exclusive/hog mode while idle, and avoids surprise audio).
+  The track+position are held in `_pending_resume`; the next `action_pause`
+  (Space / transport click) calls `play_track(track, start=position)`, and
+  `MpvPlayer.play(url, start=)` passes `--start=` so mpv seeks on load. Stream
+  URLs expire, so only metadata+position are stored and the stream is re-fetched
+  on resume. `_restoring` guards the watcher from saving mid-restore.
 - **TracksView**: Favourite tracks in a sortable dense list (FavTrackRow:
   artist — title / album · duration). Full pagination via
   `get_all_favorite_tracks()`. Sort by Date Added / Artist / Title / Album;
@@ -408,8 +420,10 @@ compute pixel/cell ratios for correct image aspect ratios.
 ## Config paths
 
 ```
-~/.config/qobit/config.json       credentials, audio_device, theme, oauth session
-~/.local/share/qobit/mpv.sock     IPC socket (re-created on each play call)
+~/.config/qobit/config.json            credentials, audio_device, theme, oauth session
+~/.local/share/qobit/mpv.sock          IPC socket (re-created on each play call)
+~/.local/share/qobit/player_state.json last track + position (restored on launch)
+~/.cache/qobit/images/                 on-disk cover-art cache (qobit clear-cache)
 ```
 
 ## Development

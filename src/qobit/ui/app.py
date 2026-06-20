@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import time
 from functools import lru_cache
 
@@ -28,6 +29,8 @@ from ..config import (
 )
 from ..qobuz.client import QobuzClient, QobuzError
 from ..qobuz.models import StreamUrl, Track
+from ..store import load as load_state
+from ..store import save as save_state
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
 from .screens.playlists import PlaylistsView
@@ -98,6 +101,8 @@ class QobitCommands(Provider):
             help="Toggle between theme background and terminal transparency",
         )
 
+
+_PLAYER_STATE_FILE = "player_state.json"
 
 _TABS = [
     ("tracks", "Tracks"),
@@ -184,6 +189,11 @@ class QobitApp(App[None]):
         self._client = QobuzClient()
         self._player = MpvPlayer(audio_device=get_audio_device())
         self._play_queue: list[Track] = []
+        # A restored-but-not-yet-loaded track: (track, position). Set on launch
+        # from the persisted player state; resumed on the next play/pause press.
+        self._pending_resume: tuple[Track, float] | None = None
+        self._restoring: bool = False
+        self._last_state_save: float = 0.0
         self._media_keys = MediaKeys(
             on_play_pause=lambda: self.call_from_thread(self.action_pause),
             on_next=lambda: self.call_from_thread(self._advance_queue),
@@ -218,6 +228,7 @@ class QobitApp(App[None]):
         self._theme_ready = True
         if get_transparent_background():
             self.action_toggle_background()
+        self._restore_player_state()
 
     def watch_theme(self, theme: str) -> None:
         if getattr(self, "_theme_ready", False):
@@ -302,6 +313,11 @@ class QobitApp(App[None]):
                     self.call_from_thread(setattr, self, "is_paused", bool(paused))
                 if not self.is_playing:
                     self.call_from_thread(setattr, self, "is_playing", True)
+                # Persist position periodically so a crash/kill loses ≤5s.
+                now = time.monotonic()
+                if now - self._last_state_save > 5.0:
+                    self._last_state_save = now
+                    self.call_from_thread(self._save_player_state)
             elif self.is_playing:
                 natural_end = self._player._stop_gen == _seen_gen
                 self.call_from_thread(setattr, self, "is_playing", False)
@@ -314,11 +330,14 @@ class QobitApp(App[None]):
     # ── play (async worker — shares event loop with httpx) ───────────────────
 
     @work
-    async def play_track(self, track: Track, queue: list[Track] | None = None) -> None:
+    async def play_track(
+        self, track: Track, queue: list[Track] | None = None, start: float = 0.0
+    ) -> None:
+        self._pending_resume = None
         if queue is not None:
             self._play_queue = list(queue)
             self.queue_version += 1
-        await self._do_play(track)
+        await self._do_play(track, start=start)
 
     @work
     async def _advance_queue(self) -> None:
@@ -328,7 +347,7 @@ class QobitApp(App[None]):
         self.queue_version += 1
         await self._do_play(next_track)
 
-    async def _do_play(self, track: Track) -> None:
+    async def _do_play(self, track: Track, start: float = 0.0) -> None:
         self.status_msg = f"Loading {track.display_title}…"
         stream: StreamUrl | None = None
         for quality in ("FLAC_24_192", "FLAC_24_96", "FLAC_CD"):
@@ -345,9 +364,9 @@ class QobitApp(App[None]):
 
         if self._player.running:
             self._player.stop()
-        self._player.play(stream.url)
+        self._player.play(stream.url, start=start)
         self.now_playing = track
-        self.playback_pos = 0.0
+        self.playback_pos = start
         self.playback_dur = 0.0
         self.is_playing = True
         self.is_paused = False
@@ -361,6 +380,48 @@ class QobitApp(App[None]):
         )
         if track and track.image_url:
             self._fetch_media_key_art(track.image_url)
+        self._save_player_state()
+
+    # ── player state persistence (survive restarts) ──────────────────────────
+
+    def _save_player_state(self) -> None:
+        if self._restoring:
+            return
+        track = self.now_playing
+        if track is None:
+            return
+        try:
+            save_state(
+                _PLAYER_STATE_FILE,
+                {
+                    "track": dataclasses.asdict(track),
+                    "position": float(self.playback_pos),
+                    "duration": float(self.playback_dur),
+                },
+            )
+        except Exception:
+            pass
+
+    def _restore_player_state(self) -> None:
+        """Reload the last track + position into the transport bar (paused,
+        unloaded). The next play/pause press resumes it from that position."""
+        data = load_state(_PLAYER_STATE_FILE)
+        raw = data.get("track")
+        if not isinstance(raw, dict):
+            return
+        try:
+            track = Track(**raw)
+        except (TypeError, ValueError):
+            return
+        position = float(data.get("position") or 0.0)
+        duration = float(data.get("duration") or track.duration or 0.0)
+        self._restoring = True
+        self.playback_dur = duration
+        self.playback_pos = position
+        self.is_paused = True
+        self.now_playing = track
+        self._restoring = False
+        self._pending_resume = (track, position)
 
     @work
     async def _fetch_media_key_art(self, url: str) -> None:
@@ -385,6 +446,10 @@ class QobitApp(App[None]):
     def action_pause(self) -> None:
         if self._player.running:
             self._player.pause_toggle()
+        elif self._pending_resume is not None:
+            # Resume the track restored from the last session, from where it left off.
+            track, position = self._pending_resume
+            self.play_track(track, start=position)
 
     def action_previous(self) -> None:
         self._player.seek_to(0.0)
@@ -424,6 +489,7 @@ class QobitApp(App[None]):
     async def on_unmount(self) -> None:
         from ._images import close_client
 
+        self._save_player_state()
         self._media_keys.close()
         self._player.stop()
         await self._client.close()

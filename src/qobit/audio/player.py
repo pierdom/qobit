@@ -19,13 +19,16 @@ class MpvPlayer:
 
     # --- public API ---
 
-    def play(self, url: str) -> None:
+    def play(self, url: str, start: float = 0.0) -> None:
         self.stop()
         self._sock.parent.mkdir(parents=True, exist_ok=True)
         if self._sock.exists():
             self._sock.unlink()
 
-        cmd = ["mpv"] + self._flags() + [url]
+        cmd = ["mpv"] + self._flags()
+        if start > 0:
+            cmd.append(f"--start={start:.3f}")
+        cmd.append(url)
         self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def stop(self) -> None:
