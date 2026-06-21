@@ -23,13 +23,15 @@ from ..audio.player import MpvPlayer
 from ..config import (
     get_audio_device,
     get_oauth_session,
+    get_radio_mode,
     get_saved_theme,
     get_transparent_background,
+    set_radio_mode,
     set_saved_theme,
     set_transparent_background,
 )
 from ..qobuz.client import QobuzClient, QobuzError
-from ..qobuz.models import StreamUrl, Track
+from ..qobuz.models import Album, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
 from .screens.albums import AlbumsView
@@ -80,30 +82,40 @@ class _TransparentANSIToTruecolor(_ANSIToTruecolor):
 
 
 class QobitCommands(Provider):
+    def _commands(self) -> list[tuple[str, object, str]]:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        return [
+            (
+                "Draw theme background",
+                app.action_toggle_background,
+                "Toggle between theme background and terminal transparency",
+            ),
+            (
+                f"Endless radio: turn {'off' if app.radio_mode else 'on'}",
+                app.action_toggle_radio_mode,
+                "Auto-fill Up Next with Qobuz song-radio suggestions when the queue runs dry",
+            ),
+        ]
+
     async def search(self, query: str) -> Hits:
         matcher = self.matcher(query)
-        label = "Draw theme background"
-        score = matcher.match(label)
-        if score > 0:
-            app: QobitApp = self.app  # type: ignore[assignment]
-            yield Hit(
-                score,
-                matcher.highlight(label),
-                app.action_toggle_background,
-                help="Toggle between theme background and terminal transparency",
-            )
+        for label, callback, help_text in self._commands():
+            score = matcher.match(label)
+            if score > 0:
+                yield Hit(score, matcher.highlight(label), callback, help=help_text)
 
     async def discover(self) -> Hits:
-        app: QobitApp = self.app  # type: ignore[assignment]
-        yield Hit(
-            0,
-            "Draw theme background",
-            app.action_toggle_background,
-            help="Toggle between theme background and terminal transparency",
-        )
+        for label, callback, help_text in self._commands():
+            yield Hit(0, label, callback, help=help_text)
 
 
 _PLAYER_STATE_FILE = "player_state.json"
+
+# Most recently-played tracks kept in the session history (oldest dropped first).
+_HISTORY_MAX = 100
+# Pressing "previous" past this many seconds into a track restarts it; before
+# it, steps back to the previous track in history (standard media convention).
+_PREV_RESTART_THRESHOLD = 3.0
 
 _TABS = [
     ("tracks", "Tracks"),
@@ -166,6 +178,7 @@ class QobitApp(App[None]):
         Binding("space", "pause", "Pause"),
         Binding("[", "seek_back", "◀10s"),
         Binding("]", "seek_fwd", "10s▶"),
+        Binding("R", "start_radio", "Radio"),
         # 1-5 work when Tabs has focus; escape brings focus to Tabs from anywhere
         Binding("1", "switch_tab('tracks')", "Tracks", show=False),
         Binding("2", "switch_tab('artists')", "Artists", show=False),
@@ -178,6 +191,10 @@ class QobitApp(App[None]):
     ]
 
     now_playing: reactive[Track | None] = reactive(None)
+    # Full album of the now-playing track (year/genre/label/hi-res). Fetched
+    # async by _fetch_now_playing_album so the Now Playing block can show rich
+    # metadata the lean Track model doesn't carry. None until it arrives.
+    now_playing_album: reactive[Album | None] = reactive(None)
     is_playing: reactive[bool] = reactive(False)
     is_paused: reactive[bool] = reactive(False)
     playback_pos: reactive[float] = reactive(0.0)
@@ -185,12 +202,19 @@ class QobitApp(App[None]):
     status_msg: reactive[str] = reactive("")
     queue_version: reactive[int] = reactive(0)
     quality_label: reactive[str] = reactive("")
+    # Endless radio: when on, _advance_queue refills an empty queue with Qobuz
+    # song-radio suggestions. Reactive so the transport indicator stays live.
+    radio_mode: reactive[bool] = reactive(False)
 
     def __init__(self) -> None:
         super().__init__()
         self._client = QobuzClient()
         self._player = MpvPlayer(audio_device=get_audio_device())
         self._play_queue: list[Track] = []
+        # Tracks played earlier this session, oldest first. The just-finished
+        # track is appended on each track change (see _do_play). Session-only —
+        # not persisted. Capped at _HISTORY_MAX to bound memory.
+        self._history: list[Track] = []
         # A restored-but-not-yet-loaded track: (track, position). Set on launch
         # from the persisted player state; resumed on the next play/pause press.
         self._pending_resume: tuple[Track, float] | None = None
@@ -236,6 +260,7 @@ class QobitApp(App[None]):
         self._theme_ready = True
         if get_transparent_background():
             self.action_toggle_background()
+        self.radio_mode = get_radio_mode()
         self._restore_player_state()
         self._warm_favorite_ids()
 
@@ -410,15 +435,128 @@ class QobitApp(App[None]):
             self.queue_version += 1
         await self._do_play(track, start=start)
 
+    def clear_queue(self) -> None:
+        if self._play_queue:
+            self._play_queue.clear()
+            self.queue_version += 1
+
+    def clear_history(self) -> None:
+        if self._history:
+            self._history.clear()
+            self.queue_version += 1
+
     @work
     async def _advance_queue(self) -> None:
+        if not self._play_queue and self.radio_mode and self.now_playing is not None:
+            # Queue ran dry under endless radio: refill from suggestions seeded
+            # by the just-finished track (now_playing is still that track here).
+            suggestions = await self._fetch_radio(self.now_playing)
+            if suggestions:
+                self._play_queue = suggestions
+                self.queue_version += 1
         if not self._play_queue:
             return
         next_track = self._play_queue.pop(0)
         self.queue_version += 1
         await self._do_play(next_track)
 
-    async def _do_play(self, track: Track, start: float = 0.0) -> None:
+    # ── song radio (dynamic/suggest) ─────────────────────────────────────────
+
+    def action_start_radio(self) -> None:
+        seed = self.now_playing or (self._pending_resume[0] if self._pending_resume else None)
+        if seed is None:
+            self.status_msg = "Play something to start radio"
+            return
+        self.status_msg = "Starting radio…"
+        self._start_radio(seed)
+
+    @work
+    async def _start_radio(self, seed: Track) -> None:
+        suggestions = await self._fetch_radio(seed)
+        if not suggestions:
+            self.status_msg = "No radio suggestions available"
+            return
+        # Replace Up Next with the fresh station.
+        self._play_queue = suggestions
+        self.queue_version += 1
+        self.status_msg = f"Radio: {len(suggestions)} tracks queued"
+
+    def action_toggle_radio_mode(self) -> None:
+        self.radio_mode = not self.radio_mode
+        set_radio_mode(self.radio_mode)
+        self.status_msg = f"Endless radio {'on' if self.radio_mode else 'off'}"
+
+    @staticmethod
+    def _as_int(value: object) -> int | None:
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+
+    async def _analysed_entry(self, seed: Track) -> dict | None:
+        """Build one `track_to_analysed` entry (artist/label/genre ids) for the
+        seed. Reuses the already-fetched now_playing_album when it matches;
+        otherwise pulls the ids from a single track/get."""
+        artist_id = label_id = genre_id = None
+        album = self.now_playing_album
+        if album is not None and self.now_playing is not None and self.now_playing.id == seed.id:
+            artist_id, label_id, genre_id = album.artist_id, album.label_id, album.genre_id
+        else:
+            try:
+                data = await self._client.get_track(str(seed.id))
+            except QobuzError:
+                return None
+            alb = data.get("album") or {}
+            artist = alb.get("artist") or data.get("performer") or {}
+            artist_id = artist.get("id")
+            label_id = (alb.get("label") or {}).get("id")
+            genre_id = (alb.get("genre") or {}).get("id")
+        artist_id, label_id, genre_id = (
+            self._as_int(artist_id),
+            self._as_int(label_id),
+            self._as_int(genre_id),
+        )
+        if artist_id is None and genre_id is None:
+            return None
+        return {
+            "track_id": self._as_int(seed.id),
+            "artist_id": artist_id,
+            "label_id": label_id,
+            "genre_id": genre_id,
+        }
+
+    async def _fetch_radio(self, seed: Track) -> list[Track]:
+        """Fetch song-radio suggestions seeded from `seed` + recent history.
+        Returns parsed Tracks with the seed window de-duplicated out. Best-effort:
+        any failure yields an empty list and the caller leaves the queue intact."""
+        listened: list[int] = []
+        for track in [seed, *reversed(self._history)]:
+            tid = self._as_int(track.id)
+            if tid is not None and tid not in listened:
+                listened.append(tid)
+            if len(listened) >= 10:
+                break
+
+        entry = await self._analysed_entry(seed)
+        try:
+            resp = await self._client.get_dynamic_suggestions(listened, [entry] if entry else [])
+        except QobuzError:
+            return []
+
+        seen = {str(i) for i in listened}
+        out: list[Track] = []
+        for item in (resp.get("tracks") or {}).get("items") or []:
+            try:
+                track = Track.from_api(item)
+            except Exception:
+                continue
+            if str(track.id) in seen:
+                continue
+            seen.add(str(track.id))
+            out.append(track)
+        return out
+
+    async def _do_play(self, track: Track, start: float = 0.0, record_history: bool = True) -> None:
         self.status_msg = f"Loading {track.display_title}…"
         stream: StreamUrl | None = None
         for quality in ("FLAC_24_192", "FLAC_24_96", "FLAC_CD"):
@@ -433,16 +571,44 @@ class QobitApp(App[None]):
             self.status_msg = "No stream available"
             return
 
+        # Push the outgoing track to history before it's replaced. Skipped when
+        # stepping backwards (record_history=False) so previous/next don't
+        # ping-pong. This is the single chokepoint for every track change.
+        prev = self.now_playing
+        if record_history and prev is not None and prev.id != track.id:
+            self._history.append(prev)
+            if len(self._history) > _HISTORY_MAX:
+                del self._history[0]
+            self.queue_version += 1
+
         if self._player.running:
             self._player.stop()
         self._player.play(stream.url, start=start)
         self.now_playing = track
+        self.now_playing_album = None
         self.quality_label = stream.quality_badge
         self.playback_pos = start
         self.playback_dur = 0.0
         self.is_playing = True
         self.is_paused = False
         self.status_msg = ""
+        self._fetch_now_playing_album(track)
+
+    @work
+    async def _fetch_now_playing_album(self, track: Track) -> None:
+        """Pull the full album for the now-playing track so the Queue's Now
+        Playing block can show year/genre/label/hi-res. Best-effort: a failure
+        just leaves the extra metadata blank."""
+        if not track.album_id:
+            return
+        try:
+            data = await self._client.get_album(track.album_id)
+        except QobuzError:
+            return
+        # Bail if the track changed while the album was loading.
+        if self.now_playing is None or self.now_playing.id != track.id:
+            return
+        self.now_playing_album = Album.from_api(data)
 
     # ── media key sync ───────────────────────────────────────────────────────
 
@@ -524,7 +690,22 @@ class QobitApp(App[None]):
             self.play_track(track, start=position)
 
     def action_previous(self) -> None:
-        self._player.seek_to(0.0)
+        # Within the first few seconds, step back to the previous track in
+        # history; otherwise (or with no history) restart the current track.
+        if (
+            self._player.running and self.playback_pos > _PREV_RESTART_THRESHOLD
+        ) or not self._history:
+            self._player.seek_to(0.0)
+            return
+        prev = self._history.pop()
+        self.queue_version += 1
+        # record_history=False so the track we just left isn't pushed back onto
+        # history (which would make the next "previous" press ping-pong).
+        self._play_previous(prev)
+
+    @work
+    async def _play_previous(self, track: Track) -> None:
+        await self._do_play(track, record_history=False)
 
     def action_seek_back(self) -> None:
         self._player.seek(-10.0)

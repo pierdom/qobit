@@ -4,6 +4,7 @@
 import asyncio
 import base64
 import hashlib
+import json
 import re
 import socket
 import time
@@ -282,6 +283,29 @@ class QobuzClient:
 
     async def get_track(self, track_id: str) -> dict:
         return await self._get("track/get", track_id=track_id)
+
+    async def get_dynamic_suggestions(
+        self, listened_track_ids: list[int], analysed: list[dict], limit: int = 50
+    ) -> dict:
+        """Qobuz "song radio": similar-track recommendations seeded from recently
+        listened tracks. POST dynamic/suggest with a JSON body (sent as
+        text/plain, like the OAuth login exchange). Response shape:
+        ``{"tracks": {"items": [<track objects>]}}`` — items parse via
+        ``Track.from_api``. Field names (``listened_tracks_ids`` /
+        ``track_to_analysed``) match the web client exactly."""
+        body = {
+            "limit": limit,
+            "listened_tracks_ids": listened_track_ids,
+            "track_to_analysed": analysed,
+        }
+        r = await self._http.post(
+            API_BASE + "dynamic/suggest",
+            params=self._base_params(),
+            content=json.dumps(body),
+            headers={"Content-Type": "text/plain;charset=UTF-8"},
+        )
+        self._raise_for_status(r)
+        return r.json()
 
     async def get_artist(self, artist_id: str, albums_limit: int = 20) -> dict:
         return await self._get(

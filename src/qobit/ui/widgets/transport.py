@@ -119,19 +119,19 @@ class TransportBar(Widget):
     TransportBar {
         height: 6;
         border: round $primary-lighten-2;
-        /* top-right: audio resolution of the current track */
-        border-title-color: $accent;
-        border-title-align: right;
+        /* top-left: play/pause status ("Now Playing") */
+        border-title-color: $primary-lighten-2;
+        border-title-align: left;
         border-title-style: bold;
-        /* bottom-left: play/pause status */
-        border-subtitle-color: $primary-lighten-2;
-        border-subtitle-align: left;
+        /* bottom-right: audio resolution of the current track */
+        border-subtitle-color: $accent;
+        border-subtitle-align: right;
         layout: horizontal;
         padding: 0 1;
     }
     TransportBar.-playing {
         border: round $accent;
-        border-subtitle-color: $accent;
+        border-title-color: $accent;
     }
     TransportBar:hover {
         background: $boost;
@@ -164,12 +164,18 @@ class TransportBar(Widget):
         self.watch(app, "playback_dur", self._on_dur, init=True)
         self.watch(app, "status_msg", self._on_status_msg, init=True)
         self.watch(app, "quality_label", self._on_quality, init=True)
+        self.watch(app, "radio_mode", self._on_radio_mode, init=True)
 
     def _status(self) -> str:
         app: QobitApp = self.app  # type: ignore[assignment]
+        radio = "  ·  📻 Radio" if app.radio_mode else ""
         if not app.now_playing:
-            return ""
-        return "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
+            return "📻 Radio" if app.radio_mode else ""
+        status = "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
+        return status + radio
+
+    def _on_radio_mode(self, _: bool) -> None:
+        self.border_title = self._status()
 
     def _on_now_playing(self, track: object) -> None:
         content = self.query_one(_TransportContent)
@@ -181,18 +187,18 @@ class TransportBar(Widget):
         else:
             content.label = ""
             content.album = ""
-        self.border_subtitle = self._status()
+        self.border_title = self._status()
 
     def _on_is_playing(self, playing: bool) -> None:
         self.set_class(playing, "-playing")
 
     def _on_is_paused(self, paused: bool) -> None:
         self.is_paused = paused
-        self.border_subtitle = self._status()
+        self.border_title = self._status()
 
     def _on_quality(self, label: str) -> None:
-        # Audio resolution on the top-right of the border (no content space used).
-        self.border_title = label
+        # Audio resolution on the bottom-right of the border (no content space used).
+        self.border_subtitle = label
 
     def _on_pos(self, pos: float) -> None:
         self.query_one(_TransportContent).position = pos

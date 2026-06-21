@@ -74,11 +74,13 @@ qobit
 | `Space` | Pause / resume |
 | `[` | Seek back 10 s |
 | `]` | Seek forward 10 s |
+| `R` | Start a song radio from the current track |
 | `q` | Quit |
 
 Click anywhere on the progress bar in the transport strip to seek to that position.
-The current track's audio resolution (e.g. `24-bit · 192 kHz`) is shown on the
-top-right of the transport border.
+The `Now Playing` status sits on the top-left of the transport border; the
+current track's audio resolution (e.g. `24-bit · 192 kHz`) is shown on the
+bottom-right.
 
 On launch, qobit restores the last track you were playing into the transport
 bar at the position you left off, paused. Press `Space` (or click the transport
@@ -103,6 +105,38 @@ The current filter query is shown in the border subtitle: `/ query_` while
 typing, `⌕ query` when the filter is closed but results are still narrowed.
 Press `Escape` again from the filtered view to clear the query and restore all
 items.
+
+### Queue
+
+The Queue tab is a top-to-bottom timeline: **Recently Played** (tracks you've
+already heard this session, oldest first, `↺`) flows into **Now Playing**, then
+**Up Next**. The cursor opens on the current track, so `PageUp` walks back into
+history and `PageDown` into the queue. Selecting a Recently Played track replays
+it as a one-off without disturbing Up Next; selecting an Up Next track plays it
+and re-queues the rest.
+
+The **Now Playing** card shows the full picture for the current track: title,
+album, release year, stream resolution and duration, plus genre and label
+(loaded from Qobuz the moment a track starts).
+
+| Key | Action |
+|-----|--------|
+| `c` | Clear the Up Next queue |
+| `X` | Clear Recently Played |
+| `f` | Favourite / unfavourite the highlighted track |
+
+The OS **previous** media key is context-aware: within the first 3 seconds of a
+track it restarts it, otherwise it steps back to the previous track in history.
+
+### Radio
+
+Press `R` while a track is playing to start a **song radio** — Qobuz's
+similar-track recommendations, seeded from the current track plus what you've
+recently heard. It fills Up Next with ~50 suggestions (replacing the current
+queue). Enable **Endless radio** from the command palette (`Ctrl+P` →
+*Endless radio*) to keep playback going forever: when the queue empties, qobit
+automatically refills it with fresh suggestions based on the last track. The
+setting persists across launches.
 
 ### Search
 
