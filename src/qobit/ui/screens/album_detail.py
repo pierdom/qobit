@@ -111,6 +111,17 @@ class AlbumDetailPanel(Widget):
     AlbumDetailPanel:focus-within .ap-tracklist {
         border-top: solid $accent;
     }
+    /* Vertical-compact modes (see set_compact): halve the album art, then lay
+       the tracklist out in two columns when space is tight. */
+    AlbumDetailPanel.-small-art .ap-header { height: 9; }
+    AlbumDetailPanel.-small-art .ap-art    { height: 7; }
+    AlbumDetailPanel.-small-art .ap-meta   { height: 7; }
+    AlbumDetailPanel.-two-col .ap-tracklist {
+        layout: grid;
+        grid-size: 2;
+        grid-rows: 1;
+        grid-gutter: 0 2;
+    }
     """
 
     def compose(self) -> ComposeResult:
@@ -126,10 +137,20 @@ class AlbumDetailPanel(Widget):
         yield TrackListView(classes="ap-tracklist")
 
     def on_mount(self) -> None:
+        self._size_art(14)
+
+    def _size_art(self, height: int) -> None:
+        """Set the art width to keep it square for the given cell height."""
         cell = get_cell_size()
         if cell.width > 0 and cell.height > 0:
-            img_w = round(14 * cell.height / cell.width)
-            self.query_one(TGPImage).styles.width = img_w
+            self.query_one(TGPImage).styles.width = round(height * cell.height / cell.width)
+
+    def set_compact(self, small_art: bool, two_col: bool) -> None:
+        """Vertical-responsive layout: halve the album art and/or lay the
+        tracklist out in two columns when the page is short on height."""
+        self.set_class(small_art, "-small-art")
+        self.set_class(two_col, "-two-col")
+        self._size_art(7 if small_art else 14)
 
     def load(self, album: Album) -> None:
         """Populate the panel with album data and start async loading."""

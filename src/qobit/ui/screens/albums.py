@@ -25,6 +25,13 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
+# Vertical-responsive thresholds for the album detail page (AlbumsView height).
+# As the page gets shorter it progressively reclaims/densifies space: hide the
+# artist header, then halve the album art, then show the tracklist in 2 columns.
+_HIDE_ARTIST_BELOW = 32
+_SMALL_ART_BELOW = 24
+_TWO_COL_BELOW = 17
+
 
 class AlbumsView(Widget):
     BINDINGS = [
@@ -106,6 +113,18 @@ class AlbumsView(Widget):
             )
         else:
             self.call_after_refresh(self.query_one("#fav-albums-grid", AlbumGrid).focus)
+
+    # ── vertical responsiveness ────────────────────────────────────────────────
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._apply_responsive(event.size.height)
+
+    def _apply_responsive(self, height: int) -> None:
+        self.query_one(ArtistHeader).display = height >= _HIDE_ARTIST_BELOW
+        self.query_one("#album-panel", AlbumDetailPanel).set_compact(
+            small_art=height < _SMALL_ART_BELOW,
+            two_col=height < _TWO_COL_BELOW,
+        )
 
     # ── filter ───────────────────────────────────────────────────────────────
 
@@ -275,6 +294,7 @@ class AlbumsView(Widget):
 
         self.query_one("#albums-switcher", ContentSwitcher).current = "albums-album-view"
         self._album_view_active = True
+        self._apply_responsive(self.size.height)
         panel.focus_tracklist()
 
     def _show_grid(self) -> None:

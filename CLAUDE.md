@@ -124,7 +124,12 @@ src/qobit/
   (ContentSwitcher) to a full album detail view: ArtistHeader (image +
   biography) above AlbumDetailPanel (art, metadata, track list). Escape walks
   back: album detail → grid → clear filter. Selecting a track queues remaining
-  album tracks.
+  album tracks. The detail page is **vertically responsive** (`on_resize` →
+  `_apply_responsive`, thresholds `_HIDE_ARTIST_BELOW/_SMALL_ART_BELOW/`
+  `_TWO_COL_BELOW`): as the page shortens it progressively hides the ArtistHeader,
+  halves the album art, then lays the tracklist out in two columns
+  (`AlbumDetailPanel.set_compact` toggles `-small-art` / `-two-col` classes; the
+  tracklist `ListView` uses `layout: grid; grid-size: 2` in two-column mode).
 - **ArtistsView**: Mirrors AlbumsView aesthetic. Favourite artists in a
   sortable tile grid (ArtistGrid, `tile_min_width=33`) of ArtistCards (image +
   name + album count). Sort by Date Added / Name; same `s`/`r` bindings as
