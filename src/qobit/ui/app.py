@@ -197,7 +197,8 @@ class QobitApp(App[None]):
         self._last_state_save: float = 0.0
         # Favourite tracks, fetched once and shared by TracksView (full list)
         # and the heart glyph in other track lists (id set). None = not loaded.
-        self._fav_tracks: list[dict] | None = None
+        # Kept in sync by toggle_favorite so all views stay current.
+        self._fav_tracks: list[Track] | None = None
         self._fav_ids: set[str] | None = None
         self._fav_lock = asyncio.Lock()
         self._media_keys = MediaKeys(
@@ -297,8 +298,8 @@ class QobitApp(App[None]):
 
     # ── favourite tracks (heart glyph in track lists) ─────────────────────────
 
-    async def ensure_favorite_tracks(self) -> list[dict]:
-        """Raw favourite-track list, fetched exactly once and cached.
+    async def ensure_favorite_tracks(self) -> list[Track]:
+        """Favourite tracks, fetched exactly once and cached as `Track`s.
 
         Double-checked locking serialises concurrent first callers (TracksView's
         list load, the mount-time heart warm, the QueueView refresh, each
@@ -308,7 +309,8 @@ class QobitApp(App[None]):
             return self._fav_tracks
         async with self._fav_lock:
             if self._fav_tracks is None:
-                self._fav_tracks = await self._client.get_all_favorite_tracks()
+                raw = await self._client.get_all_favorite_tracks()
+                self._fav_tracks = [Track.from_api(r) for r in raw]
             return self._fav_tracks
 
     async def ensure_favorite_ids(self) -> set[str]:
@@ -319,25 +321,37 @@ class QobitApp(App[None]):
                 tracks = await self.ensure_favorite_tracks()
             except Exception:
                 tracks = []
-            self._fav_ids = {str(t.get("id")) for t in tracks}
+            self._fav_ids = {t.id for t in tracks}
         return self._fav_ids
 
     async def toggle_favorite(self, track: Track) -> bool:
-        """Add/remove a track from the user's Qobuz favourites and update the
-        id cache. Returns the new favourite state (unchanged on API error)."""
+        """Add/remove a track from the user's Qobuz favourites, keep the shared
+        caches in sync, and refresh the Tracks tab. Returns the new favourite
+        state (unchanged on API error)."""
         tid = str(track.id)
-        ids = await self.ensure_favorite_ids()
+        ids = await self.ensure_favorite_ids()  # also loads _fav_tracks
         try:
             if tid in ids:
                 await self._client.remove_favorite_track(tid)
                 ids.discard(tid)
-                return False
-            await self._client.add_favorite_track(tid)
-            ids.add(tid)
-            return True
+                if self._fav_tracks is not None:
+                    self._fav_tracks = [t for t in self._fav_tracks if t.id != tid]
+                new_state = False
+            else:
+                await self._client.add_favorite_track(tid)
+                ids.add(tid)
+                if self._fav_tracks is not None and not any(t.id == tid for t in self._fav_tracks):
+                    added = dataclasses.replace(track, favorited_at=int(time.time()))
+                    self._fav_tracks.append(added)
+                new_state = True
         except Exception:
             self.status_msg = "Couldn't update favourite"
             return tid in ids
+        try:
+            self.query_one(TracksView).favorite_changed(tid, new_state)
+        except Exception:
+            pass
+        return new_state
 
     @work
     async def _warm_favorite_ids(self) -> None:

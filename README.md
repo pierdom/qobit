@@ -85,7 +85,8 @@ bar) to resume from there.
 Tracks already in your favourites show a `♥` in the Queue, album, and artist
 track lists (the Tracks tab is omitted — everything there is a favourite).
 Press `f` on the highlighted track to favourite or unfavourite it: the `♥`
-appears/disappears, and on the Tracks tab the row drops out of the list.
+appears/disappears. Favouriting a track anywhere adds it to the Tracks tab;
+unfavouriting removes it there.
 
 ### Library pages (Tracks, Artists, Albums, Playlists)
 

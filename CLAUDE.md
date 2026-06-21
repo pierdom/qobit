@@ -335,10 +335,11 @@ queue. QueueView is display-only (can skip forward by selecting an item).
   / `.ah-*` CSS class selectors (not IDs) so multiple instances can coexist in
   the widget tree without selector conflicts.
 - **Favourites cache + heart glyph**: `QobitApp.ensure_favorite_tracks()`
-  fetches the raw favourite-track list exactly once (double-checked locking via
-  `_fav_lock`) and caches it; `ensure_favorite_ids()` derives the id set from
-  it. TracksView's list load and the `♥` (`ICON_FAV`) indicator in the other
-  track lists share this single fetch (warmed at mount via `_warm_favorite_ids`).
+  fetches the favourite-track list exactly once (double-checked locking via
+  `_fav_lock`), parses it to `Track`s and caches it as the single source of
+  truth; `ensure_favorite_ids()` derives the id set from it. TracksView's list
+  load and the `♥` (`ICON_FAV`) indicator in the other track lists share this
+  single fetch (warmed at mount via `_warm_favorite_ids`).
   Track-list builders (QueueTrackRow/NowPlayingRow, ArtistTrackRow, album
   `TrackRow`) `await app.ensure_favorite_ids()` in their `@work` builder and
   pass a `favorite: bool` to the row. The row's primary label is built with
@@ -350,13 +351,19 @@ queue. QueueView is display-only (can skip forward by selecting an item).
 - **Favourite toggle (`f`)**: `TrackListView` (`ui/widgets/lists.py`, a
   `PagedListView` subclass used by every track list — Tracks, Queue, album
   tracklist, artist top-tracks) binds `f` to `action_toggle_favorite`. It reads
-  `highlighted_child.track` and calls `QobitApp.toggle_favorite(track)` (which
-  hits `favorite/create` / `favorite/delete` and updates the `_fav_ids` cache),
-  then calls `row.set_favorite(new_state)` to flip the heart in place. On a
-  `favorites_only` list (the Tracks tab, set in `on_mount`) unfavouriting
-  removes the row instead. The binding lives on the focused list, so it's
-  correctly scoped; on TracksView's filter, the view's `on_key` stops printable
-  chars first, so `f` types into the filter rather than firing the toggle.
+  `highlighted_child.track` and calls `QobitApp.toggle_favorite(track)`, then
+  `row.set_favorite(new_state)` to flip the heart in place. The binding lives on
+  the focused list, so it's correctly scoped; on TracksView's filter, the view's
+  `on_key` stops printable chars first, so `f` types into the filter rather than
+  firing the toggle.
+  `toggle_favorite` hits `favorite/create` / `favorite/delete` **and keeps the
+  shared caches in sync**: it updates `_fav_ids` and `_fav_tracks` (appending a
+  `dataclasses.replace(track, favorited_at=now)` on add, filtering on remove),
+  then calls `TracksView.favorite_changed(id, is_fav)`. The Tracks tab rebuilds
+  its list from the shared cache on add and surgically removes the row on remove
+  (preserving scroll/selection), so favouriting from *any* view keeps the Tracks
+  tab current. If TracksView isn't loaded yet, it picks up the change on first
+  load (it reads the same `_fav_tracks` cache).
 - **Lazy load pattern**: Library tabs call `_load()` inside `on_show` behind a
   `_loaded: bool` guard rather than `on_mount`. This prevents all tabs from
   racing at startup; each tab fetches only when the user first opens it.

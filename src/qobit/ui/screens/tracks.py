@@ -97,8 +97,6 @@ class TracksView(Widget):
     def on_mount(self) -> None:
         container = self.query_one("#tracks-container", Vertical)
         container.border_title = "Favourite Tracks"
-        # `f` on the favourites list removes the row rather than clearing a heart.
-        self.query_one("#fav-tracks", TrackListView).favorites_only = True
         self._update_subtitle()
 
     def on_show(self) -> None:
@@ -241,8 +239,26 @@ class TracksView(Widget):
         except Exception as e:
             await lv.append(ListItem(Label(f"[red]{e}[/red]", markup=True)))
             return
-        self._tracks = [Track.from_api(raw) for raw in items]
+        self._tracks = list(items)
         self._render_list()
+
+    def favorite_changed(self, track_id: str, is_fav: bool) -> None:
+        """Keep the favourites list in sync when a track is (un)favourited from
+        anywhere — e.g. pressing `f` in the Queue or an album view."""
+        if not self._loaded:
+            return  # the first load will read the up-to-date app cache
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if is_fav:
+            if not any(t.id == track_id for t in self._tracks):
+                self._tracks = list(app._fav_tracks or [])
+                self._render_list()
+        elif any(t.id == track_id for t in self._tracks):
+            # Surgical removal preserves scroll/selection when unfavouriting here.
+            self._tracks = [t for t in self._tracks if t.id != track_id]
+            for row in self.query_one("#fav-tracks", ListView).query(FavTrackRow):
+                if row.track.id == track_id:
+                    row.remove()
+                    break
 
     @on(ListView.Selected, "#fav-tracks")
     def _on_selected(self, event: ListView.Selected) -> None:

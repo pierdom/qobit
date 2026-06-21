@@ -61,13 +61,11 @@ class TrackListView(PagedListView):
     track's favourite state.
 
     Rows are expected to expose a ``track`` attribute; rows that show a heart
-    also implement ``set_favorite(bool)``. On a favourites-only list (the Tracks
-    tab) unfavouriting removes the row instead of clearing a heart.
+    also implement ``set_favorite(bool)`` to flip it in place. ``toggle_favorite``
+    on the app keeps the shared favourites cache and the Tracks tab in sync.
     """
 
     BINDINGS = [Binding("f", "toggle_favorite", "Favourite", show=True)]
-
-    favorites_only: bool = False
 
     def action_toggle_favorite(self) -> None:
         child = self.highlighted_child
@@ -77,7 +75,5 @@ class TrackListView(PagedListView):
     @work
     async def _toggle_favorite(self, child: ListItem) -> None:
         new_state = await self.app.toggle_favorite(child.track)  # type: ignore[attr-defined]
-        if self.favorites_only and not new_state:
-            await child.remove()
-        elif hasattr(child, "set_favorite"):
+        if hasattr(child, "set_favorite"):
             child.set_favorite(new_state)  # type: ignore[attr-defined]
