@@ -25,7 +25,9 @@ src/qobit/
 │   └── models.py            typed dataclasses: Track, Album, Artist, Playlist,
 │                            StreamUrl
 ├── audio/
-│   ├── device.py            enumerate mpv audio devices
+│   ├── device.py            enumerate mpv audio devices; synthesizes raw
+│   │                        alsa/hw:CARD=…,DEV=… entries mpv never lists and
+│   │                        flags them (+ coreaudio) bit_perfect, sorted first
 │   ├── media_keys.py        OS media controls — macOS MPRemoteCommandCenter +
 │   │                        MPNowPlayingInfoCenter; Linux MPRIS2 via pydbus;
 │   │                        silently degrades when optional deps absent
@@ -291,6 +293,38 @@ src/qobit/
   it would otherwise publish a *second* MPRIS player exposing the tagless
   stream URL (wrong artist/title/album/art). qobit owns the MPRIS surface via
   `audio/media_keys.py`.
+- **Linux bit-perfect is device selection, not flags**: there is no
+  `--audio-exclusive` on Linux. Two viable paths, both documented in README
+  "Audio device setup":
+  - **PipeWire rate-following (recommended default)**: point qobit at the
+    ordinary `pipewire/…` node and unlock the rate ladder via a drop-in
+    (`~/.config/pipewire/pipewire.conf.d/*.conf`,
+    `default.clock.allowed-rates = [44100 48000 88200 96000 …]`). PipeWire then
+    reclocks the device to a solo stream's rate instead of resampling to one
+    fixed clock. The DAC stays a shareable system device with working system
+    volume, and it's bit-transparent for ≤24-bit at 100% volume (float32 holds
+    24-bit exactly). Verified: a 96 kHz source opened the DAC at
+    `/proc/asound/card*/pcm0p/sub0/hw_params` → `rate: 96000`.
+  - **Exclusive `alsa/hw:CARD=…,DEV=…`**: mpv opens the kernel ALSA device
+    directly, negotiates the source rate, guaranteed bit-perfect. But it's
+    *exclusive* — PipeWire loses the node, so the DAC **disappears from the
+    system device list while qobit plays** and no other app can use it. mpv
+    lists only the `sysdefault`/`front`/`surround`/`iec958` wrappers, so
+    `device.py` synthesizes the raw `hw:` entry (flagged `bit_perfect`). mpv
+    does *not* implement the D-Bus `org.freedesktop.ReserveDevice1` handshake
+    (QBZ does, in its `device_reservation` module), so the grab/release is
+    uncoordinated — acceptable, but the device vanishing is inherent to
+    exclusive mode, not fixable without reservation + still-exclusive.
+  - A default of the plain `pipewire/…FIIO_K13_R2R…` node with the distro's
+    `clock.allowed-rates: [48000]` was the original bug: everything played at
+    48 kHz.
+- **No in-app volume — by design**: bit-perfect and software volume are mutually
+  exclusive (any gain multiply changes the bits). With rate-following or plain
+  PipeWire, volume is the system mixer. With `hw:` it's the DAC's hardware
+  (knob, or ALSA/CoreAudio mixer if exposed — many R2R/desktop DACs don't).
+  **Don't add an mpv `set volume` IPC binding without gating it behind an
+  explicit, off-by-default non-bit-perfect mode** — it silently breaks the
+  invariant on `hw:` output.
 
 ### Work in progress
 
