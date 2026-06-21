@@ -35,7 +35,8 @@ Authenticate once — this opens a browser to Qobuz and saves the session:
 qobit auth
 ```
 
-Pick your output device (required for bit-perfect output):
+Pick your output device (see [Audio device setup](#audio-device-setup) for
+bit-perfect vs. convenience trade-offs):
 
 ```bash
 qobit devices       # list mpv audio device IDs
@@ -160,9 +161,76 @@ qobit clear-cache                                # delete cached cover art from 
 
 ## Audio device setup
 
-On Linux, prefer `alsa/hw:CARD=<name>,DEV=0` for direct ALSA access (bypasses
-PulseAudio/PipeWire). On macOS, use `coreaudio/<device-uid>` — qobit enables
-Core Audio exclusive/hog mode automatically.
+qobit's goal is that the DAC receives exactly the bits from the FLAC — no
+resampling, no DSP. *How* you reach that depends on whether you want the DAC to
+stay a normal, shareable system device with a volume slider, or to be handed to
+qobit exclusively. Pick a device with `qobit set-device` (switch any time).
+
+| Option | DAC stays in system device list | Volume | Sample rate | Bit-perfect |
+|---|---|---|---|---|
+| **A. PipeWire rate-following** *(recommended)* | ✅ always | ✅ system volume | follows each track | ✅ transparent for ≤24-bit at 100% volume |
+| **B. Exclusive `alsa/hw:` / `coreaudio:`** | ❌ vanishes while qobit plays | knob only | follows each track | ✅ guaranteed, always |
+| **C. Plain PipeWire/Pulse** | ✅ always | ✅ system volume | resampled to a fixed clock (often 48 kHz) | ❌ |
+
+### Option A — PipeWire rate-following (recommended on Linux)
+
+Point qobit at the ordinary `pipewire/...` device for your DAC, then let
+PipeWire switch its graph clock to match each track instead of resampling to one
+fixed rate. By default most distros lock PipeWire to a single rate (e.g.
+`clock.allowed-rates = [ 48000 ]`); unlock the full ladder your DAC supports:
+
+`~/.config/pipewire/pipewire.conf.d/10-allowed-rates.conf`
+```
+context.properties = {
+    # list the rates your DAC actually supports (see: cat /proc/asound/card*/stream0)
+    default.clock.allowed-rates = [ 44100 48000 88200 96000 176400 192000 352800 384000 ]
+}
+```
+then reload PipeWire:
+```bash
+systemctl --user restart pipewire pipewire-pulse wireplumber
+```
+
+Now when qobit is the only thing playing, PipeWire reclocks the device to the
+file's rate (verify with `cat /proc/asound/card*/pcm0p/sub0/hw_params` during
+playback — `rate:` should match the track). The DAC stays visible to the whole
+system, your normal volume keys work, and for ≤24-bit content at 100% volume the
+signal is bit-transparent (PipeWire's internal float32 represents 24-bit
+exactly). Caveats: it stops being bit-exact if another app mixes in audio, if
+you drop volume below 100%, or for the rare 32-bit-int source — for streaming
+FLAC, none of those apply.
+
+### Option B — exclusive hardware (guaranteed bit-perfect, DAC goes solo)
+
+Pick a device flagged `♪` in `qobit devices` / `qobit set-device` (sorted to the
+top):
+
+- **Linux:** a raw `alsa/hw:CARD=<name>,DEV=0` entry. It talks straight to the
+  hardware, bypassing PipeWire/PulseAudio, so mpv negotiates the file's native
+  rate with the DAC. (mpv only ever lists the
+  `sysdefault`/`front`/`surround`/`iec958` wrappers, so qobit synthesizes the raw
+  `hw:` entry these don't expose.)
+- **macOS:** `coreaudio/<device-uid>` — qobit enables Core Audio exclusive/hog
+  mode automatically.
+
+This is the strongest guarantee — nothing can touch the stream — but it's
+**exclusive**: while qobit plays, the DAC disappears from the system device list
+and no other app can use it. **Volume comes from the DAC, not qobit:** use the
+unit's volume knob, or your system mixer if the DAC exposes a hardware volume
+control (many R2R/desktop DACs are knob-only and expose none). qobit has no
+in-app volume keys.
+
+### Option C — plain PipeWire/Pulse (fallback)
+
+A `pipewire/...` or `pulse/...` device with no rate config change: volume and
+system sharing work, but everything is resampled to PipeWire's fixed clock and
+converted through float32 — not bit-perfect. This is just Option A without the
+`allowed-rates` drop-in; configure Option A instead.
+
+> **Which should I pick?** Dedicated DAC and you want zero compromise with the
+> unit's knob for volume → **B**. Everyday desktop where the DAC is also your
+> system output and you want a volume slider → **A** (audibly identical to B for
+> streaming FLAC). **C** only if you can't edit PipeWire config.
 
 ## Quality tiers
 

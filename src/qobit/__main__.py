@@ -153,7 +153,8 @@ def cmd_devices(_args: argparse.Namespace) -> int:
     print("-" * 90)
     for d in devices:
         marker = " *" if d.id == current else ""
-        print(f"{d.id:<55}  {d.description}{marker}")
+        bp = " ♪" if d.bit_perfect else ""
+        print(f"{d.id:<55}  {d.description}{bp}{marker}")
     print()
     if current:
         print(f"Active: {current}")
@@ -174,10 +175,11 @@ def cmd_set_device(_args: argparse.Namespace) -> int:
         return 1
 
     current = get_audio_device()
-    print("\nAvailable audio devices:\n")
+    print("\nAvailable audio devices  (♪ = bit-perfect, recommended):\n")
     for i, d in enumerate(devices):
         marker = "  (current)" if d.id == current else ""
-        print(f"  [{i:2}]  {d.description:<45}  {d.id}{marker}")
+        bp = " ♪" if d.bit_perfect else "  "
+        print(f"  [{i:2}]{bp}  {d.description:<45}  {d.id}{marker}")
 
     print()
     raw = input("Select device number (Enter to cancel): ").strip()
