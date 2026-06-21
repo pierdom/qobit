@@ -462,29 +462,42 @@ class QobitApp(App[None]):
 
     # ── song radio (dynamic/suggest) ─────────────────────────────────────────
 
+    def _flash_status(self, msg: str, secs: float = 3.0) -> None:
+        """Show a transient status message, then revert. status_msg drives the
+        transport's main label (TransportBar._on_status_msg), so a *persistent*
+        message would hide the artist — title until the next track loads. Auto-
+        clearing lets the player fall back to the now-playing track."""
+        self.status_msg = msg
+        self.set_timer(secs, lambda: self._clear_flash(msg))
+
+    def _clear_flash(self, msg: str) -> None:
+        if self.status_msg == msg:  # only clear if nothing newer replaced it
+            self.status_msg = ""
+
     def action_start_radio(self) -> None:
         seed = self.now_playing or (self._pending_resume[0] if self._pending_resume else None)
         if seed is None:
-            self.status_msg = "Play something to start radio"
+            self._flash_status("Play something to start radio")
             return
-        self.status_msg = "Starting radio…"
+        # No pre-message: keep the current track visible in the player while the
+        # suggestions load; _start_radio flashes the result.
         self._start_radio(seed)
 
     @work
     async def _start_radio(self, seed: Track) -> None:
         suggestions = await self._fetch_radio(seed)
         if not suggestions:
-            self.status_msg = "No radio suggestions available"
+            self._flash_status("No radio suggestions available")
             return
         # Replace Up Next with the fresh station.
         self._play_queue = suggestions
         self.queue_version += 1
-        self.status_msg = f"Radio: {len(suggestions)} tracks queued"
+        self._flash_status(f"Radio: {len(suggestions)} tracks queued")
 
     def action_toggle_radio_mode(self) -> None:
         self.radio_mode = not self.radio_mode
         set_radio_mode(self.radio_mode)
-        self.status_msg = f"Endless radio {'on' if self.radio_mode else 'off'}"
+        self._flash_status(f"Endless radio {'on' if self.radio_mode else 'off'}")
 
     @staticmethod
     def _as_int(value: object) -> int | None:

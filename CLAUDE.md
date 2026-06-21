@@ -233,7 +233,12 @@ src/qobit/
   refills it from a fresh `_fetch_radio(now_playing)` before popping the next
   track. Both de-duplicate the seed window out of the results; failures leave
   the queue untouched. `radio_mode` is reactive so the `TransportBar` self-wires
-  a live `📻 Radio` indicator (appended to the top-left status label).
+  a live `📻 Radio` indicator (appended to the top-left status label). Radio
+  confirmations use `_flash_status` (auto-clears after ~3s) rather than a plain
+  `status_msg` set, because `status_msg` drives the transport's *main label*
+  (`TransportBar._on_status_msg`) — a persistent message would hide the
+  `artist — title` line until the next track loaded; flashing lets the player
+  fall back to the now-playing track.
   The **Now Playing card** is taller (height 4): title line + `album · year ·
   resolution · duration` + `genre · label`. The lean `Track` model carries none
   of year/genre/label, so `_do_play` fires `_fetch_now_playing_album(track)`
