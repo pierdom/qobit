@@ -137,7 +137,10 @@ src/qobit/
   tracklist `ListView` uses `layout: grid; grid-size: 2` in two-column mode).
 - **ArtistsView**: Mirrors AlbumsView aesthetic. Favourite artists in a
   sortable tile grid (ArtistGrid, `tile_min_width=33`) of ArtistCards (image +
-  name + album count). Sort by Date Added / Name; same `s`/`r` bindings as
+  name; no album count — the favourites endpoint's `albums_count` is inflated
+  (counts singles/comps/composer credits) and disagrees with the `artist/get`
+  count shown in the detail grid, so the misleading line was dropped). Sort by
+  Date Added / Name; same `s`/`r` bindings as
   AlbumsView. `/` in-border filter (artist name). Selecting an artist switches
   inline (ContentSwitcher) to a 3-level detail view: ArtistHeader above a
   nested ContentSwitcher that shows either (a) Top Tracks ListView + Albums &

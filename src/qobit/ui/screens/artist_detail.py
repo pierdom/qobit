@@ -319,21 +319,16 @@ class ArtistCard(Widget):
         width: 1fr;
         height: 1fr;
         layout: vertical;
+        align: left middle;
     }
     ArtistCard .card-name {
-        height: 3;
+        height: auto;
+        max-height: 5;
         width: 1fr;
         text-style: bold;
         overflow: hidden hidden;
     }
-    ArtistCard .card-meta {
-        height: 1;
-        width: 1fr;
-        color: $text-muted;
-        overflow: hidden hidden;
-    }
     ArtistCard.-selected .card-name { color: $accent; text-style: bold; }
-    ArtistCard.-selected .card-meta { color: $accent; }
     """
 
     def __init__(self, artist: Artist) -> None:
@@ -348,9 +343,6 @@ class ArtistCard(Widget):
         yield TGPImage()
         with Vertical(classes="card-info"):
             yield Label(escape(self._artist.name), classes="card-name", markup=True)
-            count = self._artist.albums_count
-            meta = f"[dim]{count} albums[/dim]" if count else ""
-            yield Label(meta, classes="card-meta", markup=True)
 
     def on_mount(self) -> None:
         cell = get_cell_size()
