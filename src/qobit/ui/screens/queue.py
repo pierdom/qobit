@@ -1,24 +1,41 @@
 from __future__ import annotations
 
+import html as _html
+import re
 from typing import TYPE_CHECKING
 
+from rich.text import Text
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Horizontal, VerticalScroll
 from textual.content import Content
+from textual.css.query import NoMatches
+from textual.events import Resize
 from textual.widget import Widget
-from textual.widgets import Label, ListItem, ListView
+from textual.widgets import Label, ListItem, ListView, Static
+from textual_image._terminal import get_cell_size
+from textual_image.widget import TGPImage
 
-from ...qobuz.models import Album, Track
+from ...qobuz.models import Track
+from .._images import fetch_image
 from ..widgets.lists import TrackListView
-from .search import ICON_FAV, ICON_TRACK
+from .search import ICON_FAV
+
+
+def _strip_html(text: str) -> str:
+    return _html.unescape(re.sub(r"<[^>]+>", " ", text)).strip()
+
 
 if TYPE_CHECKING:
     from ..app import QobitApp
 
 
 class SectionHeader(ListItem):
-    """A non-selectable divider labelling a queue section."""
+    """A non-selectable, full-width divider labelling a queue section.
+
+    The rule spans the list width (recomputed on resize) with the title on the
+    left and an optional count on the right: ``── Up Next ──────── 35 ──``."""
 
     DEFAULT_CSS = """
     SectionHeader { height: 1; padding: 0 1; background: $surface; }
@@ -26,82 +43,29 @@ class SectionHeader(ListItem):
     SectionHeader Label { width: 1fr; color: $accent; text-style: bold; }
     """
 
-    def __init__(self, title: str, spaced: bool = False) -> None:
+    def __init__(self, title: str, count: int | None = None, spaced: bool = False) -> None:
         super().__init__(disabled=True)
         self._title = title
+        self._count = count
         if spaced:
             self.add_class("-spaced")
 
     def compose(self) -> ComposeResult:
-        yield Label(f"─ {self._title} ".ljust(60, "─"))
+        yield Label(self._line(56))
 
+    def on_resize(self, event: Resize) -> None:
+        # event.size is the border-box width; subtract our own horizontal padding
+        # to get the Label's actual content width.
+        pad = self.styles.padding.left + self.styles.padding.right
+        self.query_one(Label).update(self._line(event.size.width - pad))
 
-class NowPlayingRow(ListItem):
-    """The currently playing track — a richer card showing album, year, genre,
-    label and the live stream resolution alongside the title."""
-
-    DEFAULT_CSS = """
-    NowPlayingRow { height: 4; padding: 1 1 0 1; background: $accent 8%; }
-    NowPlayingRow .np-title { width: 1fr; text-style: bold; color: $accent; }
-    NowPlayingRow .np-album { width: 1fr; color: $accent 70%; }
-    NowPlayingRow .np-extra { width: 1fr; color: $accent 45%; }
-    """
-
-    def __init__(
-        self,
-        track: Track,
-        is_paused: bool,
-        favorite: bool = False,
-        album: Album | None = None,
-        quality: str = "",
-    ) -> None:
-        super().__init__()
-        self.track = track
-        self._is_paused = is_paused
-        self._favorite = favorite
-        self._album = album
-        self._quality = quality
-
-    def _title(self) -> Content:
-        t = self.track
-        icon = "⏸" if self._is_paused else "▶"
-        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
-        return Content.assemble(f"{icon}  {t.artist} — {t.display_title}", heart)
-
-    def _album_line(self) -> str:
-        t = self.track
-        parts: list[str] = [t.album]
-        if self._album and self._album.year:
-            parts.append(str(self._album.year))
-        if self._quality:
-            parts.append(self._quality)
-        parts.append(t.duration_str)
-        return "     " + "  ·  ".join(p for p in parts if p)
-
-    def _extra_line(self) -> str:
-        if not self._album:
-            return ""
-        bits = [b for b in (self._album.genre, self._album.label) if b]
-        return ("     " + "  ·  ".join(bits)) if bits else ""
-
-    def compose(self) -> ComposeResult:
-        yield Label(self._title(), classes="np-title")
-        yield Label(self._album_line(), classes="np-album")
-        yield Label(self._extra_line(), classes="np-extra")
-
-    def set_paused(self, paused: bool) -> None:
-        self._is_paused = paused
-        self.query_one(".np-title", Label).update(self._title())
-
-    def set_favorite(self, favorite: bool) -> None:
-        self._favorite = favorite
-        self.query_one(".np-title", Label).update(self._title())
-
-    def set_details(self, album: Album | None, quality: str) -> None:
-        self._album = album
-        self._quality = quality
-        self.query_one(".np-album", Label).update(self._album_line())
-        self.query_one(".np-extra", Label).update(self._extra_line())
+    def _line(self, width: int) -> Text:
+        left = f"── {self._title} "
+        right = f" {self._count} ──" if self._count is not None else "──"
+        # `width` is the Label's content width; -1 leaves slack for the list's
+        # scrollbar gutter so the rule never wraps onto a second line.
+        fill = max(2, width - len(left) - len(right) - 1)
+        return Text(left + "─" * fill + right, no_wrap=True, overflow="crop")
 
 
 class QueueTrackRow(ListItem):
@@ -121,9 +85,7 @@ class QueueTrackRow(ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
-        return Content.assemble(
-            f"{self._number}. {ICON_TRACK}  {t.artist} — {t.display_title}", heart
-        )
+        return Content.assemble(f"{self._number:>2}.  {t.artist} — {t.display_title}", heart)
 
     def compose(self) -> ComposeResult:
         t = self.track
@@ -166,19 +128,235 @@ class HistoryTrackRow(ListItem):
         self.query_one(".primary", Label).update(self._primary())
 
 
+class NowPlayingListRow(ListItem):
+    """The currently-playing track shown in the left timeline, at the tail of the
+    Recently Played region — the 'now' point flowing from history into Up Next.
+    Accent-styled with a live ▶/⏸ icon; favourite-able via the list's ``f``."""
+
+    DEFAULT_CSS = """
+    NowPlayingListRow { height: 2; padding: 0 1; background: $accent 8%; }
+    NowPlayingListRow Label { width: 1fr; }
+    NowPlayingListRow .primary { text-style: bold; color: $accent; }
+    NowPlayingListRow .secondary { color: $accent 60%; }
+    """
+
+    def __init__(self, track: Track, is_paused: bool = False, favorite: bool = False) -> None:
+        super().__init__()
+        self.track = track
+        self._is_paused = is_paused
+        self._favorite = favorite
+
+    def _primary(self) -> Content:
+        t = self.track
+        icon = "⏸" if self._is_paused else "▶"
+        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
+        return Content.assemble(f"{icon}  {t.artist} — {t.display_title}", heart)
+
+    def compose(self) -> ComposeResult:
+        t = self.track
+        yield Label(self._primary(), classes="primary")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+
+    def set_paused(self, paused: bool) -> None:
+        self._is_paused = paused
+        self.query_one(".primary", Label).update(self._primary())
+
+    def set_favorite(self, favorite: bool) -> None:
+        self._favorite = favorite
+        self.query_one(".primary", Label).update(self._primary())
+
+
+class NowPlayingHero(Widget):
+    """Large now-playing focal panel: album art, rich metadata, artist bio.
+
+    The Queue page's right pane. Self-wires to QobitApp reactives on mount (the
+    same pattern as TransportBar) so it stays live wherever it's mounted. ``f``
+    toggles the now-playing track's favourite state when the panel is focused.
+    No progress bar — the always-on transport bar at the bottom owns playback
+    position/seek; the hero fills its space with the artist biography instead."""
+
+    can_focus = True
+    BINDINGS = [Binding("f", "toggle_favorite", "Favourite", show=False)]
+
+    _favorite: bool = False
+
+    DEFAULT_CSS = """
+    NowPlayingHero {
+        width: 2fr;
+        max-width: 66;
+        height: 1fr;
+        border: round $accent 40%;
+        border-title-color: $accent 40%;
+        border-title-align: left;
+        border-title-style: bold;
+        border-subtitle-color: $accent 40%;
+        border-subtitle-align: right;
+        layout: vertical;
+        align-horizontal: center;
+        padding: 1 2;
+    }
+    NowPlayingHero:focus {
+        border: round $accent;
+        border-title-color: $accent;
+        border-subtitle-color: $accent;
+    }
+    NowPlayingHero #hero-art {
+        width: 32;
+        height: 16;
+        margin-bottom: 1;
+        display: none;
+    }
+    NowPlayingHero.-playing #hero-art { display: block; }
+    NowPlayingHero .hero-title {
+        width: 1fr; text-align: center; text-style: bold; color: $accent;
+    }
+    NowPlayingHero .hero-artist {
+        width: 1fr; text-align: center; color: $accent 80%;
+    }
+    NowPlayingHero .hero-album {
+        width: 1fr; text-align: center; color: $accent 60%; margin-top: 1;
+    }
+    NowPlayingHero .hero-meta {
+        width: 1fr; text-align: center; color: $accent 45%;
+    }
+    NowPlayingHero #hero-bio {
+        width: 1fr; height: 1fr; margin-top: 1; scrollbar-size-vertical: 1;
+    }
+    NowPlayingHero .hero-bio {
+        width: 1fr; color: $text-muted; text-align: left;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield TGPImage(id="hero-art")
+        yield Label("", classes="hero-title")
+        yield Label("", classes="hero-artist")
+        yield Label("", classes="hero-album")
+        yield Label("", classes="hero-meta")
+        with VerticalScroll(id="hero-bio", can_focus=False):
+            yield Static("", classes="hero-bio")
+
+    def on_mount(self) -> None:
+        cell = get_cell_size()
+        if cell.width > 0 and cell.height > 0:
+            self.query_one(TGPImage).styles.width = round(16 * cell.height / cell.width)
+        app: QobitApp = self.app  # type: ignore[assignment]
+        self.watch(app, "now_playing", self._on_now_playing, init=True)
+        self.watch(app, "is_playing", self._on_is_playing, init=True)
+        self.watch(app, "is_paused", self._on_is_paused, init=True)
+        self.watch(app, "now_playing_album", self._on_details, init=True)
+        self.watch(app, "quality_label", self._on_quality, init=True)
+        self.watch(app, "now_playing_bio", self._on_bio, init=True)
+        self.watch(app, "radio_mode", self._on_radio, init=True)
+
+    # ── border title (play/pause + radio) ────────────────────────────────────
+
+    def _status(self) -> str:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        radio = "  ·  📻 Radio" if app.radio_mode else ""
+        if not app.now_playing:
+            return "📻 Radio" if app.radio_mode else "Now Playing"
+        status = "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
+        return status + radio
+
+    # ── reactive watchers ─────────────────────────────────────────────────────
+
+    def _on_now_playing(self, track: object) -> None:
+        if track and getattr(track, "image_url", None):
+            self._fetch_art(track.image_url)  # type: ignore[union-attr]
+        self._refresh_favorite()
+        self._render_meta()
+        self.border_title = self._status()
+
+    def _on_is_playing(self, playing: bool) -> None:
+        self.set_class(playing, "-playing")
+
+    def _on_is_paused(self, _: bool) -> None:
+        self.border_title = self._status()
+
+    def _on_details(self, _: object) -> None:
+        self._render_meta()
+
+    def _on_quality(self, label: str) -> None:
+        self.border_subtitle = label
+        self._render_meta()
+
+    def _on_radio(self, _: bool) -> None:
+        self.border_title = self._status()
+
+    def _on_bio(self, bio: str) -> None:
+        self.query_one(".hero-bio", Static).update(_strip_html(bio) if bio else "")
+        self.query_one("#hero-bio", VerticalScroll).scroll_home(animate=False)
+
+    # ── metadata render ───────────────────────────────────────────────────────
+
+    def _render_meta(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        t = app.now_playing
+        if not t:
+            self.query_one(".hero-title", Label).update("No media playing")
+            for cls in (".hero-artist", ".hero-album", ".hero-meta"):
+                self.query_one(cls, Label).update("")
+            return
+
+        heart = (f"   {ICON_FAV}", "$accent") if self._favorite else ""
+        self.query_one(".hero-title", Label).update(Content.assemble(t.display_title, heart))
+        self.query_one(".hero-artist", Label).update(t.artist)
+
+        album = app.now_playing_album
+        album_parts = [t.album]
+        if album and album.year:
+            album_parts.append(str(album.year))
+        self.query_one(".hero-album", Label).update("  ·  ".join(p for p in album_parts if p))
+
+        meta_parts = [b for b in (album.genre, album.label) if b] if album else []
+        self.query_one(".hero-meta", Label).update("  ·  ".join(meta_parts))
+
+    @work
+    async def _refresh_favorite(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        t = app.now_playing
+        if not t:
+            return
+        ids = await app.ensure_favorite_ids()
+        if self.is_mounted and app.now_playing is t:
+            self._favorite = str(t.id) in ids
+            self._render_meta()
+
+    async def action_toggle_favorite(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        t = app.now_playing
+        if not t:
+            return
+        self._favorite = await app.toggle_favorite(t)
+        if self.is_mounted:
+            self._render_meta()
+
+    @work
+    async def _fetch_art(self, url: str) -> None:
+        img = await fetch_image(url)
+        if img is not None and self.is_mounted:
+            try:
+                self.query_one(TGPImage).image = img
+            except NoMatches:
+                pass
+
+
 class QueueView(Widget):
     BINDINGS = [
         Binding("c", "clear_queue", "Clear queue", show=True),
         Binding("X", "clear_history", "Clear history", show=True),
     ]
 
+    # Below this width the right pane is dropped and the list goes full-width.
+    _NARROW_BELOW: int = 100
+
     DEFAULT_CSS = """
-    QueueView {
-        height: 1fr;
-        layout: vertical;
-    }
+    QueueView { height: 1fr; layout: vertical; }
+    QueueView #queue-body { height: 1fr; layout: horizontal; }
     QueueView #queue-list {
-        height: 1fr;
+        width: 3fr;
+        margin-right: 1;
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;
@@ -190,12 +368,17 @@ class QueueView(Widget):
         border-title-color: $accent;
         border-subtitle-color: $accent;
     }
+    /* Narrow terminals: hide the hero, list takes the full width. */
+    QueueView.-narrow #now-hero { display: none; }
+    QueueView.-narrow #queue-list { width: 1fr; margin-right: 0; }
     """
 
     _render_version: int = 0
 
     def compose(self) -> ComposeResult:
-        yield TrackListView(id="queue-list")
+        with Horizontal(id="queue-body"):
+            yield TrackListView(id="queue-list")
+            yield NowPlayingHero(id="now-hero")
 
     def on_mount(self) -> None:
         self.query_one("#queue-list", ListView).border_title = "Queue"
@@ -203,8 +386,9 @@ class QueueView(Widget):
         self.watch(app, "queue_version", self._on_queue_changed, init=True)
         self.watch(app, "now_playing", self._on_now_playing_changed, init=False)
         self.watch(app, "is_paused", self._on_paused_changed, init=False)
-        self.watch(app, "now_playing_album", self._on_details_changed, init=False)
-        self.watch(app, "quality_label", self._on_details_changed, init=False)
+
+    def on_resize(self, event: Resize) -> None:
+        self.set_class(event.size.width < self._NARROW_BELOW, "-narrow")
 
     def on_show(self) -> None:
         self.call_after_refresh(self.query_one("#queue-list", ListView).focus)
@@ -218,18 +402,10 @@ class QueueView(Widget):
         self._refresh_list(self._render_version)
 
     def _on_paused_changed(self, paused: bool) -> None:
+        # Flip the now-playing row's ▶/⏸ icon in place (no list re-render).
         try:
-            self.query_one(NowPlayingRow).set_paused(paused)
-        except Exception:
-            pass
-
-    def _on_details_changed(self, _: object) -> None:
-        # The album loads (and quality is set) shortly after a track starts;
-        # update the Now Playing card in place rather than re-rendering the list.
-        app: QobitApp = self.app  # type: ignore[assignment]
-        try:
-            self.query_one(NowPlayingRow).set_details(app.now_playing_album, app.quality_label)
-        except Exception:
+            self.query_one(NowPlayingListRow).set_paused(paused)
+        except NoMatches:
             pass
 
     def action_clear_queue(self) -> None:
@@ -260,25 +436,21 @@ class QueueView(Widget):
         items: list[ListItem] = []
         now_idx: int | None = None
 
+        # Recently Played region: history, then the now-playing track as its tail
+        # (no separate section — it's the 'now' point of the timeline).
         if history:
-            items.append(SectionHeader("Recently Played"))
+            items.append(SectionHeader("Recently Played", count=len(history)))
             items.extend(HistoryTrackRow(t, str(t.id) in fav_ids) for t in history)
-
         if now_playing:
-            items.append(SectionHeader("Now Playing", spaced=bool(history)))
             now_idx = len(items)
             items.append(
-                NowPlayingRow(
-                    now_playing,
-                    app.is_paused,
-                    str(now_playing.id) in fav_ids,
-                    album=app.now_playing_album,
-                    quality=app.quality_label,
-                )
+                NowPlayingListRow(now_playing, app.is_paused, str(now_playing.id) in fav_ids)
             )
 
         if queue:
-            items.append(SectionHeader("Up Next", spaced=bool(now_playing or history)))
+            items.append(
+                SectionHeader("Up Next", count=len(queue), spaced=bool(history or now_playing))
+            )
             items.extend(QueueTrackRow(t, i, str(t.id) in fav_ids) for i, t in enumerate(queue, 1))
 
         if not items:
@@ -294,8 +466,8 @@ class QueueView(Widget):
             parts.append(f"{len(queue)} queued")
         lv.border_subtitle = "  ·  ".join(parts)
 
-        # Start the cursor on the current track so PageUp walks into history and
-        # PageDown into the queue, and scroll it to the middle of the viewport.
+        # Park the cursor on the now-playing row (PageUp walks into history,
+        # PageDown down the queue) and centre it; fall back to the top.
         if now_idx is not None:
             lv.index = now_idx
             self.call_after_refresh(

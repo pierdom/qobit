@@ -31,7 +31,7 @@ from ..config import (
     set_transparent_background,
 )
 from ..qobuz.client import QobuzClient, QobuzError
-from ..qobuz.models import Album, StreamUrl, Track
+from ..qobuz.models import Album, Artist, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
 from .screens.albums import AlbumsView
@@ -195,6 +195,9 @@ class QobitApp(App[None]):
     # async by _fetch_now_playing_album so the Now Playing block can show rich
     # metadata the lean Track model doesn't carry. None until it arrives.
     now_playing_album: reactive[Album | None] = reactive(None)
+    # Biography of the now-playing artist, fetched async by _fetch_now_playing_bio
+    # so the Queue's Now Playing hero can fill its space with the artist story.
+    now_playing_bio: reactive[str] = reactive("")
     is_playing: reactive[bool] = reactive(False)
     is_paused: reactive[bool] = reactive(False)
     playback_pos: reactive[float] = reactive(0.0)
@@ -599,6 +602,7 @@ class QobitApp(App[None]):
         self._player.play(stream.url, start=start)
         self.now_playing = track
         self.now_playing_album = None
+        self.now_playing_bio = ""
         self.quality_label = stream.quality_badge
         self.playback_pos = start
         self.playback_dur = 0.0
@@ -621,7 +625,23 @@ class QobitApp(App[None]):
         # Bail if the track changed while the album was loading.
         if self.now_playing is None or self.now_playing.id != track.id:
             return
-        self.now_playing_album = Album.from_api(data)
+        album = Album.from_api(data)
+        self.now_playing_album = album
+        if album.artist_id:
+            self._fetch_now_playing_bio(track, album.artist_id)
+
+    @work
+    async def _fetch_now_playing_bio(self, track: Track, artist_id: str) -> None:
+        """Pull the now-playing artist's biography for the Now Playing hero.
+        Best-effort: a failure or missing bio just leaves the space empty.
+        Uses albums_limit=1 since only the bio is needed."""
+        try:
+            data = await self._client.get_artist(artist_id, albums_limit=1)
+        except QobuzError:
+            return
+        if self.now_playing is None or self.now_playing.id != track.id:
+            return
+        self.now_playing_bio = Artist.from_api(data).biography or ""
 
     # ── media key sync ───────────────────────────────────────────────────────
 

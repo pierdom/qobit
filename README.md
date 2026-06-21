@@ -109,22 +109,30 @@ items.
 
 ### Queue
 
-The Queue tab is a top-to-bottom timeline: **Recently Played** (tracks you've
-already heard this session, oldest first, `↺`) flows into **Now Playing**, then
-**Up Next**. The cursor opens on the current track, so `PageUp` walks back into
-history and `PageDown` into the queue. Selecting a Recently Played track replays
-it as a one-off without disturbing Up Next; selecting an Up Next track plays it
-and re-queues the rest.
+The Queue tab is split in two. On the **left** is a timeline: **Recently
+Played** (tracks you've already heard this session, oldest first, `↺`) flows
+into the **now-playing track** (accent-highlighted, with a ▶/⏸ icon) and on into
+**Up Next**. The cursor opens on the now-playing track, so `PageUp` walks back
+into history and `PageDown` down the queue. Selecting a Recently Played track
+replays it as a one-off without disturbing Up Next; selecting an Up Next track
+plays it and re-queues the rest.
 
-The **Now Playing** card shows the full picture for the current track: title,
-album, release year, stream resolution and duration, plus genre and label
-(loaded from Qobuz the moment a track starts).
+On the **right** is the **Now Playing** panel — the focal point of the page:
+large album art, title and artist, `album · year`, `genre · label`, and the
+artist's biography filling the rest of the space (scroll it with the mouse
+wheel). The stream resolution sits on the panel's bottom-right border. Genre,
+label, year and bio load from Qobuz the moment a track starts. Playback
+position and seeking live in the always-on transport bar at the bottom of every
+screen, which mirrors the same track as a mini-player.
+
+On **narrow terminals** (under ~100 columns) the Now Playing panel is dropped
+and the timeline takes the full width.
 
 | Key | Action |
 |-----|--------|
 | `c` | Clear the Up Next queue |
 | `X` | Clear Recently Played |
-| `f` | Favourite / unfavourite the highlighted track |
+| `f` | Favourite / unfavourite the highlighted track (or the now-playing track when the Now Playing panel is focused) |
 
 The OS **previous** media key is context-aware: within the first 3 seconds of a
 track it restarts it, otherwise it steps back to the previous track in history.

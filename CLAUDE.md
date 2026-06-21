@@ -60,12 +60,18 @@ src/qobit/
     │   │                    (Date Added/Artist/Title/Album), full pagination,
     │   │                    lazy load, in-border live filter (/)
     │   ├── playlists.py     PlaylistsView — user playlists library tab
-    │   └── queue.py         QueueView — timeline of three SectionHeader-divided
-    │                        sections: Recently Played (HistoryTrackRow, muted) →
-    │                        Now Playing (NowPlayingRow, accent, ▶/⏸ icon) →
-    │                        Up Next (QueueTrackRow); cursor starts on Now Playing.
-    │                        watches queue_version + now_playing + is_paused;
-    │                        _render_version guards. c clears queue, X history
+    │   └── queue.py         QueueView — responsive two-pane: left TrackListView
+    │                        timeline (Recently Played HistoryTrackRow →
+    │                        NowPlayingListRow (accent, live ▶/⏸) → Up Next
+    │                        QueueTrackRow, full-width SectionHeader dividers with
+    │                        counts; cursor parks on the now-playing row) + right
+    │                        NowPlayingHero (big art + rich metadata + scrollable
+    │                        artist bio; self-wires to app reactives like
+    │                        TransportBar; f favourites now-playing). Below
+    │                        _NARROW_BELOW=100 cols the hero is dropped (.-narrow)
+    │                        and the list goes full-width. watches queue_version +
+    │                        now_playing; _render_version guards. c clears queue,
+    │                        X history
     └── widgets/
         ├── lists.py         PagedListView — ListView subclass binding PageUp/
         │                    PageDown/Home/End to move the highlighted selection
@@ -214,20 +220,49 @@ src/qobit/
   `MpvPlayer` — incremented on every `stop()` call; the poll thread records the
   gen when `running=True` and compares it on transition to `False`; mismatch
   means `stop()` was called (skip advance), match means natural end (advance).
-  `QueueView` tab shows `NowPlayingRow` (accent styling, live ▶/⏸ icon) at the
-  top followed by `QueueTrackRow` items; selecting a queue item plays it with
-  remaining items re-queued.
-- **Session history + Queue timeline**: `QobitApp` keeps `_history: list[Track]`
+  `QueueView` selecting a queue item plays it with remaining items re-queued.
+- **Session history + Queue two-pane**: `QobitApp` keeps `_history: list[Track]`
   (oldest first, capped at `_HISTORY_MAX=100`). The single chokepoint `_do_play`
   pushes the *outgoing* `now_playing` onto history before replacing it (guarded
   by `record_history` so back-stepping doesn't re-record), bumping
-  `queue_version`. `QueueView` renders one `TrackListView` as a top-to-bottom
-  timeline of `SectionHeader`-divided sections — **Recently Played**
-  (`HistoryTrackRow`, muted, `↺` glyph; selecting replays as a one-off, leaving
-  Up Next intact) → **Now Playing** → **Up Next** — and parks the cursor on the
-  Now Playing row (so PageUp walks into history, PageDown into the queue),
-  centring it in the viewport. Border subtitle shows `N played · M queued`.
-  Bindings: `c` `clear_queue`, `X` `clear_history` (footer-scoped to the tab).
+  `queue_version`. `QueueView` is a horizontal split: a **left timeline**
+  `TrackListView` and a **right `NowPlayingHero`** focal panel.
+  The timeline renders **Recently Played** (`HistoryTrackRow`, muted, `↺` glyph;
+  selecting replays as a one-off, leaving Up Next intact) → the **now-playing
+  track** (`NowPlayingListRow`, accent, live ▶/⏸ icon) → **Up Next**
+  (`QueueTrackRow`). The now-playing row is the *tail of the Recently Played
+  region*, not its own section (when there's no history it's just the first
+  row); it carries `.track` + `set_favorite` so the list's `f` favourites it, and
+  selecting it is a no-op (the handler only acts on history/queue rows).
+  `QueueView` watches `is_paused` and flips the row's icon in place via
+  `set_paused` (no list re-render). The cursor parks on the now-playing row so
+  PageUp walks into history and PageDown down the queue, centred in the viewport.
+  The now-playing track also appears in the right `NowPlayingHero` panel — the
+  list row is the timeline anchor, the hero is the rich display. `SectionHeader`
+  is a full-width rule recomputed on resize (subtracting its own `padding` so the
+  Label width is exact, −1 for the scrollbar gutter, `no_wrap`/`crop` so it never
+  wraps), with the section count on the right (`── Up Next ──── 35 ──`). Border
+  subtitle shows `N played · M queued`. Bindings: `c` `clear_queue`, `X`
+  `clear_history` (footer-scoped to the tab).
+- **NowPlayingHero** (`queue.py`): the Queue page's right pane and intended
+  future "main page" focal point. Vertical stack: large centred album art
+  (`#hero-art`, ~16 cells tall, shown only while `-playing`), big title +
+  artist, `album · year`, `genre · label`, then a **scrollable artist bio**
+  (`#hero-bio` `VerticalScroll` + `.hero-bio` `Static`, HTML-stripped via the
+  local `_strip_html`, fills the remaining height; `can_focus=False` so it
+  wheel-scrolls without joining the tab order). **No progress bar** — the
+  always-on transport bar at the bottom owns playback position/seek, so a second
+  bar here was redundant; the bio uses that space instead. Quality badge sits on
+  the bottom-right border. Self-wires to every relevant `QobitApp` reactive on
+  mount (`now_playing`, `is_playing`, `is_paused`, `now_playing_album`,
+  `quality_label`, `now_playing_bio`, `radio_mode`) exactly like `TransportBar`,
+  so QueueView only has to refresh the list on `queue_version`/`now_playing`.
+  `can_focus`; `f` toggles the now-playing track's favourite (the in-list
+  favourite toggle no longer reaches it since it left the list). The bio is
+  fetched app-side: `_fetch_now_playing_album` chains `_fetch_now_playing_bio`
+  (a `@work` calling `get_artist(artist_id, albums_limit=1)` for just the bio)
+  once the album's `artist_id` is known, into the `now_playing_bio` reactive
+  (reset to `""` in `_do_play`, guarded against track-change mid-flight).
 - **Song radio**: `R` (`action_start_radio`) starts a station seeded from the
   now-playing track + recent `_history` and **replaces** Up Next with the ~50
   `dynamic/suggest` results (`_fetch_radio` → `get_dynamic_suggestions`;
@@ -244,16 +279,15 @@ src/qobit/
   (`TransportBar._on_status_msg`) — a persistent message would hide the
   `artist — title` line until the next track loaded; flashing lets the player
   fall back to the now-playing track.
-  The **Now Playing card** is taller (height 4): title line + `album · year ·
-  resolution · duration` + `genre · label`. The lean `Track` model carries none
-  of year/genre/label, so `_do_play` fires `_fetch_now_playing_album(track)`
-  (a `@work` that calls `get_album` and parses `Album.from_api`) into the
-  `now_playing_album: reactive[Album | None]`; the fetch bails if the track
-  changed mid-flight. QueueView watches `now_playing_album` + `quality_label`
-  and calls `NowPlayingRow.set_details(album, quality)` to fill the extra lines
-  in place (no list re-render) when the album arrives. Resolution comes from the
-  live `quality_label` (`StreamUrl.quality_badge`), i.e. the actually-streaming
-  rate, not the album's advertised max.
+  The **NowPlayingHero** shows `album · year` and `genre · label`. The lean
+  `Track` model carries none of year/genre/label, so `_do_play` fires
+  `_fetch_now_playing_album(track)` (a `@work` that calls `get_album` and parses
+  `Album.from_api`) into the `now_playing_album: reactive[Album | None]`; the
+  fetch bails if the track changed mid-flight. The hero self-watches
+  `now_playing_album` + `quality_label` and re-renders its metadata in place when
+  the album arrives. Resolution comes from the live `quality_label`
+  (`StreamUrl.quality_badge`), i.e. the actually-streaming rate, not the album's
+  advertised max.
 - **Smart previous** (`action_previous`, OS `previous` media key): within
   `_PREV_RESTART_THRESHOLD` (3s) of track start — or with empty history — it
   restarts the current track (`seek_to(0)`); otherwise it pops the last history
@@ -436,7 +470,7 @@ history, but there's still no way to *reorder* or remove a *single* item. Per-ro
   truth; `ensure_favorite_ids()` derives the id set from it. TracksView's list
   load and the `♥` (`ICON_FAV`) indicator in the other track lists share this
   single fetch (warmed at mount via `_warm_favorite_ids`).
-  Track-list builders (QueueTrackRow/NowPlayingRow, ArtistTrackRow, album
+  Track-list builders (QueueTrackRow, ArtistTrackRow, album
   `TrackRow`) `await app.ensure_favorite_ids()` in their `@work` builder and
   pass a `favorite: bool` to the row. The row's primary label is built with
   `Content.assemble(text, ("  ♥", "$accent"))` — these labels are Textual
