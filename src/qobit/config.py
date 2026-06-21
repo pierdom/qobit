@@ -74,6 +74,16 @@ def set_transparent_background(value: bool) -> None:
     save(cfg)
 
 
+def get_radio_mode() -> bool:
+    return bool(load().get("radio_mode", False))
+
+
+def set_radio_mode(value: bool) -> None:
+    cfg = load()
+    cfg["radio_mode"] = value
+    save(cfg)
+
+
 def prompt_and_save_credentials() -> tuple[str, str]:
     print("\nqobit needs your Qobuz credentials.")
     print("Stored in ~/.config/qobit/config.json (chmod 600 recommended)\n")

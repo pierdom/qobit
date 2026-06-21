@@ -58,9 +58,12 @@ src/qobit/
     │   │                    (Date Added/Artist/Title/Album), full pagination,
     │   │                    lazy load, in-border live filter (/)
     │   ├── playlists.py     PlaylistsView — user playlists library tab
-    │   └── queue.py         QueueView — NowPlayingRow (accent header, ▶/⏸ icon)
-    │                        + QueueTrackRow list; watches queue_version +
-    │                        now_playing + is_paused; _render_version guards
+    │   └── queue.py         QueueView — timeline of three SectionHeader-divided
+    │                        sections: Recently Played (HistoryTrackRow, muted) →
+    │                        Now Playing (NowPlayingRow, accent, ▶/⏸ icon) →
+    │                        Up Next (QueueTrackRow); cursor starts on Now Playing.
+    │                        watches queue_version + now_playing + is_paused;
+    │                        _render_version guards. c clears queue, X history
     └── widgets/
         ├── lists.py         PagedListView — ListView subclass binding PageUp/
         │                    PageDown/Home/End to move the highlighted selection
@@ -192,12 +195,13 @@ src/qobit/
   cache. Height 6 (4 content lines). `_TransportContent` owns the mouse
   handlers: clicking the title/album rows (y < 2) toggles pause; clicking the
   progress bar row (y >= 2) seeks to that position. Self-wires to QobitApp
-  reactives on mount. **Border labels**: the audio resolution of the current
-  track sits on the *top-right* of the border (`border_title`, right-aligned,
-  from the `quality_label` reactive set by `_do_play` to `StreamUrl.quality_badge`
-  and cleared by the poll thread on stop); the `▶/⏸ Now Playing` status sits on
-  the *bottom-left* (`border_subtitle`). Textual allows one label per border
-  edge, so the status moved to the bottom to free the top for the resolution.
+  reactives on mount. **Border labels**: the `▶/⏸ Now Playing` status sits on
+  the *top-left* of the border (`border_title`, left-aligned; turns `$accent`
+  via the `.-playing` class; gains a `· 📻 Radio` suffix while `radio_mode` is
+  on); the audio resolution of the current track sits on
+  the *bottom-right* (`border_subtitle`, right-aligned, `$accent`, from the
+  `quality_label` reactive set by `_do_play` to `StreamUrl.quality_badge` and
+  cleared by the poll thread on stop). Textual allows one label per border edge.
 - **Play Next queue**: `QobitApp` maintains `_play_queue: list[Track]` and a
   `queue_version: reactive[int]`. `play_track(track, queue=None)` plays
   immediately and sets the queue if provided. `_advance_queue()` pops the next
@@ -208,6 +212,43 @@ src/qobit/
   `QueueView` tab shows `NowPlayingRow` (accent styling, live ▶/⏸ icon) at the
   top followed by `QueueTrackRow` items; selecting a queue item plays it with
   remaining items re-queued.
+- **Session history + Queue timeline**: `QobitApp` keeps `_history: list[Track]`
+  (oldest first, capped at `_HISTORY_MAX=100`). The single chokepoint `_do_play`
+  pushes the *outgoing* `now_playing` onto history before replacing it (guarded
+  by `record_history` so back-stepping doesn't re-record), bumping
+  `queue_version`. `QueueView` renders one `TrackListView` as a top-to-bottom
+  timeline of `SectionHeader`-divided sections — **Recently Played**
+  (`HistoryTrackRow`, muted, `↺` glyph; selecting replays as a one-off, leaving
+  Up Next intact) → **Now Playing** → **Up Next** — and parks the cursor on the
+  Now Playing row (so PageUp walks into history, PageDown into the queue),
+  centring it in the viewport. Border subtitle shows `N played · M queued`.
+  Bindings: `c` `clear_queue`, `X` `clear_history` (footer-scoped to the tab).
+- **Song radio**: `R` (`action_start_radio`) starts a station seeded from the
+  now-playing track + recent `_history` and **replaces** Up Next with the ~50
+  `dynamic/suggest` results (`_fetch_radio` → `get_dynamic_suggestions`;
+  `_analysed_entry` pulls artist/genre/label ids from `now_playing_album`, else
+  one `get_track`). **Endless radio** (`radio_mode` reactive, persisted via
+  `config.get/set_radio_mode`, toggled from the command palette
+  `Endless radio: turn on/off`): when the queue runs dry, `_advance_queue`
+  refills it from a fresh `_fetch_radio(now_playing)` before popping the next
+  track. Both de-duplicate the seed window out of the results; failures leave
+  the queue untouched. `radio_mode` is reactive so the `TransportBar` self-wires
+  a live `📻 Radio` indicator (appended to the top-left status label).
+  The **Now Playing card** is taller (height 4): title line + `album · year ·
+  resolution · duration` + `genre · label`. The lean `Track` model carries none
+  of year/genre/label, so `_do_play` fires `_fetch_now_playing_album(track)`
+  (a `@work` that calls `get_album` and parses `Album.from_api`) into the
+  `now_playing_album: reactive[Album | None]`; the fetch bails if the track
+  changed mid-flight. QueueView watches `now_playing_album` + `quality_label`
+  and calls `NowPlayingRow.set_details(album, quality)` to fill the extra lines
+  in place (no list re-render) when the album arrives. Resolution comes from the
+  live `quality_label` (`StreamUrl.quality_badge`), i.e. the actually-streaming
+  rate, not the album's advertised max.
+- **Smart previous** (`action_previous`, OS `previous` media key): within
+  `_PREV_RESTART_THRESHOLD` (3s) of track start — or with empty history — it
+  restarts the current track (`seek_to(0)`); otherwise it pops the last history
+  track and plays it via `_do_play(record_history=False)` so previous/next don't
+  ping-pong.
 - **OS media controls** (`audio/media_keys.py`): macOS — registers
   `togglePlayPauseCommand`, `nextTrackCommand`, `previousTrackCommand` with
   `MPRemoteCommandCenter`; updates `MPNowPlayingInfoCenter` with title, artist,
@@ -283,8 +324,10 @@ overlay rather than a full pushed screen.
 immediately plays or navigates. Need a way to "Add to Play Next", "Open
 album", "Open artist" from any track row without immediately playing.
 
-**Queue management** — currently no way to reorder or remove items from the
-queue. QueueView is display-only (can skip forward by selecting an item).
+**Queue management** — `c` clears the whole Up Next queue and `X` clears
+history, but there's still no way to *reorder* or remove a *single* item. Per-row
+"remove from queue" / drag-reorder is still missing. QueueView can skip forward
+(select an Up Next item) and replay (select a Recently Played item).
 
 ## Textual patterns used in this codebase
 
@@ -448,6 +491,18 @@ object of their own, so `Track.from_api` can't resolve their cover — without
 this backfill, playing a track from the album view (or its play queue) would
 leave the transport bar and OS media-control art unchanged.
 
+**Song radio** (`get_dynamic_suggestions`): `POST dynamic/suggest` powers
+Qobuz's "song radio". Unlike the GET helpers, it sends a JSON body **as
+`text/plain;charset=UTF-8`** (same quirk as the OAuth `user/login` exchange),
+with query-param auth from `_base_params()`. Body fields (exact names):
+`limit`, `listened_tracks_ids` (int seed track ids), `track_to_analysed`
+(`[{track_id, artist_id, label_id, genre_id}]`). Response is
+`{"tracks": {"items": [<track objects>]}}` — items parse straight through
+`Track.from_api`. The endpoint was reverse-engineered from a web-player HAR
+capture; the official API doesn't document it. `Album` gained `genre_id` /
+`label_id` (alongside the existing `artist_id`) so the now-playing album fetch
+supplies `track_to_analysed` without an extra call.
+
 ## Image protocol
 
 Kitty graphics protocol only (no iTerm2 IIP, no sixel). Implemented via
@@ -461,7 +516,7 @@ compute pixel/cell ratios for correct image aspect ratios.
 ## Config paths
 
 ```
-~/.config/qobit/config.json            credentials, audio_device, theme, oauth session
+~/.config/qobit/config.json            credentials, audio_device, theme, radio_mode, oauth session
 ~/.local/share/qobit/mpv.sock          IPC socket (re-created on each play call)
 ~/.local/share/qobit/player_state.json last track + position (restored on launch)
 ~/.cache/qobit/images/                 on-disk cover-art cache (qobit clear-cache)

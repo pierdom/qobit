@@ -95,8 +95,10 @@ class Album:
     tracks_count: int
     artist_id: str | None = None
     genre: str | None = None
+    genre_id: int | None = None
     description: str | None = None
     label: str | None = None
+    label_id: int | None = None
     version: str | None = None
     maximum_bit_depth: int | None = None
     maximum_sampling_rate: float | None = None
@@ -154,8 +156,10 @@ class Album:
             year=year,
             tracks_count=data.get("tracks_count", len(tracks)),
             genre=data.get("genre", {}).get("name") or None,
+            genre_id=(data.get("genre") or {}).get("id"),
             description=data.get("description") or None,
             label=(data.get("label") or {}).get("name") or None,
+            label_id=(data.get("label") or {}).get("id"),
             version=data.get("version") or None,
             maximum_bit_depth=data.get("maximum_bit_depth") or None,
             maximum_sampling_rate=data.get("maximum_sampling_rate") or None,
