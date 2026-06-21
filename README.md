@@ -77,6 +77,8 @@ qobit
 | `q` | Quit |
 
 Click anywhere on the progress bar in the transport strip to seek to that position.
+The current track's audio resolution (e.g. `24-bit · 192 kHz`) is shown on the
+top-right of the transport border.
 
 On launch, qobit restores the last track you were playing into the transport
 bar at the position you left off, paused. Press `Space` (or click the transport

@@ -192,7 +192,12 @@ src/qobit/
   cache. Height 6 (4 content lines). `_TransportContent` owns the mouse
   handlers: clicking the title/album rows (y < 2) toggles pause; clicking the
   progress bar row (y >= 2) seeks to that position. Self-wires to QobitApp
-  reactives on mount.
+  reactives on mount. **Border labels**: the audio resolution of the current
+  track sits on the *top-right* of the border (`border_title`, right-aligned,
+  from the `quality_label` reactive set by `_do_play` to `StreamUrl.quality_badge`
+  and cleared by the poll thread on stop); the `▶/⏸ Now Playing` status sits on
+  the *bottom-left* (`border_subtitle`). Textual allows one label per border
+  edge, so the status moved to the bottom to free the top for the resolution.
 - **Play Next queue**: `QobitApp` maintains `_play_queue: list[Track]` and a
   `queue_version: reactive[int]`. `play_track(track, queue=None)` plays
   immediately and sets the queue if provided. `_advance_queue()` pops the next

@@ -184,6 +184,7 @@ class QobitApp(App[None]):
     playback_dur: reactive[float] = reactive(0.0)
     status_msg: reactive[str] = reactive("")
     queue_version: reactive[int] = reactive(0)
+    quality_label: reactive[str] = reactive("")
 
     def __init__(self) -> None:
         super().__init__()
@@ -392,6 +393,7 @@ class QobitApp(App[None]):
                 self.call_from_thread(setattr, self, "is_playing", False)
                 self.call_from_thread(setattr, self, "is_paused", False)
                 self.call_from_thread(setattr, self, "playback_pos", 0.0)
+                self.call_from_thread(setattr, self, "quality_label", "")
                 if natural_end:
                     self.call_from_thread(self._advance_queue)
             time.sleep(0.5)
@@ -435,6 +437,7 @@ class QobitApp(App[None]):
             self._player.stop()
         self._player.play(stream.url, start=start)
         self.now_playing = track
+        self.quality_label = stream.quality_badge
         self.playback_pos = start
         self.playback_dur = 0.0
         self.is_playing = True

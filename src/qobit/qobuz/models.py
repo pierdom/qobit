@@ -28,6 +28,14 @@ class StreamUrl:
         sr_str = f"{int(sr_khz)}" if sr_khz == int(sr_khz) else f"{sr_khz:.1f}"
         return f"{bd}/{sr_str}"
 
+    @property
+    def quality_badge(self) -> str:
+        """Human-readable resolution for the transport bar, e.g. 24-bit · 192 kHz."""
+        bd = self.bit_depth or 16
+        sr_khz = self.sampling_rate / 1000
+        sr_str = f"{int(sr_khz)}" if sr_khz == int(sr_khz) else f"{sr_khz:.1f}"
+        return f"{bd}-bit · {sr_str} kHz"
+
 
 @dataclass
 class Track:

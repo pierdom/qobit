@@ -119,14 +119,19 @@ class TransportBar(Widget):
     TransportBar {
         height: 6;
         border: round $primary-lighten-2;
-        border-title-color: $primary-lighten-2;
+        /* top-right: audio resolution of the current track */
+        border-title-color: $accent;
+        border-title-align: right;
         border-title-style: bold;
+        /* bottom-left: play/pause status */
+        border-subtitle-color: $primary-lighten-2;
+        border-subtitle-align: left;
         layout: horizontal;
         padding: 0 1;
     }
     TransportBar.-playing {
         border: round $accent;
-        border-title-color: $accent;
+        border-subtitle-color: $accent;
     }
     TransportBar:hover {
         background: $boost;
@@ -158,29 +163,36 @@ class TransportBar(Widget):
         self.watch(app, "playback_pos", self._on_pos, init=True)
         self.watch(app, "playback_dur", self._on_dur, init=True)
         self.watch(app, "status_msg", self._on_status_msg, init=True)
+        self.watch(app, "quality_label", self._on_quality, init=True)
+
+    def _status(self) -> str:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if not app.now_playing:
+            return ""
+        return "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
 
     def _on_now_playing(self, track: object) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
         content = self.query_one(_TransportContent)
         if track:
             content.label = f"{track.artist} — {track.display_title}"  # type: ignore[union-attr]
             content.album = track.album  # type: ignore[union-attr]
-            self.border_title = "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
             if track.image_url:  # type: ignore[union-attr]
                 self._fetch_art(track.image_url)  # type: ignore[union-attr]
         else:
             content.label = ""
             content.album = ""
-            self.border_title = ""
+        self.border_subtitle = self._status()
 
     def _on_is_playing(self, playing: bool) -> None:
         self.set_class(playing, "-playing")
 
     def _on_is_paused(self, paused: bool) -> None:
         self.is_paused = paused
-        app: QobitApp = self.app  # type: ignore[assignment]
-        if app.now_playing:
-            self.border_title = "⏸  Now Playing" if paused else "▶  Now Playing"
+        self.border_subtitle = self._status()
+
+    def _on_quality(self, label: str) -> None:
+        # Audio resolution on the top-right of the border (no content space used).
+        self.border_title = label
 
     def _on_pos(self, pos: float) -> None:
         self.query_one(_TransportContent).position = pos
