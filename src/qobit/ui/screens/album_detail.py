@@ -95,6 +95,9 @@ class AlbumDetailPanel(Widget):
         margin-right: 2;
     }
     AlbumDetailPanel .ap-meta   { width: 1fr; height: 14; }
+    /* Constrain the text rows to the meta column so long text wraps instead of
+       overflowing to the right (the description in particular). */
+    AlbumDetailPanel .ap-meta Label { width: 1fr; }
     AlbumDetailPanel .ap-title  { height: auto; text-style: bold; }
     AlbumDetailPanel .ap-version { height: auto; color: $text-muted; text-style: italic; }
     AlbumDetailPanel .ap-sub    { height: auto; color: $text-muted; margin-top: 1; }
