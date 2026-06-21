@@ -141,7 +141,7 @@ class AlbumDetailPanel(Widget):
         self.query_one(".ap-title", Label).update(escape(album.title))
         self.query_one(".ap-sub", Label).update(f"[dim]{' · '.join(parts)}[/dim]")
         for cls in (".ap-version", ".ap-badges", ".ap-awards", ".ap-desc"):
-            self.query_one(cls, Label).update("")
+            self._set_optional(cls, "")
         self.query_one(".ap-tracklist", ListView).clear()
         if album.image_url:
             self._fetch_art(album.image_url)
@@ -149,6 +149,13 @@ class AlbumDetailPanel(Widget):
 
     def focus_tracklist(self) -> None:
         self.query_one(".ap-tracklist", ListView).focus()
+
+    def _set_optional(self, selector: str, content: str) -> None:
+        """Update an optional meta label and collapse it (display: none) when
+        empty, so it leaves no blank row / margin behind."""
+        label = self.query_one(selector, Label)
+        label.update(content)
+        label.display = bool(content)
 
     @work
     async def _fetch_art(self, url: str) -> None:
@@ -164,10 +171,10 @@ class AlbumDetailPanel(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         full = Album.from_api(await app._client.get_album(album.id))
 
-        if full.version:
-            self.query_one(".ap-version", Label).update(
-                f"[dim italic]{escape(full.version)}[/dim italic]"
-            )
+        self._set_optional(
+            ".ap-version",
+            f"[dim italic]{escape(full.version)}[/dim italic]" if full.version else "",
+        )
         year = str(full.year) if full.year else "—"
         sub_parts: list[str] = [escape(full.artist), year]
         if full.genre:
@@ -183,13 +190,16 @@ class AlbumDetailPanel(Widget):
             badge_parts.append(q)
         if full.popularity is not None:
             badge_parts.append(f"★ {full.popularity}")
-        if badge_parts:
-            self.query_one(".ap-badges", Label).update(f"[dim]{' · '.join(badge_parts)}[/dim]")
+        self._set_optional(
+            ".ap-badges", f"[dim]{' · '.join(badge_parts)}[/dim]" if badge_parts else ""
+        )
 
-        if full.awards:
-            self.query_one(".ap-awards", Label).update("  ".join(escape(a) for a in full.awards))
-        if full.description:
-            self.query_one(".ap-desc", Label).update(escape(_strip_html(full.description)))
+        self._set_optional(
+            ".ap-awards", "  ".join(escape(a) for a in full.awards) if full.awards else ""
+        )
+        self._set_optional(
+            ".ap-desc", escape(_strip_html(full.description)) if full.description else ""
+        )
 
         if full.tracks:
             fav_ids = await app.ensure_favorite_ids()
