@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from textual import work
 from textual.binding import Binding
-from textual.widgets import ListView
+from textual.widgets import ListItem, ListView
 
 
 class PagedListView(ListView):
@@ -53,3 +54,30 @@ class PagedListView(ListView):
     def action_cursor_last(self) -> None:
         if self._nodes:
             self._jump(len(self._nodes))
+
+
+class TrackListView(PagedListView):
+    """A PagedListView for track rows. Adds `f` to toggle the highlighted
+    track's favourite state.
+
+    Rows are expected to expose a ``track`` attribute; rows that show a heart
+    also implement ``set_favorite(bool)``. On a favourites-only list (the Tracks
+    tab) unfavouriting removes the row instead of clearing a heart.
+    """
+
+    BINDINGS = [Binding("f", "toggle_favorite", "Favourite", show=True)]
+
+    favorites_only: bool = False
+
+    def action_toggle_favorite(self) -> None:
+        child = self.highlighted_child
+        if child is not None and hasattr(child, "track"):
+            self._toggle_favorite(child)
+
+    @work
+    async def _toggle_favorite(self, child: ListItem) -> None:
+        new_state = await self.app.toggle_favorite(child.track)  # type: ignore[attr-defined]
+        if self.favorites_only and not new_state:
+            await child.remove()
+        elif hasattr(child, "set_favorite"):
+            child.set_favorite(new_state)  # type: ignore[attr-defined]

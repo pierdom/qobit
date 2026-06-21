@@ -373,6 +373,12 @@ class QobuzClient:
     async def get_user_favorites(self, type: str = "tracks", limit: int = 50) -> dict:
         return await self._get("favorite/getUserFavorites", type=type, limit=limit)
 
+    async def add_favorite_track(self, track_id: str) -> dict:
+        return await self._get("favorite/create", track_ids=track_id)
+
+    async def remove_favorite_track(self, track_id: str) -> dict:
+        return await self._get("favorite/delete", track_ids=track_id)
+
     async def get_all_favorite_tracks(self) -> list[dict]:
         """Fetch every favourited track, paginating as needed."""
         first = await self._get("favorite/getUserFavorites", type="tracks", limit=50, offset=0)

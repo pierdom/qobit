@@ -9,7 +9,7 @@ from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
-from ..widgets.lists import PagedListView
+from ..widgets.lists import TrackListView
 from .search import ICON_FAV, ICON_TRACK
 
 if TYPE_CHECKING:
@@ -31,19 +31,24 @@ class NowPlayingRow(ListItem):
         self._is_paused = is_paused
         self._favorite = favorite
 
-    def _title(self, icon: str) -> Content:
+    def _title(self) -> Content:
         t = self.track
+        icon = "⏸" if self._is_paused else "▶"
         heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
         return Content.assemble(f"{icon}  {t.artist} — {t.display_title}", heart)
 
     def compose(self) -> ComposeResult:
         t = self.track
-        icon = "⏸" if self._is_paused else "▶"
-        yield Label(self._title(icon), classes="np-title")
+        yield Label(self._title(), classes="np-title")
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="np-album")
 
     def set_paused(self, paused: bool) -> None:
-        self.query_one(".np-title", Label).update(self._title("⏸" if paused else "▶"))
+        self._is_paused = paused
+        self.query_one(".np-title", Label).update(self._title())
+
+    def set_favorite(self, favorite: bool) -> None:
+        self._favorite = favorite
+        self.query_one(".np-title", Label).update(self._title())
 
 
 class QueueTrackRow(ListItem):
@@ -60,16 +65,21 @@ class QueueTrackRow(ListItem):
         self._number = number
         self._favorite = favorite
 
-    def compose(self) -> ComposeResult:
+    def _primary(self) -> Content:
         t = self.track
         heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
-        yield Label(
-            Content.assemble(
-                f"{self._number}. {ICON_TRACK}  {t.artist} — {t.display_title}", heart
-            ),
-            classes="primary",
+        return Content.assemble(
+            f"{self._number}. {ICON_TRACK}  {t.artist} — {t.display_title}", heart
         )
+
+    def compose(self) -> ComposeResult:
+        t = self.track
+        yield Label(self._primary(), classes="primary")
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+
+    def set_favorite(self, favorite: bool) -> None:
+        self._favorite = favorite
+        self.query_one(".primary", Label).update(self._primary())
 
 
 class QueueView(Widget):
@@ -96,7 +106,7 @@ class QueueView(Widget):
     _render_version: int = 0
 
     def compose(self) -> ComposeResult:
-        yield PagedListView(id="queue-list")
+        yield TrackListView(id="queue-list")
 
     def on_mount(self) -> None:
         self.query_one("#queue-list", ListView).border_title = "Up Next"

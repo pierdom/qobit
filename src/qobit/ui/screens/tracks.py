@@ -11,7 +11,7 @@ from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
-from ..widgets.lists import PagedListView
+from ..widgets.lists import TrackListView
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
@@ -92,11 +92,13 @@ class TracksView(Widget):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="tracks-container"):
-            yield PagedListView(id="fav-tracks")
+            yield TrackListView(id="fav-tracks")
 
     def on_mount(self) -> None:
         container = self.query_one("#tracks-container", Vertical)
         container.border_title = "Favourite Tracks"
+        # `f` on the favourites list removes the row rather than clearing a heart.
+        self.query_one("#fav-tracks", TrackListView).favorites_only = True
         self._update_subtitle()
 
     def on_show(self) -> None:

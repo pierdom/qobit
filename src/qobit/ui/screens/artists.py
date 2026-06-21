@@ -11,6 +11,7 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Label, ListView
 
 from ...qobuz.models import Album, Artist, Track
+from ..widgets.lists import TrackListView
 from .album_detail import AlbumDetailPanel
 from .artist_detail import (
     AlbumCard,
@@ -133,7 +134,7 @@ class ArtistsView(Widget):
                     initial="artist-tracks-albums-view", id="artist-content-switcher"
                 ):
                     with Vertical(id="artist-tracks-albums-view"):
-                        yield ListView(id="top-tracks")
+                        yield TrackListView(id="top-tracks")
                         yield AlbumGrid(id="artist-albums-grid")
                     with Vertical(id="artist-album-detail-view"):
                         yield Label("", id="album-breadcrumb")

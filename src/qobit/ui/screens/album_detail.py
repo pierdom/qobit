@@ -20,6 +20,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Album, Track
 from .._images import fetch_image
+from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .search import ICON_FAV, ICON_TRACK
 
@@ -43,14 +44,18 @@ class TrackRow(ListItem):
         self._number = number
         self._favorite = favorite
 
-    def compose(self) -> ComposeResult:
+    def _primary(self) -> Content:
         t = self.track
         num = f"{self._number:2}. {ICON_TRACK}"
         heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
-        yield Label(
-            Content.assemble(f"{num}  {t.display_title}  {t.duration_str}", heart),
-            classes="primary",
-        )
+        return Content.assemble(f"{num}  {t.display_title}  {t.duration_str}", heart)
+
+    def compose(self) -> ComposeResult:
+        yield Label(self._primary(), classes="primary")
+
+    def set_favorite(self, favorite: bool) -> None:
+        self._favorite = favorite
+        self.query_one(".primary", Label).update(self._primary())
 
 
 class AlbumDetailPanel(Widget):
@@ -115,7 +120,7 @@ class AlbumDetailPanel(Widget):
                 yield Label("", classes="ap-badges", markup=True)
                 yield Label("", classes="ap-awards", markup=True)
                 yield Label("", classes="ap-desc", markup=True)
-        yield ListView(classes="ap-tracklist")
+        yield TrackListView(classes="ap-tracklist")
 
     def on_mount(self) -> None:
         cell = get_cell_size()
@@ -222,7 +227,7 @@ class AlbumScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Label("Loading…", id="header")
-        yield ListView(id="tracklist")
+        yield TrackListView(id="tracklist")
         yield TransportBar()
         yield Footer()
 

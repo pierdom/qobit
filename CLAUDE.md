@@ -347,6 +347,16 @@ queue. QueueView is display-only (can skip forward by selecting an item).
   part (no markup parsing → titles with `[`/`]` can't corrupt or crash the
   render) while the heart gets an `$accent` span. The Tracks tab shows no
   heart — everything there is already a favourite.
+- **Favourite toggle (`f`)**: `TrackListView` (`ui/widgets/lists.py`, a
+  `PagedListView` subclass used by every track list — Tracks, Queue, album
+  tracklist, artist top-tracks) binds `f` to `action_toggle_favorite`. It reads
+  `highlighted_child.track` and calls `QobitApp.toggle_favorite(track)` (which
+  hits `favorite/create` / `favorite/delete` and updates the `_fav_ids` cache),
+  then calls `row.set_favorite(new_state)` to flip the heart in place. On a
+  `favorites_only` list (the Tracks tab, set in `on_mount`) unfavouriting
+  removes the row instead. The binding lives on the focused list, so it's
+  correctly scoped; on TracksView's filter, the view's `on_key` stops printable
+  chars first, so `f` types into the filter rather than firing the toggle.
 - **Lazy load pattern**: Library tabs call `_load()` inside `on_show` behind a
   `_loaded: bool` guard rather than `on_mount`. This prevents all tabs from
   racing at startup; each tab fetches only when the user first opens it.

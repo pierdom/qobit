@@ -18,6 +18,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
+from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
 from .search import ICON_FAV, ICON_TRACK
@@ -43,14 +44,19 @@ class ArtistTrackRow(ListItem):
         self._number = number
         self._favorite = favorite
 
-    def compose(self) -> ComposeResult:
+    def _primary(self) -> Content:
         t = self.track
         heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
-        yield Label(
-            Content.assemble(f"{self._number}. {ICON_TRACK}  {t.display_title}", heart),
-            classes="primary",
-        )
+        return Content.assemble(f"{self._number}. {ICON_TRACK}  {t.display_title}", heart)
+
+    def compose(self) -> ComposeResult:
+        t = self.track
+        yield Label(self._primary(), classes="primary")
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+
+    def set_favorite(self, favorite: bool) -> None:
+        self._favorite = favorite
+        self.query_one(".primary", Label).update(self._primary())
 
 
 class AlbumCard(Widget):
@@ -614,7 +620,7 @@ class ArtistScreen(Screen):
         yield ArtistHeader()
         with ContentSwitcher(initial="artist-view", id="main-content"):
             with Vertical(id="artist-view"):
-                yield ListView(id="top-tracks")
+                yield TrackListView(id="top-tracks")
                 yield AlbumGrid(id="albums")
             with Vertical(id="album-view"):
                 yield AlbumDetailPanel(id="album-panel")

@@ -322,6 +322,23 @@ class QobitApp(App[None]):
             self._fav_ids = {str(t.get("id")) for t in tracks}
         return self._fav_ids
 
+    async def toggle_favorite(self, track: Track) -> bool:
+        """Add/remove a track from the user's Qobuz favourites and update the
+        id cache. Returns the new favourite state (unchanged on API error)."""
+        tid = str(track.id)
+        ids = await self.ensure_favorite_ids()
+        try:
+            if tid in ids:
+                await self._client.remove_favorite_track(tid)
+                ids.discard(tid)
+                return False
+            await self._client.add_favorite_track(tid)
+            ids.add(tid)
+            return True
+        except Exception:
+            self.status_msg = "Couldn't update favourite"
+            return tid in ids
+
     @work
     async def _warm_favorite_ids(self) -> None:
         await self.ensure_favorite_ids()

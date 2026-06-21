@@ -64,6 +64,7 @@ qobit
 | `↑` `↓` `←` `→` | Move cursor in grids and lists |
 | `PageUp` `PageDown` | Jump the selection one page in long lists and grids (Tracks, Queue, Artists, Albums) |
 | `Home` `End` | Jump the selection to the first / last item |
+| `f` | Favourite / unfavourite the highlighted track (in any track list) |
 | `Enter` | Open selected item or play selected track |
 
 ### Playback
@@ -83,6 +84,8 @@ bar) to resume from there.
 
 Tracks already in your favourites show a `♥` in the Queue, album, and artist
 track lists (the Tracks tab is omitted — everything there is a favourite).
+Press `f` on the highlighted track to favourite or unfavourite it: the `♥`
+appears/disappears, and on the Tracks tab the row drops out of the list.
 
 ### Library pages (Tracks, Artists, Albums, Playlists)
 
