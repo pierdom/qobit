@@ -115,7 +115,8 @@ src/qobit/
   top track queues remaining top tracks; selecting an album track queues
   remaining album tracks.
 - **AlbumsView**: Favourite albums in a sortable responsive tile grid
-  (AlbumGrid, `tile_min_width=33`), showing album art, title, artist, year.
+  (AlbumGrid, `tile_min_width=42` for roomier cards + `grid-gutter: 1 4`),
+  showing album art, title, artist, year.
   Sort by Date Added / Artist / Album / Year; `s` cycles sort key, `r` reverses
   direction. `/` enters in-border live filter mode (title + artist); subtitle
   cycles through `/ query_` (typing), `⌕ query` (filter closed, results

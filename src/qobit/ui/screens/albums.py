@@ -43,6 +43,7 @@ class AlbumsView(Widget):
     AlbumsView AlbumGrid {
         height: 1fr;
         grid-rows: 6;
+        grid-gutter: 1 4;
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;
@@ -84,7 +85,7 @@ class AlbumsView(Widget):
     def compose(self) -> ComposeResult:
         with ContentSwitcher(initial="albums-grid-view", id="albums-switcher"):
             with Vertical(id="albums-grid-view"):
-                yield AlbumGrid(id="fav-albums-grid", tile_min_width=33)
+                yield AlbumGrid(id="fav-albums-grid", tile_min_width=42)
             with Vertical(id="albums-album-view"):
                 yield Label("← Favourite Albums", id="album-breadcrumb")
                 yield ArtistHeader()
