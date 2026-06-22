@@ -258,14 +258,23 @@ class AlbumScreen(Screen):
 
     DEFAULT_CSS = """
     AlbumScreen { layout: vertical; }
+    AlbumScreen #breadcrumb {
+        height: 1;
+        padding: 0 2;
+        color: $text-muted;
+        background: $boost;
+    }
+    AlbumScreen #breadcrumb:hover { color: $text; background: $panel; }
     AlbumScreen AlbumDetailPanel { height: 1fr; margin: 0 1 1 1; }
     """
 
-    def __init__(self, album: Album) -> None:
+    def __init__(self, album: Album, source: str = "Search results") -> None:
         super().__init__()
         self._album = album
+        self._source = source
 
     def compose(self) -> ComposeResult:
+        yield Label(f"← {self._source}", id="breadcrumb")
         yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
         yield Footer()
@@ -281,6 +290,10 @@ class AlbumScreen(Screen):
             small_art=event.size.height < _SMALL_ART_BELOW,
             two_col=event.size.height < _TWO_COL_BELOW,
         )
+
+    @on(events.Click, "#breadcrumb")
+    def _on_breadcrumb_click(self) -> None:
+        self.app.pop_screen()
 
     @on(AlbumDetailPanel.TrackSelected)
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
