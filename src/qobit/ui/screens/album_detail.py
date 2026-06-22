@@ -18,7 +18,7 @@ from textual.widgets import Footer, Label, ListItem, ListView
 from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
-from ...qobuz.models import Album, Track
+from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
@@ -243,6 +243,7 @@ class AlbumDetailPanel(Widget):
 
 
 # Vertical-responsive thresholds shared with AlbumsView.
+_HIDE_ARTIST_BELOW = 32
 _SMALL_ART_BELOW = 24
 _TWO_COL_BELOW = 17
 
@@ -274,22 +275,49 @@ class AlbumScreen(Screen):
         self._source = source
 
     def compose(self) -> ComposeResult:
+        # Lazy import avoids a circular dependency: artist_detail imports
+        # AlbumDetailPanel from this module at the top level.
+        from .artist_detail import ArtistHeader
+
         yield Label(f"← {self._source}", id="breadcrumb")
+        yield ArtistHeader()
         yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
         yield Footer()
 
     def on_mount(self) -> None:
+        from .artist_detail import ArtistHeader
+
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         panel = self.query_one("#album-panel", AlbumDetailPanel)
         panel.load(self._album)
+        header = self.query_one(ArtistHeader)
+        header.set_loading(self._album.artist or "Artist")
+        if self._album.artist_id:
+            self._load_artist_info(self._album.artist_id)
         self.call_after_refresh(panel.focus_tracklist)
 
     def on_resize(self, event: events.Resize) -> None:
+        from .artist_detail import ArtistHeader
+
+        h = event.size.height
+        self.query_one(ArtistHeader).display = h >= _HIDE_ARTIST_BELOW
         self.query_one("#album-panel", AlbumDetailPanel).set_compact(
-            small_art=event.size.height < _SMALL_ART_BELOW,
-            two_col=event.size.height < _TWO_COL_BELOW,
+            small_art=h < _SMALL_ART_BELOW,
+            two_col=h < _TWO_COL_BELOW,
         )
+
+    @work
+    async def _load_artist_info(self, artist_id: str) -> None:
+        from .artist_detail import ArtistHeader
+
+        app: QobitApp = self.app  # type: ignore[assignment]
+        artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
+        if self.is_mounted:
+            try:
+                self.query_one(ArtistHeader).populate(artist)
+            except NoMatches:
+                pass
 
     @on(events.Click, "#breadcrumb")
     def _on_breadcrumb_click(self) -> None:
