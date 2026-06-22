@@ -11,6 +11,7 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Label
 
 from ...qobuz.models import Album, Artist
+from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW
 from .album_detail import AlbumDetailPanel
 from .artist_detail import AlbumCard, AlbumGrid, ArtistHeader
 
@@ -31,13 +32,6 @@ _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 # during the initial load.
 _MAX_GRID = 200
 _BATCH = 50
-
-# Vertical-responsive thresholds for the album detail page (AlbumsView height).
-# As the page gets shorter it progressively reclaims/densifies space: hide the
-# artist header, then halve the album art, then show the tracklist in 2 columns.
-_HIDE_ARTIST_BELOW = 32
-_SMALL_ART_BELOW = 24
-_TWO_COL_BELOW = 17
 
 
 class AlbumsView(Widget):
@@ -127,10 +121,10 @@ class AlbumsView(Widget):
         self._apply_responsive(event.size.height)
 
     def _apply_responsive(self, height: int) -> None:
-        self.query_one(ArtistHeader).display = height >= _HIDE_ARTIST_BELOW
+        self.query_one(ArtistHeader).display = height >= HIDE_ARTIST_BELOW
         self.query_one("#album-panel", AlbumDetailPanel).set_compact(
-            small_art=height < _SMALL_ART_BELOW,
-            two_col=height < _TWO_COL_BELOW,
+            small_art=height < SMALL_ART_BELOW,
+            two_col=height < TWO_COL_BELOW,
         )
 
     # ── filter ───────────────────────────────────────────────────────────────

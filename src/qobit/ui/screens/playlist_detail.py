@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import html as _html
-import re
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -9,6 +7,7 @@ from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
 from textual_image._terminal import get_cell_size
@@ -16,15 +15,12 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist, Track
 from .._images import fetch_image
+from .._utils import strip_html
 from ..widgets.transport import TransportBar
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
-
-
-def _strip_html(text: str) -> str:
-    return _html.unescape(re.sub(r"<[^>]+>", " ", text)).strip()
 
 
 class PlaylistTrackRow(ListItem):
@@ -127,39 +123,66 @@ class PlaylistScreen(Screen):
     @work
     async def _load(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        playlist = Playlist.from_api(await app._client.get_playlist(self._playlist_id))
+        try:
+            playlist = Playlist.from_api(await app._client.get_playlist(self._playlist_id))
+        except Exception as e:
+            if self.is_mounted:
+                try:
+                    self.query_one("#playlist-panel").border_title = "Error"
+                    self.query_one(".pp-name", Label).update(f"[red]{escape(str(e))}[/red]")
+                except NoMatches:
+                    pass
+            return
 
-        panel = self.query_one("#playlist-panel")
-        panel.border_title = escape(playlist.name)
+        if not self.is_mounted:
+            return
 
-        self.query_one(".pp-name", Label).update(escape(playlist.name))
+        try:
+            panel = self.query_one("#playlist-panel")
+            panel.border_title = escape(playlist.name)
 
-        sub_parts = [f"by {escape(playlist.owner)}", f"{playlist.tracks_count} tracks"]
-        if playlist.duration_str:
-            sub_parts.append(playlist.duration_str)
-        if playlist.date_str:
-            sub_parts.append(playlist.date_str)
-        self.query_one(".pp-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+            self.query_one(".pp-name", Label).update(escape(playlist.name))
 
-        if playlist.description:
-            cleaned = escape(_strip_html(playlist.description))
-            self.query_one(".pp-desc", Label).update(f"[dim]{cleaned}[/dim]")
+            sub_parts = [f"by {escape(playlist.owner)}", f"{playlist.tracks_count} tracks"]
+            if playlist.duration_str:
+                sub_parts.append(playlist.duration_str)
+            if playlist.date_str:
+                sub_parts.append(playlist.date_str)
+            self.query_one(".pp-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+
+            if playlist.description:
+                cleaned = escape(strip_html(playlist.description))
+                self.query_one(".pp-desc", Label).update(f"[dim]{cleaned}[/dim]")
+        except NoMatches:
+            return
 
         if playlist.image_url:
             self._fetch_art(playlist.image_url)
 
-        if playlist.tracks:
+        if not playlist.tracks:
+            return
+
+        try:
             lv = self.query_one(".pp-tracklist", ListView)
             rows = [PlaylistTrackRow(t, i) for i, t in enumerate(playlist.tracks, 1)]
             await lv.mount(*rows)
+        except NoMatches:
+            return
 
-        self.query_one(".pp-tracklist", ListView).focus()
+        if self.is_mounted:
+            try:
+                self.query_one(".pp-tracklist", ListView).focus()
+            except NoMatches:
+                pass
 
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None:
-            self.query_one(".pp-art", TGPImage).image = img
+        if img is not None and self.is_mounted:
+            try:
+                self.query_one(".pp-art", TGPImage).image = img
+            except NoMatches:
+                pass
 
     @on(ListView.Selected, ".pp-tracklist")
     def _on_selected(self, event: ListView.Selected) -> None:

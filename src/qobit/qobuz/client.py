@@ -9,6 +9,7 @@ import re
 import socket
 import time
 import webbrowser
+from collections import OrderedDict
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -123,10 +124,11 @@ class QobuzClient:
         self._private_key: str | None = None
         self._prod_app_id: str | None = None
         self._http = httpx.AsyncClient(timeout=30.0, verify=True)
-        # Session-scoped caches — avoids re-fetching the same album/artist detail
-        # when the user navigates back to an already-visited page.
-        self._album_cache: dict[str, dict] = {}
-        self._artist_detail_cache: dict[str, dict] = {}
+        # Session-scoped LRU caches — avoids re-fetching the same album/artist
+        # detail when the user navigates back to an already-visited page. Bounded
+        # to prevent unbounded growth in very long sessions.
+        self._album_cache: OrderedDict[str, dict] = OrderedDict()
+        self._artist_detail_cache: OrderedDict[str, dict] = OrderedDict()
 
     def __repr__(self) -> str:
         token = self.user_auth_token
@@ -296,9 +298,14 @@ class QobuzClient:
         return await self._get("catalog/search", query=query, type=type, limit=limit)
 
     async def get_album(self, album_id: str) -> dict:
-        if album_id not in self._album_cache:
-            self._album_cache[album_id] = await self._get("album/get", album_id=album_id)
-        return self._album_cache[album_id]
+        if album_id in self._album_cache:
+            self._album_cache.move_to_end(album_id)
+            return self._album_cache[album_id]
+        result = await self._get("album/get", album_id=album_id)
+        self._album_cache[album_id] = result
+        if len(self._album_cache) > 500:
+            self._album_cache.popitem(last=False)
+        return result
 
     async def get_track(self, track_id: str) -> dict:
         return await self._get("track/get", track_id=track_id)
@@ -335,38 +342,22 @@ class QobuzClient:
             albums_sort="release_date",
         )
 
-    async def get_artist_page(self, artist_id: str, albums_limit: int = 100) -> dict:
-        """Biography, image, popularity-ranked top tracks, and albums for the Artist detail screen.
-
-        Calls artist/page (popularity-ranked top_tracks) and artist/get (albums, image, bio)
-        concurrently, then merges them so Artist.from_api sees a unified response.
-        """
-        page, detail = await asyncio.gather(
-            self._get("artist/page", artist_id=artist_id),
-            self._get(
-                "artist/get",
-                artist_id=artist_id,
-                extra="albums",
-                limit=albums_limit,
-                albums_sort="release_date",
-            ),
-        )
-        top_tracks = page.get("top_tracks", [])
-        items = top_tracks if isinstance(top_tracks, list) else top_tracks.get("items", [])
-        detail["tracks"] = {"items": items}
-        return detail
-
     async def get_artist_detail(self, artist_id: str, albums_limit: int = 100) -> dict:
         """Biography, image, and albums from artist/get (no top tracks)."""
-        if artist_id not in self._artist_detail_cache:
-            self._artist_detail_cache[artist_id] = await self._get(
-                "artist/get",
-                artist_id=artist_id,
-                extra="albums",
-                limit=albums_limit,
-                albums_sort="release_date",
-            )
-        return self._artist_detail_cache[artist_id]
+        if artist_id in self._artist_detail_cache:
+            self._artist_detail_cache.move_to_end(artist_id)
+            return self._artist_detail_cache[artist_id]
+        result = await self._get(
+            "artist/get",
+            artist_id=artist_id,
+            extra="albums",
+            limit=albums_limit,
+            albums_sort="release_date",
+        )
+        self._artist_detail_cache[artist_id] = result
+        if len(self._artist_detail_cache) > 200:
+            self._artist_detail_cache.popitem(last=False)
+        return result
 
     async def get_artist_top_tracks(self, artist_id: str) -> list[dict]:
         """Popularity-ranked top tracks from artist/page."""
@@ -414,9 +405,6 @@ class QobuzClient:
         raise last_error or QobuzError("No valid app_secret found for streaming")
 
     # --- user library ---
-
-    async def get_user_favorites(self, type: str = "tracks", limit: int = 50) -> dict:
-        return await self._get("favorite/getUserFavorites", type=type, limit=limit)
 
     async def add_favorite_track(self, track_id: str) -> dict:
         return await self._get("favorite/create", track_ids=track_id)
@@ -474,9 +462,6 @@ class QobuzClient:
             for r in results:
                 items.extend(r.get("artists", {}).get("items", []))
         return items
-
-    async def get_user_playlists(self, limit: int = 50) -> dict:
-        return await self._get("playlist/getUserPlaylists", limit=limit)
 
     async def get_all_user_playlists(self) -> list[dict]:
         """Fetch all user playlists, paginating as needed."""

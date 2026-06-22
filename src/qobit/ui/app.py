@@ -608,6 +608,8 @@ class QobitApp(App[None]):
                 data = await self._client.get_streaming_url(track_id, quality)
                 stream = StreamUrl.from_api(data)
                 self._track_quality_cache[track_id] = quality
+                if len(self._track_quality_cache) > 1000:
+                    del self._track_quality_cache[next(iter(self._track_quality_cache))]
                 break
             except AuthExpiredError:
                 self.status_msg = "Session expired — run: qobit auth"

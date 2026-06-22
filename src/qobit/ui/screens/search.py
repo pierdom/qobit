@@ -208,6 +208,7 @@ class SearchView(Widget):
     def _on_selected(self, event: ListView.Selected) -> None:
         from .album_detail import AlbumScreen
         from .artist_detail import ArtistScreen
+        from .playlist_detail import PlaylistScreen
 
         app: QobitApp = self.app  # type: ignore[assignment]
         item = event.item
@@ -221,3 +222,5 @@ class SearchView(Widget):
             app.push_screen(AlbumScreen(item.album))
         elif isinstance(item, ArtistItem):
             app.push_screen(ArtistScreen(item.artist.id, source="Search"))
+        elif isinstance(item, PlaylistItem):
+            app.push_screen(PlaylistScreen(item.playlist.id))

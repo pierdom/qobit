@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import html as _html
-import re
 from typing import TYPE_CHECKING
 
 from rich.text import Text
@@ -19,13 +17,9 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Track
 from .._images import fetch_image
+from .._utils import strip_html
 from ..widgets.lists import TrackListView
 from .search import ICON_FAV
-
-
-def _strip_html(text: str) -> str:
-    return _html.unescape(re.sub(r"<[^>]+>", " ", text)).strip()
-
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -285,7 +279,7 @@ class NowPlayingHero(Widget):
         self.border_title = self._status()
 
     def _on_bio(self, bio: str) -> None:
-        self.query_one(".hero-bio", Static).update(_strip_html(bio) if bio else "")
+        self.query_one(".hero-bio", Static).update(strip_html(bio) if bio else "")
         self.query_one("#hero-bio", VerticalScroll).scroll_home(animate=False)
 
     # ── metadata render ───────────────────────────────────────────────────────

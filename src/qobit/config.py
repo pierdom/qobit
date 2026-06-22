@@ -21,6 +21,14 @@ def save(data: dict[str, Any]) -> None:
     CONFIG_FILE.write_text(json.dumps(data, indent=2))
 
 
+def _secure_config() -> None:
+    """Restrict the config file to owner-only read/write (0o600)."""
+    try:
+        CONFIG_FILE.chmod(0o600)
+    except Exception:
+        pass
+
+
 def get_credentials() -> tuple[str, str]:
     email = os.environ.get("QOBUZ_EMAIL", "")
     password = os.environ.get("QOBUZ_PASSWORD", "")
@@ -51,7 +59,7 @@ def save_oauth_session(app_id: str, token: str, secrets: list[str]) -> None:
     cfg = load()
     cfg["oauth_session"] = {"app_id": app_id, "token": token, "secrets": secrets}
     save(cfg)
-    CONFIG_FILE.chmod(0o600)
+    _secure_config()
 
 
 def get_saved_theme() -> str | None:
@@ -94,7 +102,6 @@ def prompt_and_save_credentials() -> tuple[str, str]:
         cfg["email"] = email
         cfg["password"] = password
         save(cfg)
-        # Tighten permissions on the config file
-        CONFIG_FILE.chmod(0o600)
+        _secure_config()
         print("\nCredentials saved.\n")
     return email, password

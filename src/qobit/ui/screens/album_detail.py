@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import html as _html
-import re
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -20,16 +18,13 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
+from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, strip_html
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .search import ICON_FAV, ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
-
-
-def _strip_html(text: str) -> str:
-    return _html.unescape(re.sub(r"<[^>]+>", " ", text)).strip()
 
 
 class TrackRow(ListItem):
@@ -231,7 +226,7 @@ class AlbumDetailPanel(Widget):
                 ".ap-awards", "  ".join(escape(a) for a in full.awards) if full.awards else ""
             )
             self._set_optional(
-                ".ap-desc", escape(_strip_html(full.description)) if full.description else ""
+                ".ap-desc", escape(strip_html(full.description)) if full.description else ""
             )
         except NoMatches:
             return
@@ -263,12 +258,6 @@ class AlbumDetailPanel(Widget):
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             self.post_message(AlbumDetailPanel.TrackSelected(event.item.track, queue))
-
-
-# Vertical-responsive thresholds shared with AlbumsView.
-_HIDE_ARTIST_BELOW = 32
-_SMALL_ART_BELOW = 24
-_TWO_COL_BELOW = 17
 
 
 class AlbumScreen(Screen):
@@ -324,10 +313,10 @@ class AlbumScreen(Screen):
         from .artist_detail import ArtistHeader
 
         h = event.size.height
-        self.query_one(ArtistHeader).display = h >= _HIDE_ARTIST_BELOW
+        self.query_one(ArtistHeader).display = h >= HIDE_ARTIST_BELOW
         self.query_one("#album-panel", AlbumDetailPanel).set_compact(
-            small_art=h < _SMALL_ART_BELOW,
-            two_col=h < _TWO_COL_BELOW,
+            small_art=h < SMALL_ART_BELOW,
+            two_col=h < TWO_COL_BELOW,
         )
 
     @work
