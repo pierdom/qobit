@@ -435,7 +435,7 @@ class QobitApp(App[None]):
                 self.call_from_thread(setattr, self, "quality_label", "")
                 if natural_end:
                     self.call_from_thread(self._advance_queue)
-            time.sleep(1.0)
+            time.sleep(0.5)
 
     # ── play (async worker — shares event loop with httpx) ───────────────────
 
