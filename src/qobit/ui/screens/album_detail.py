@@ -5,7 +5,7 @@ import re
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
-from textual import on, work
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
@@ -242,54 +242,47 @@ class AlbumDetailPanel(Widget):
             self.post_message(AlbumDetailPanel.TrackSelected(event.item.track, queue))
 
 
+# Vertical-responsive thresholds shared with AlbumsView.
+_SMALL_ART_BELOW = 24
+_TWO_COL_BELOW = 17
+
+
 class AlbumScreen(Screen):
+    """Full-screen album detail pushed from the Search page.
+
+    Wraps AlbumDetailPanel so Search → Album looks identical to the inline
+    album view opened from the Albums and Artists tabs: big art, rich metadata
+    header, formatted tracklist with favourites.  Escape returns to Search."""
+
     BINDINGS = [Binding("escape", "app.pop_screen", "Back")]
 
     DEFAULT_CSS = """
     AlbumScreen { layout: vertical; }
-    AlbumScreen #header {
-        height: 4;
-        padding: 1 2;
-        background: $boost;
-    }
-    AlbumScreen ListView { height: 1fr; }
+    AlbumScreen AlbumDetailPanel { height: 1fr; margin: 0 1 1 1; }
     """
 
-    def __init__(self, album_id: str) -> None:
+    def __init__(self, album: Album) -> None:
         super().__init__()
-        self._album_id = album_id
+        self._album = album
 
     def compose(self) -> ComposeResult:
-        yield Label("Loading…", id="header")
-        yield TrackListView(id="tracklist")
+        yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
         yield Footer()
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
-        self._load()
+        panel = self.query_one("#album-panel", AlbumDetailPanel)
+        panel.load(self._album)
+        self.call_after_refresh(panel.focus_tracklist)
 
-    @work
-    async def _load(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
-        album = Album.from_api(await app._client.get_album(self._album_id))
-        year = str(album.year) if album.year else "—"
-        self.query_one("#header", Label).update(
-            f"[bold]{album.title}[/bold]\n"
-            f"[dim]{album.artist}  ·  {year}  ·  {album.tracks_count} tracks[/dim]"
+    def on_resize(self, event: events.Resize) -> None:
+        self.query_one("#album-panel", AlbumDetailPanel).set_compact(
+            small_art=event.size.height < _SMALL_ART_BELOW,
+            two_col=event.size.height < _TWO_COL_BELOW,
         )
-        fav_ids = await app.ensure_favorite_ids()
-        lv = self.query_one("#tracklist", ListView)
-        for i, track in enumerate(album.tracks, 1):
-            await lv.append(TrackRow(track, i, str(track.id) in fav_ids))
 
-    @on(ListView.Selected, "#tracklist")
-    def _on_selected(self, event: ListView.Selected) -> None:
-        if isinstance(event.item, TrackRow):
-            app: QobitApp = self.app  # type: ignore[assignment]
-            lv = self.query_one("#tracklist", ListView)
-            rows = list(lv.query(TrackRow))
-            idx = rows.index(event.item)
-            queue = [r.track for r in rows[idx + 1 :]]
-            app.play_track(event.item.track, queue=queue)
-            app.pop_screen()
+    @on(AlbumDetailPanel.TrackSelected)
+    def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        app.play_track(event.track, queue=event.queue)

@@ -208,6 +208,6 @@ class SearchView(Widget):
             queue = [r.track for r in rows[idx + 1 :]] if idx >= 0 else []
             app.play_track(item.track, queue=queue)
         elif isinstance(item, AlbumItem):
-            app.push_screen(AlbumScreen(item.album.id))
+            app.push_screen(AlbumScreen(item.album))
         elif isinstance(item, ArtistItem):
             app.push_screen(ArtistScreen(item.artist.id, source="Search"))
