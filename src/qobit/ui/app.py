@@ -404,22 +404,12 @@ class QobitApp(App[None]):
                 pos = self._player.get_property("time-pos")
                 dur = self._player.get_property("duration")
                 paused = self._player.get_property("pause")
-                # Only push reactive updates when values actually changed so
-                # the 1 Hz tick doesn't cascade watchers for nothing (progress
-                # bar, transport render, media-key sync) while paused or when
-                # duration settles.
                 if pos is not None:
-                    pos_f = float(pos)
-                    if abs(pos_f - self.playback_pos) >= 0.1:
-                        self.call_from_thread(setattr, self, "playback_pos", pos_f)
+                    self.call_from_thread(setattr, self, "playback_pos", float(pos))
                 if dur is not None:
-                    dur_f = float(dur)
-                    if abs(dur_f - self.playback_dur) >= 0.5:
-                        self.call_from_thread(setattr, self, "playback_dur", dur_f)
+                    self.call_from_thread(setattr, self, "playback_dur", float(dur))
                 if paused is not None:
-                    paused_b = bool(paused)
-                    if paused_b != self.is_paused:
-                        self.call_from_thread(setattr, self, "is_paused", paused_b)
+                    self.call_from_thread(setattr, self, "is_paused", bool(paused))
                 if not self.is_playing:
                     self.call_from_thread(setattr, self, "is_playing", True)
                 # Persist position periodically so a crash/kill loses ≤5s.
