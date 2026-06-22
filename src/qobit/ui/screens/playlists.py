@@ -139,6 +139,10 @@ class PlaylistGrid(ScrollableContainer):
         Binding("down", "move('down')", show=False),
         Binding("left", "move('left')", show=False),
         Binding("right", "move('right')", show=False),
+        Binding("pageup", "page('up')", show=False),
+        Binding("pagedown", "page('down')", show=False),
+        Binding("home", "jump_first", show=False),
+        Binding("end", "jump_last", show=False),
         Binding("enter", "open_selected", "Open playlist", show=False),
     ]
 
@@ -166,7 +170,7 @@ class PlaylistGrid(ScrollableContainer):
         self._cols = max(1, self.content_size.width // self._tile_min_width)
         self.styles.grid_size_columns = self._cols
 
-    def _move_cursor(self, idx: int) -> None:
+    def _move_cursor(self, idx: int, top: bool = False) -> None:
         cards = list(self.query(PlaylistCard))
         if not cards or idx < 0 or idx >= len(cards):
             return
@@ -174,7 +178,23 @@ class PlaylistGrid(ScrollableContainer):
             cards[self._cursor].remove_class("-selected")
         self._cursor = idx
         cards[idx].add_class("-selected")
-        cards[idx].scroll_visible()
+        if top:
+            cards[idx].scroll_visible(animate=False, top=True)
+        else:
+            cards[idx].scroll_visible()
+
+    def _page_rows(self) -> int:
+        cards = list(self.query(PlaylistCard))
+        if not cards:
+            return 1
+        pitch = cards[0].region.height
+        if len(cards) > self._cols:
+            step = cards[self._cols].region.y - cards[0].region.y
+            if step > 0:
+                pitch = step
+        if pitch <= 0:
+            pitch = 1
+        return max(1, self.scrollable_content_region.height // pitch)
 
     def action_open_selected(self) -> None:
         cards = list(self.query(PlaylistCard))
@@ -200,6 +220,28 @@ class PlaylistGrid(ScrollableContainer):
             target = idx - self._cols
         if target is not None:
             self._move_cursor(target)
+
+    def action_page(self, direction: str) -> None:
+        cards = list(self.query(PlaylistCard))
+        if not cards:
+            return
+        if self._cursor == -1:
+            self._move_cursor(0, top=True)
+            return
+        delta = self._page_rows() * self._cols
+        if direction == "up":
+            target = max(0, self._cursor - delta)
+        else:
+            target = min(len(cards) - 1, self._cursor + delta)
+        self._move_cursor(target, top=True)
+
+    def action_jump_first(self) -> None:
+        self._move_cursor(0, top=True)
+
+    def action_jump_last(self) -> None:
+        cards = list(self.query(PlaylistCard))
+        if cards:
+            self._move_cursor(len(cards) - 1)
 
 
 class PlaylistsView(Widget):

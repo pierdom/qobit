@@ -104,6 +104,12 @@ class QobuzError(Exception):
     pass
 
 
+class AuthExpiredError(QobuzError):
+    """Raised when the Qobuz session token is no longer valid (HTTP 401)."""
+
+    pass
+
+
 class QobuzClient:
     def __init__(
         self,
@@ -116,7 +122,16 @@ class QobuzClient:
         self.user_auth_token: str | None = None
         self._private_key: str | None = None
         self._prod_app_id: str | None = None
-        self._http = httpx.AsyncClient(timeout=30.0)
+        self._http = httpx.AsyncClient(timeout=30.0, verify=True)
+        # Session-scoped caches — avoids re-fetching the same album/artist detail
+        # when the user navigates back to an already-visited page.
+        self._album_cache: dict[str, dict] = {}
+        self._artist_detail_cache: dict[str, dict] = {}
+
+    def __repr__(self) -> str:
+        token = self.user_auth_token
+        token_repr = f"<set, {len(token)} chars>" if token else "None"
+        return f"QobuzClient(app_id={self._app_id!r}, user_auth_token={token_repr})"
 
     async def __aenter__(self) -> "QobuzClient":
         return self
@@ -212,6 +227,8 @@ class QobuzClient:
                 msg = r.json().get("message", r.text)
             except Exception:
                 msg = r.text
+            if r.status_code == 401:
+                raise AuthExpiredError(f"Qobuz session expired ({r.status_code}): {msg}")
             raise QobuzError(f"Qobuz API error {r.status_code}: {msg}")
 
     def _sign(self, track_id: str, format_id: int, secret: str) -> tuple[str, int]:
@@ -279,7 +296,9 @@ class QobuzClient:
         return await self._get("catalog/search", query=query, type=type, limit=limit)
 
     async def get_album(self, album_id: str) -> dict:
-        return await self._get("album/get", album_id=album_id)
+        if album_id not in self._album_cache:
+            self._album_cache[album_id] = await self._get("album/get", album_id=album_id)
+        return self._album_cache[album_id]
 
     async def get_track(self, track_id: str) -> dict:
         return await self._get("track/get", track_id=track_id)
@@ -339,13 +358,15 @@ class QobuzClient:
 
     async def get_artist_detail(self, artist_id: str, albums_limit: int = 100) -> dict:
         """Biography, image, and albums from artist/get (no top tracks)."""
-        return await self._get(
-            "artist/get",
-            artist_id=artist_id,
-            extra="albums",
-            limit=albums_limit,
-            albums_sort="release_date",
-        )
+        if artist_id not in self._artist_detail_cache:
+            self._artist_detail_cache[artist_id] = await self._get(
+                "artist/get",
+                artist_id=artist_id,
+                extra="albums",
+                limit=albums_limit,
+                albums_sort="release_date",
+            )
+        return self._artist_detail_cache[artist_id]
 
     async def get_artist_top_tracks(self, artist_id: str) -> list[dict]:
         """Popularity-ranked top tracks from artist/page."""

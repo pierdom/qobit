@@ -289,8 +289,16 @@ class AlbumsView(Widget):
     @work
     async def _load_artist_info(self, artist_id: str) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
-        self.query_one(ArtistHeader).populate(artist)
+        try:
+            artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
+        except Exception:
+            return
+        if not self.is_mounted:
+            return
+        try:
+            self.query_one(ArtistHeader).populate(artist)
+        except Exception:
+            pass
 
     # ── navigation ───────────────────────────────────────────────────────────
 

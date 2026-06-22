@@ -190,40 +190,61 @@ class AlbumDetailPanel(Widget):
     @work
     async def _fetch_full_album(self, album: Album) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        full = Album.from_api(await app._client.get_album(album.id))
+        try:
+            full = Album.from_api(await app._client.get_album(album.id))
+        except Exception:
+            if self.is_mounted:
+                try:
+                    self._set_optional(".ap-desc", "[dim]Failed to load album details.[/dim]")
+                except NoMatches:
+                    pass
+            return
 
-        self._set_optional(
-            ".ap-version",
-            f"[dim italic]{escape(full.version)}[/dim italic]" if full.version else "",
-        )
-        year = str(full.year) if full.year else "—"
-        sub_parts: list[str] = [escape(full.artist), year]
-        if full.genre:
-            sub_parts.append(escape(full.genre))
-        if dur := full.total_duration_str:
-            sub_parts.append(dur)
-        self.query_one(".ap-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+        if not self.is_mounted:
+            return
 
-        badge_parts: list[str] = []
-        if full.label:
-            badge_parts.append(escape(full.label))
-        if q := full.quality_badge:
-            badge_parts.append(q)
-        if full.popularity is not None:
-            badge_parts.append(f"★ {full.popularity}")
-        self._set_optional(
-            ".ap-badges", f"[dim]{' · '.join(badge_parts)}[/dim]" if badge_parts else ""
-        )
+        try:
+            self._set_optional(
+                ".ap-version",
+                f"[dim italic]{escape(full.version)}[/dim italic]" if full.version else "",
+            )
+            year = str(full.year) if full.year else "—"
+            sub_parts: list[str] = [escape(full.artist), year]
+            if full.genre:
+                sub_parts.append(escape(full.genre))
+            if dur := full.total_duration_str:
+                sub_parts.append(dur)
+            self.query_one(".ap-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
 
-        self._set_optional(
-            ".ap-awards", "  ".join(escape(a) for a in full.awards) if full.awards else ""
-        )
-        self._set_optional(
-            ".ap-desc", escape(_strip_html(full.description)) if full.description else ""
-        )
+            badge_parts: list[str] = []
+            if full.label:
+                badge_parts.append(escape(full.label))
+            if q := full.quality_badge:
+                badge_parts.append(q)
+            if full.popularity is not None:
+                badge_parts.append(f"★ {full.popularity}")
+            self._set_optional(
+                ".ap-badges", f"[dim]{' · '.join(badge_parts)}[/dim]" if badge_parts else ""
+            )
 
-        if full.tracks:
-            fav_ids = await app.ensure_favorite_ids()
+            self._set_optional(
+                ".ap-awards", "  ".join(escape(a) for a in full.awards) if full.awards else ""
+            )
+            self._set_optional(
+                ".ap-desc", escape(_strip_html(full.description)) if full.description else ""
+            )
+        except NoMatches:
+            return
+
+        if not full.tracks:
+            return
+
+        fav_ids = await app.ensure_favorite_ids()
+
+        if not self.is_mounted:
+            return
+
+        try:
             lv = self.query_one(".ap-tracklist", ListView)
             await lv.mount(
                 *[
@@ -231,6 +252,8 @@ class AlbumDetailPanel(Widget):
                     for i, track in enumerate(full.tracks, 1)
                 ]
             )
+        except NoMatches:
+            pass
 
     @on(ListView.Selected)
     def _on_list_selected(self, event: ListView.Selected) -> None:

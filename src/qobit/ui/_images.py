@@ -34,6 +34,7 @@ def _cache_put(url: str, img: PILImage.Image) -> None:
     if len(_IMAGE_CACHE) > _IMAGE_CACHE_MAX:
         _IMAGE_CACHE.popitem(last=False)
 
+
 # The largest place we ever show art is the album detail panel (~16 cells ≈
 # ~320px).  Artist images arrive as "mega" (~1500px) and album art as "large"
 # (~600px); anything above this is decoded, resized and re-encoded for nothing
@@ -89,6 +90,33 @@ def _disk_path(url: str) -> Path | None:
     if d is None:
         return None
     return d / f"{hashlib.sha1(url.encode()).hexdigest()}.jpg"
+
+
+def prune_disk_cache(max_bytes: int = 200 * 1024 * 1024) -> None:
+    """Delete the oldest cached cover files until total size is under max_bytes.
+
+    Called at startup so long sessions don't let the disk cache grow unbounded.
+    Default limit: 200 MB.  Silently no-ops if the cache dir is unavailable.
+    """
+    d = _cache_dir()
+    if d is None:
+        return
+    try:
+        entries = [(p.stat().st_mtime, p.stat().st_size, p) for p in d.glob("*.jpg") if p.is_file()]
+    except Exception:
+        return
+    total = sum(s for _, s, _ in entries)
+    if total <= max_bytes:
+        return
+    entries.sort()  # oldest (lowest mtime) first
+    for _mtime, size, path in entries:
+        if total <= max_bytes:
+            break
+        try:
+            path.unlink()
+            total -= size
+        except Exception:
+            pass
 
 
 def clear_disk_cache() -> tuple[Path | None, int, int]:

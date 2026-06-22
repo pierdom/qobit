@@ -105,6 +105,8 @@ class PlaylistItem(ListItem):
 class SearchView(Widget):
     BINDINGS = [Binding("/", "focus_input", "Search")]
 
+    _search_version: int = 0
+
     DEFAULT_CSS = """
     SearchView {
         height: 1fr;
@@ -152,15 +154,15 @@ class SearchView(Widget):
     def _on_submit(self, event: Input.Submitted) -> None:
         query = event.value.strip()
         if query:
-            self._search(query)
+            self._search_version += 1
+            self._search(query, self._search_version)
 
     @work
-    async def _search(self, query: str) -> None:
+    async def _search(self, query: str, version: int) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         lv_artists = self.query_one("#artists-results", ListView)
         lv_tracks = self.query_one("#tracks-results", ListView)
         lv_albums = self.query_one("#albums-results", ListView)
-        await asyncio.gather(lv_artists.clear(), lv_tracks.clear(), lv_albums.clear())
 
         try:
             tracks_r, albums_r, artists_r = await asyncio.gather(
@@ -169,14 +171,22 @@ class SearchView(Widget):
                 app._client.search(query, type="artists", limit=5),
             )
         except (QobuzError, AssertionError) as e:
+            if version != self._search_version:
+                return
             msg = str(e) if isinstance(e, QobuzError) else "Not authenticated — run: qobit auth"
+            await asyncio.gather(lv_artists.clear(), lv_tracks.clear(), lv_albums.clear())
             await lv_artists.append(ListItem(Label(f"[red]{msg}[/red]", markup=True)))
             lv_artists.focus()
+            return
+
+        if version != self._search_version:
             return
 
         tracks = tracks_r.get("tracks", {}).get("items", [])
         albums = albums_r.get("albums", {}).get("items", [])
         artists = artists_r.get("artists", {}).get("items", [])
+
+        await asyncio.gather(lv_artists.clear(), lv_tracks.clear(), lv_albums.clear())
 
         for raw in artists:
             await lv_artists.append(ArtistItem(Artist.from_api(raw)))

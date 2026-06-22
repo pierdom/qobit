@@ -650,24 +650,41 @@ class ArtistScreen(Screen):
     @work
     async def _load_detail(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        artist = Artist.from_api(await app._client.get_artist_detail(self._artist_id))
-        self.query_one(ArtistHeader).populate(artist)
-        if artist.albums:
-            grid = self.query_one("#albums", AlbumGrid)
-            await grid.mount(*[AlbumCard(album) for album in artist.albums])
+        try:
+            artist = Artist.from_api(await app._client.get_artist_detail(self._artist_id))
+        except Exception:
+            return
+        if not self.is_mounted:
+            return
+        try:
+            self.query_one(ArtistHeader).populate(artist)
+            if artist.albums:
+                grid = self.query_one("#albums", AlbumGrid)
+                await grid.mount(*[AlbumCard(album) for album in artist.albums])
+        except NoMatches:
+            pass
 
     @work
     async def _load_tracks(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        items = await app._client.get_artist_top_tracks(self._artist_id)
-        if items:
-            fav_ids = await app.ensure_favorite_ids()
+        try:
+            items = await app._client.get_artist_top_tracks(self._artist_id)
+        except Exception:
+            return
+        if not items or not self.is_mounted:
+            return
+        fav_ids = await app.ensure_favorite_ids()
+        if not self.is_mounted:
+            return
+        try:
             lv = self.query_one("#top-tracks", ListView)
             rows = [
                 ArtistTrackRow(t := Track.from_api(raw), i, str(t.id) in fav_ids)
                 for i, raw in enumerate(items, 1)
             ]
             await lv.mount(*rows)
+        except NoMatches:
+            pass
 
     @on(events.Click, "#breadcrumb")
     def _on_breadcrumb_click(self) -> None:

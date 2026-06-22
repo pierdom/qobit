@@ -30,7 +30,7 @@ from ..config import (
     set_saved_theme,
     set_transparent_background,
 )
-from ..qobuz.client import QobuzClient, QobuzError
+from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
@@ -229,6 +229,12 @@ class QobitApp(App[None]):
         self._fav_tracks: list[Track] | None = None
         self._fav_ids: set[str] | None = None
         self._fav_lock = asyncio.Lock()
+        # Prevents two concurrent _advance_queue calls from both seeing an empty
+        # queue and both fetching radio + starting playback.
+        self._advance_lock = asyncio.Lock()
+        # Maps track_id → last successful stream quality so _do_play tries the
+        # known-good format first instead of always starting at FLAC_24_192.
+        self._track_quality_cache: dict[str, str] = {}
         self._flash_timer: object | None = None
         self._media_keys = MediaKeys(
             on_play_pause=lambda: self.call_from_thread(self.action_pause),
@@ -267,6 +273,13 @@ class QobitApp(App[None]):
         self.radio_mode = get_radio_mode()
         self._restore_player_state()
         self._warm_favorite_ids()
+        self._prune_image_cache()
+
+    @work(thread=True)
+    def _prune_image_cache(self) -> None:
+        from ._images import prune_disk_cache
+
+        prune_disk_cache()
 
     def watch_theme(self, theme: str) -> None:
         if getattr(self, "_theme_ready", False):
@@ -381,6 +394,8 @@ class QobitApp(App[None]):
             self.query_one(TracksView).favorite_changed(tid, new_state)
         except Exception:
             pass
+        # Refresh the Queue so hearts on history/now-playing/up-next rows update.
+        self.queue_version += 1
         return new_state
 
     @work
@@ -451,18 +466,19 @@ class QobitApp(App[None]):
 
     @work
     async def _advance_queue(self) -> None:
-        if not self._play_queue and self.radio_mode and self.now_playing is not None:
-            # Queue ran dry under endless radio: refill from suggestions seeded
-            # by the just-finished track (now_playing is still that track here).
-            suggestions = await self._fetch_radio(self.now_playing)
-            if suggestions:
-                self._play_queue = suggestions
-                self.queue_version += 1
-        if not self._play_queue:
-            return
-        next_track = self._play_queue.pop(0)
-        self.queue_version += 1
-        await self._do_play(next_track)
+        async with self._advance_lock:
+            if not self._play_queue and self.radio_mode and self.now_playing is not None:
+                # Queue ran dry under endless radio: refill from suggestions seeded
+                # by the just-finished track (now_playing is still that track here).
+                suggestions = await self._fetch_radio(self.now_playing)
+                if suggestions:
+                    self._play_queue = suggestions
+                    self.queue_version += 1
+            if not self._play_queue:
+                return
+            next_track = self._play_queue.pop(0)
+            self.queue_version += 1
+            await self._do_play(next_track)
 
     # ── song radio (dynamic/suggest) ─────────────────────────────────────────
 
@@ -578,11 +594,24 @@ class QobitApp(App[None]):
     async def _do_play(self, track: Track, start: float = 0.0, record_history: bool = True) -> None:
         self.status_msg = f"Loading {track.display_title}…"
         stream: StreamUrl | None = None
-        for quality in ("FLAC_24_192", "FLAC_24_96", "FLAC_CD"):
+        track_id = str(track.id)
+        # Prefer the quality that worked last time for this track; fall through to
+        # the full list on first play or if the cached quality fails.
+        all_qualities = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
+        cached = self._track_quality_cache.get(track_id)
+        if cached:
+            qualities = [cached] + [q for q in all_qualities if q != cached]
+        else:
+            qualities = all_qualities
+        for quality in qualities:
             try:
-                data = await self._client.get_streaming_url(str(track.id), quality)
+                data = await self._client.get_streaming_url(track_id, quality)
                 stream = StreamUrl.from_api(data)
+                self._track_quality_cache[track_id] = quality
                 break
+            except AuthExpiredError:
+                self.status_msg = "Session expired — run: qobit auth"
+                return
             except QobuzError:
                 continue
 
@@ -595,9 +624,9 @@ class QobitApp(App[None]):
         # ping-pong. This is the single chokepoint for every track change.
         prev = self.now_playing
         if record_history and prev is not None and prev.id != track.id:
-            self._history.append(prev)
-            if len(self._history) > _HISTORY_MAX:
+            if len(self._history) >= _HISTORY_MAX:
                 del self._history[0]
+            self._history.append(prev)
             self.queue_version += 1
 
         if self._player.running:
