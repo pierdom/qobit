@@ -31,6 +31,9 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
+_MAX_GRID = 200
+_BATCH = 50
+
 
 class ArtistsView(Widget):
     BINDINGS = [
@@ -215,6 +218,7 @@ class ArtistsView(Widget):
 
     def _update_subtitle(self) -> None:
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
+        total = len(self._artists)
         if self._filter_active:
             grid.border_subtitle = f"/ {self._filter_query}_"
         elif self._filter_query:
@@ -222,7 +226,8 @@ class ArtistsView(Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            grid.border_subtitle = f"{arrow} {label}"
+            suffix = f"  ·  {_MAX_GRID} of {total}" if total > _MAX_GRID else ""
+            grid.border_subtitle = f"{arrow} {label}{suffix}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -283,7 +288,11 @@ class ArtistsView(Widget):
         if not artists:
             await grid.mount(Label("[dim]No favourite artists yet.[/dim]", markup=True))
             return
-        await grid.mount(*[ArtistCard(artist) for artist in artists])
+        shown = artists[:_MAX_GRID]
+        for i in range(0, len(shown), _BATCH):
+            if version != self._render_version:
+                return
+            await grid.mount(*[ArtistCard(a) for a in shown[i : i + _BATCH]])
         self._apply_filter()
 
     @work

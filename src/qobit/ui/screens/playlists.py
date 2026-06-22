@@ -29,6 +29,8 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
 _CARD_IMG_H = 7
+_MAX_GRID = 200
+_BATCH = 50
 
 
 class PlaylistCard(Widget):
@@ -311,6 +313,7 @@ class PlaylistsView(Widget):
 
     def _update_subtitle(self) -> None:
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
+        total = len(self._playlists)
         if self._filter_active:
             grid.border_subtitle = f"/ {self._filter_query}_"
         elif self._filter_query:
@@ -318,7 +321,8 @@ class PlaylistsView(Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            grid.border_subtitle = f"{arrow} {label}"
+            suffix = f"  ·  {_MAX_GRID} of {total}" if total > _MAX_GRID else ""
+            grid.border_subtitle = f"{arrow} {label}{suffix}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -365,7 +369,11 @@ class PlaylistsView(Widget):
             msg = "[dim]No matches.[/dim]" if self._filter_query else "[dim]No playlists yet.[/dim]"
             await grid.mount(Label(msg, markup=True))
             return
-        await grid.mount(*[PlaylistCard(p) for p in playlists])
+        shown = playlists[:_MAX_GRID]
+        for i in range(0, len(shown), _BATCH):
+            if version != self._render_version:
+                return
+            await grid.mount(*[PlaylistCard(p) for p in shown[i : i + _BATCH]])
 
     @work
     async def _load(self) -> None:

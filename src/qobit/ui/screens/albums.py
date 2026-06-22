@@ -25,6 +25,13 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
+# Only mount this many cards at once.  The layout pass Textual runs when
+# switching to this tab is O(mounted widgets); keeping the tree small keeps
+# transitions snappy.  Mount in batches so the event loop stays responsive
+# during the initial load.
+_MAX_GRID = 200
+_BATCH = 50
+
 # Vertical-responsive thresholds for the album detail page (AlbumsView height).
 # As the page gets shorter it progressively reclaims/densifies space: hide the
 # artist header, then halve the album art, then show the tracklist in 2 columns.
@@ -179,6 +186,7 @@ class AlbumsView(Widget):
 
     def _update_subtitle(self) -> None:
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
+        total = len(self._albums)
         if self._filter_active:
             grid.border_subtitle = f"/ {self._filter_query}_"
         elif self._filter_query:
@@ -186,7 +194,8 @@ class AlbumsView(Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            grid.border_subtitle = f"{arrow} {label}"
+            suffix = f"  ·  {_MAX_GRID} of {total}" if total > _MAX_GRID else ""
+            grid.border_subtitle = f"{arrow} {label}{suffix}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -258,7 +267,11 @@ class AlbumsView(Widget):
         if not albums:
             await grid.mount(Label("[dim]No favourite albums yet.[/dim]", markup=True))
             return
-        await grid.mount(*[AlbumCard(album, show_artist=True) for album in albums])
+        shown = albums[:_MAX_GRID]
+        for i in range(0, len(shown), _BATCH):
+            if version != self._render_version:
+                return
+            await grid.mount(*[AlbumCard(a, show_artist=True) for a in shown[i : i + _BATCH]])
         self._apply_filter()
 
     @work

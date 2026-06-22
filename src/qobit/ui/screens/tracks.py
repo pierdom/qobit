@@ -25,6 +25,8 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
+_BATCH = 200  # rows per mount call; yields the event loop between batches
+
 
 class FavTrackRow(ListItem):
     DEFAULT_CSS = """
@@ -228,7 +230,10 @@ class TracksView(Widget):
             )
             await lv.append(ListItem(Label(msg, markup=True)))
             return
-        await lv.mount(*[FavTrackRow(t) for t in tracks])
+        for i in range(0, len(tracks), _BATCH):
+            if version != self._render_version:
+                return
+            await lv.mount(*[FavTrackRow(t) for t in tracks[i : i + _BATCH]])
 
     @work
     async def _load(self) -> None:
