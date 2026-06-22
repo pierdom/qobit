@@ -236,6 +236,7 @@ class PlaylistsView(Widget):
     _filter_active: bool = False
     _filter_query: str = ""
     _render_version: int = 0
+    _filter_timer: object | None = None
     _playlists: list[Playlist]
 
     def __init__(self, *args: object, **kwargs: object) -> None:
@@ -279,13 +280,18 @@ class PlaylistsView(Widget):
             self._filter_query += event.character
             event.stop()
             self._update_subtitle()
-            self._render_grid()
+            self._schedule_filter()
         elif event.key in ("backspace", "ctrl+h"):
             if self._filter_query:
                 self._filter_query = self._filter_query[:-1]
                 event.stop()
                 self._update_subtitle()
-                self._render_grid()
+                self._schedule_filter()
+
+    def _schedule_filter(self) -> None:
+        if self._filter_timer is not None:
+            self._filter_timer.stop()  # type: ignore[union-attr]
+        self._filter_timer = self.set_timer(0.15, self._render_grid)
 
     # ── sort ─────────────────────────────────────────────────────────────────
 

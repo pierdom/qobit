@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import io
 import os
+from collections import OrderedDict
 from pathlib import Path
 
 import httpx
@@ -13,9 +14,25 @@ from PIL import Image as PILImage
 # network or thrash PIL/Kitty rendering all at once.
 _FETCH_SEM = asyncio.Semaphore(6)
 
-# URL → decoded PIL Image.  Shared across all cards and headers so the same
-# artist/album art is never downloaded twice within a session.
-_IMAGE_CACHE: dict[str, PILImage.Image] = {}
+# URL → decoded PIL Image, bounded LRU.  Evicts the least-recently-used entry
+# once the limit is hit so long browsing sessions don't accumulate hundreds of
+# MB of PIL objects.  200 entries at ~600×600 JPEG-decoded ≈ 40–80 MB ceiling.
+_IMAGE_CACHE_MAX = 200
+_IMAGE_CACHE: OrderedDict[str, PILImage.Image] = OrderedDict()
+
+
+def _cache_get(url: str) -> PILImage.Image | None:
+    img = _IMAGE_CACHE.get(url)
+    if img is not None:
+        _IMAGE_CACHE.move_to_end(url)
+    return img
+
+
+def _cache_put(url: str, img: PILImage.Image) -> None:
+    _IMAGE_CACHE[url] = img
+    _IMAGE_CACHE.move_to_end(url)
+    if len(_IMAGE_CACHE) > _IMAGE_CACHE_MAX:
+        _IMAGE_CACHE.popitem(last=False)
 
 # The largest place we ever show art is the album detail panel (~16 cells ≈
 # ~320px).  Artist images arrive as "mega" (~1500px) and album art as "large"
@@ -141,13 +158,13 @@ def _decode_bytes(data: bytes) -> PILImage.Image | None:
 
 
 async def fetch_image(url: str) -> PILImage.Image | None:
-    cached = _IMAGE_CACHE.get(url)
+    cached = _cache_get(url)
     if cached is not None:
         return cached
     async with _FETCH_SEM:
         # Re-check after acquiring: another worker may have fetched it while
         # we were waiting.
-        cached = _IMAGE_CACHE.get(url)
+        cached = _cache_get(url)
         if cached is not None:
             return cached
 
@@ -157,7 +174,7 @@ async def fetch_image(url: str) -> PILImage.Image | None:
         if path is not None and path.exists():
             img = await asyncio.to_thread(_read_disk, path)
             if img is not None:
-                _IMAGE_CACHE[url] = img
+                _cache_put(url, img)
                 return img
 
         try:
@@ -170,7 +187,7 @@ async def fetch_image(url: str) -> PILImage.Image | None:
         img = await asyncio.to_thread(_decode_bytes, data)
         if img is None:
             return None
-        _IMAGE_CACHE[url] = img
+        _cache_put(url, img)
         if path is not None:
             await asyncio.to_thread(_write_disk, img, path)
         return img

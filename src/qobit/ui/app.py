@@ -229,6 +229,7 @@ class QobitApp(App[None]):
         self._fav_tracks: list[Track] | None = None
         self._fav_ids: set[str] | None = None
         self._fav_lock = asyncio.Lock()
+        self._flash_timer: object | None = None
         self._media_keys = MediaKeys(
             on_play_pause=lambda: self.call_from_thread(self.action_pause),
             on_next=lambda: self.call_from_thread(self._advance_queue),
@@ -403,12 +404,22 @@ class QobitApp(App[None]):
                 pos = self._player.get_property("time-pos")
                 dur = self._player.get_property("duration")
                 paused = self._player.get_property("pause")
+                # Only push reactive updates when values actually changed so
+                # the 1 Hz tick doesn't cascade watchers for nothing (progress
+                # bar, transport render, media-key sync) while paused or when
+                # duration settles.
                 if pos is not None:
-                    self.call_from_thread(setattr, self, "playback_pos", float(pos))
+                    pos_f = float(pos)
+                    if abs(pos_f - self.playback_pos) >= 0.1:
+                        self.call_from_thread(setattr, self, "playback_pos", pos_f)
                 if dur is not None:
-                    self.call_from_thread(setattr, self, "playback_dur", float(dur))
+                    dur_f = float(dur)
+                    if abs(dur_f - self.playback_dur) >= 0.5:
+                        self.call_from_thread(setattr, self, "playback_dur", dur_f)
                 if paused is not None:
-                    self.call_from_thread(setattr, self, "is_paused", bool(paused))
+                    paused_b = bool(paused)
+                    if paused_b != self.is_paused:
+                        self.call_from_thread(setattr, self, "is_paused", paused_b)
                 if not self.is_playing:
                     self.call_from_thread(setattr, self, "is_playing", True)
                 # Persist position periodically so a crash/kill loses ≤5s.
@@ -424,7 +435,7 @@ class QobitApp(App[None]):
                 self.call_from_thread(setattr, self, "quality_label", "")
                 if natural_end:
                     self.call_from_thread(self._advance_queue)
-            time.sleep(0.5)
+            time.sleep(1.0)
 
     # ── play (async worker — shares event loop with httpx) ───────────────────
 
@@ -470,8 +481,10 @@ class QobitApp(App[None]):
         transport's main label (TransportBar._on_status_msg), so a *persistent*
         message would hide the artist — title until the next track loads. Auto-
         clearing lets the player fall back to the now-playing track."""
+        if self._flash_timer is not None:
+            self._flash_timer.stop()  # type: ignore[union-attr]
         self.status_msg = msg
-        self.set_timer(secs, lambda: self._clear_flash(msg))
+        self._flash_timer = self.set_timer(secs, lambda: self._clear_flash(msg))
 
     def _clear_flash(self, msg: str) -> None:
         if self.status_msg == msg:  # only clear if nothing newer replaced it
