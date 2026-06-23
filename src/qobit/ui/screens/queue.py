@@ -180,24 +180,17 @@ class NowPlayingHero(Widget):
         max-width: 66;
         height: 1fr;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
-        border-title-align: left;
-        border-title-style: bold;
-        border-subtitle-color: $accent 40%;
-        border-subtitle-align: right;
         layout: vertical;
         align-horizontal: center;
         padding: 1 2;
     }
     NowPlayingHero:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
     }
     NowPlayingHero #hero-art {
         width: 32;
         height: 16;
-        margin-bottom: 1;
+        margin: 0 auto 1 auto;
         display: none;
     }
     NowPlayingHero.-playing #hero-art { display: block; }
@@ -237,21 +230,8 @@ class NowPlayingHero(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         self.watch(app, "now_playing", self._on_now_playing, init=True)
         self.watch(app, "is_playing", self._on_is_playing, init=True)
-        self.watch(app, "is_paused", self._on_is_paused, init=True)
         self.watch(app, "now_playing_album", self._on_details, init=True)
-        self.watch(app, "quality_label", self._on_quality, init=True)
         self.watch(app, "now_playing_bio", self._on_bio, init=True)
-        self.watch(app, "radio_mode", self._on_radio, init=True)
-
-    # ── border title (play/pause + radio) ────────────────────────────────────
-
-    def _status(self) -> str:
-        app: QobitApp = self.app  # type: ignore[assignment]
-        radio = "  ·  📻 Radio" if app.radio_mode else ""
-        if not app.now_playing:
-            return "📻 Radio" if app.radio_mode else "Now Playing"
-        status = "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
-        return status + radio
 
     # ── reactive watchers ─────────────────────────────────────────────────────
 
@@ -260,23 +240,12 @@ class NowPlayingHero(Widget):
             self._fetch_art(track.image_url)  # type: ignore[union-attr]
         self._refresh_favorite()
         self._render_meta()
-        self.border_title = self._status()
 
     def _on_is_playing(self, playing: bool) -> None:
         self.set_class(playing, "-playing")
 
-    def _on_is_paused(self, _: bool) -> None:
-        self.border_title = self._status()
-
     def _on_details(self, _: object) -> None:
         self._render_meta()
-
-    def _on_quality(self, label: str) -> None:
-        self.border_subtitle = label
-        self._render_meta()
-
-    def _on_radio(self, _: bool) -> None:
-        self.border_title = self._status()
 
     def _on_bio(self, bio: str) -> None:
         self.query_one(".hero-bio", Static).update(strip_html(bio) if bio else "")
