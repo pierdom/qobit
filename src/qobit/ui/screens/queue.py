@@ -170,7 +170,13 @@ class NowPlayingHero(Widget):
     position/seek; the hero fills its space with the artist biography instead."""
 
     can_focus = True
-    BINDINGS = [Binding("f", "toggle_favorite", "Favourite", show=False)]
+    BINDINGS = [
+        Binding("f", "toggle_favorite", "Favourite", show=False),
+        Binding("up", "scroll_up", "Scroll up", show=False),
+        Binding("down", "scroll_down", "Scroll down", show=False),
+        Binding("pageup", "scroll_page_up", "Page up", show=False),
+        Binding("pagedown", "scroll_page_down", "Page down", show=False),
+    ]
 
     _favorite: bool = False
 
@@ -288,6 +294,18 @@ class NowPlayingHero(Widget):
         if self.is_mounted and app.now_playing is t:
             self._favorite = str(t.id) in ids
             self._render_meta()
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#hero-bio", VerticalScroll).scroll_up(animate=False)
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#hero-bio", VerticalScroll).scroll_down(animate=False)
+
+    def action_scroll_page_up(self) -> None:
+        self.query_one("#hero-bio", VerticalScroll).scroll_page_up(animate=False)
+
+    def action_scroll_page_down(self) -> None:
+        self.query_one("#hero-bio", VerticalScroll).scroll_page_down(animate=False)
 
     async def action_toggle_favorite(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
