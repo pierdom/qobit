@@ -218,6 +218,7 @@ class SearchView(Widget):
             idx = next((i for i, r in enumerate(rows) if r is item), -1)
             queue = [r.track for r in rows[idx + 1 :]] if idx >= 0 else []
             app.play_track(item.track, queue=queue)
+            event.list_view.focus()
         elif isinstance(item, AlbumItem):
             app.push_screen(AlbumScreen(item.album))
         elif isinstance(item, ArtistItem):

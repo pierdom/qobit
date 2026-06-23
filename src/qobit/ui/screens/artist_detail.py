@@ -699,6 +699,7 @@ class ArtistScreen(Screen):
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)
+            event.list_view.focus()
 
     @on(AlbumCard.Selected)
     def _on_album_selected(self, event: AlbumCard.Selected) -> None:

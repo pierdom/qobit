@@ -439,6 +439,7 @@ class QueueView(Widget):
             self.call_after_refresh(
                 lambda: lv.scroll_to_widget(items[now_idx], animate=False, center=True)
             )
+        self.call_after_refresh(lv.focus)
 
     @on(ListView.Selected, "#queue-list")
     def _on_queue_selected(self, event: ListView.Selected) -> None:
@@ -452,3 +453,4 @@ class QueueView(Widget):
         elif isinstance(event.item, HistoryTrackRow):
             # Replay a past track as a one-off; leave Up Next untouched.
             app.play_track(event.item.track)
+        event.list_view.focus()

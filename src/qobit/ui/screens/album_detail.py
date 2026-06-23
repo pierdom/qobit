@@ -258,6 +258,7 @@ class AlbumDetailPanel(Widget):
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             self.post_message(AlbumDetailPanel.TrackSelected(event.item.track, queue))
+            event.list_view.focus()
 
 
 class AlbumScreen(Screen):

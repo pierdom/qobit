@@ -193,6 +193,7 @@ class PlaylistScreen(Screen):
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)
+            event.list_view.focus()
 
     @on(events.Click, "#breadcrumb")
     def _on_breadcrumb_click(self) -> None:

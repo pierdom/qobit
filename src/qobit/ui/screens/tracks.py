@@ -274,3 +274,4 @@ class TracksView(Widget):
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)
+            event.list_view.focus()
