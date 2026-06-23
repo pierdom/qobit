@@ -187,13 +187,15 @@ class NowPlayingHero(Widget):
     NowPlayingHero:focus {
         border: round $accent;
     }
-    NowPlayingHero #hero-art {
-        width: 32;
+    NowPlayingHero #hero-art-row {
+        width: 1fr;
         height: 16;
-        margin: 0 auto 1 auto;
+        align: center middle;
+        margin-bottom: 1;
         display: none;
     }
-    NowPlayingHero.-playing #hero-art { display: block; }
+    NowPlayingHero #hero-art { width: 32; height: 16; }
+    NowPlayingHero.-playing #hero-art-row { display: block; }
     NowPlayingHero .hero-title {
         width: 1fr; text-align: center; text-style: bold; color: $accent;
     }
@@ -215,7 +217,8 @@ class NowPlayingHero(Widget):
     """
 
     def compose(self) -> ComposeResult:
-        yield TGPImage(id="hero-art")
+        with Horizontal(id="hero-art-row"):
+            yield TGPImage(id="hero-art")
         yield Label("", classes="hero-title")
         yield Label("", classes="hero-artist")
         yield Label("", classes="hero-album")
