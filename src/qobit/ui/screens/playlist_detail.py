@@ -7,6 +7,7 @@ from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.content import Content
 from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
@@ -15,6 +16,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist, Track
 from .._images import fetch_image
+from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, playing_content
 from .._utils import strip_html
 from ..widgets.transport import TransportBar
 from .search import ICON_TRACK
@@ -23,7 +25,7 @@ if TYPE_CHECKING:
     from ..app import QobitApp
 
 
-class PlaylistTrackRow(ListItem):
+class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     PlaylistTrackRow { height: 2; padding: 0 1; }
     PlaylistTrackRow Label { width: 1fr; }
@@ -36,14 +38,21 @@ class PlaylistTrackRow(ListItem):
         self.track = track
         self._number = number
 
+    def _primary(self) -> Content:
+        t = self.track
+        if self._is_playing:
+            text = f"{self._number:3}.  {t.artist} — {t.display_title}"
+        else:
+            text = f"{self._number:3}. {ICON_TRACK}  {t.artist} — {t.display_title}"
+        return playing_content(text, self._is_playing, self._is_paused)
+
     def compose(self) -> ComposeResult:
         t = self.track
-        num = f"{self._number:3}. {ICON_TRACK}"
-        yield Label(f"{num}  {t.artist} — {t.display_title}", classes="primary")
+        yield Label(self._primary(), classes="primary")
         yield Label(f"        {t.album}  ·  {t.duration_str}", classes="secondary")
 
 
-class PlaylistScreen(Screen):
+class PlaylistScreen(NowPlayingViewMixin, Screen):
     BINDINGS = [Binding("escape", "app.pop_screen", "Back")]
 
     DEFAULT_CSS = """
@@ -118,6 +127,7 @@ class PlaylistScreen(Screen):
             img_w = round(14 * cell.height / cell.width)
             self.query_one(".pp-art", TGPImage).styles.width = img_w
         self.query_one("#playlist-panel").border_title = "Loading…"
+        self._wire_now_playing(PlaylistTrackRow, ".pp-tracklist")
         self._load()
 
     @work
@@ -165,13 +175,14 @@ class PlaylistScreen(Screen):
         try:
             lv = self.query_one(".pp-tracklist", ListView)
             rows = [PlaylistTrackRow(t, i) for i, t in enumerate(playlist.tracks, 1)]
+            self._apply_now_playing(rows)
             await lv.mount(*rows)
         except NoMatches:
             return
 
         if self.is_mounted:
             try:
-                self.query_one(".pp-tracklist", ListView).focus()
+                self.call_after_refresh(self.query_one(".pp-tracklist", ListView).focus)
             except NoMatches:
                 pass
 
@@ -193,7 +204,7 @@ class PlaylistScreen(Screen):
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)
-            event.list_view.focus()
+            self.call_after_refresh(lv.focus)
 
     @on(events.Click, "#breadcrumb")
     def _on_breadcrumb_click(self) -> None:

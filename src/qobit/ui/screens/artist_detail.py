@@ -18,6 +18,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
+from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, playing_content
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
@@ -31,7 +32,7 @@ _CARD_IMG_H_FULL = 6
 _TILE_MIN_W = 22
 
 
-class ArtistTrackRow(ListItem):
+class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     ArtistTrackRow { height: 2; padding: 0 1; }
     ArtistTrackRow Label { width: 1fr; }
@@ -47,7 +48,11 @@ class ArtistTrackRow(ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
-        return Content.assemble(f"{self._number}. {ICON_TRACK}  {t.display_title}", heart)
+        if self._is_playing:
+            text = f"{self._number}.  {t.display_title}"
+        else:
+            text = f"{self._number}. {ICON_TRACK}  {t.display_title}"
+        return playing_content(text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
         t = self.track
@@ -56,7 +61,7 @@ class ArtistTrackRow(ListItem):
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
-        self.query_one(".primary", Label).update(self._primary())
+        self._refresh_primary()
 
 
 class AlbumCard(Widget):
@@ -532,7 +537,7 @@ class ArtistHeader(Widget):
                 pass
 
 
-class ArtistScreen(Screen):
+class ArtistScreen(NowPlayingViewMixin, Screen):
     BINDINGS = [Binding("escape", "navigate_back", "Back", priority=True)]
 
     DEFAULT_CSS = """
@@ -624,6 +629,7 @@ class ArtistScreen(Screen):
         self.query_one(ArtistHeader).set_loading()
         self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
         self.query_one("#albums", AlbumGrid).border_title = "Albums & EPs"
+        self._wire_now_playing(ArtistTrackRow, "#top-tracks")
         self._load_detail()
         self._load_tracks()
 
@@ -682,6 +688,7 @@ class ArtistScreen(Screen):
                 ArtistTrackRow(t := Track.from_api(raw), i, str(t.id) in fav_ids)
                 for i, raw in enumerate(items, 1)
             ]
+            self._apply_now_playing(rows)
             await lv.mount(*rows)
         except NoMatches:
             pass
@@ -699,7 +706,7 @@ class ArtistScreen(Screen):
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)
-            event.list_view.focus()
+            self.call_after_refresh(lv.focus)
 
     @on(AlbumCard.Selected)
     def _on_album_selected(self, event: AlbumCard.Selected) -> None:

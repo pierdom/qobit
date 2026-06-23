@@ -6,11 +6,13 @@ from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.content import Content
 from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
+from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, playing_content
 from ..widgets.lists import TrackListView
 from .search import ICON_TRACK
 
@@ -28,7 +30,7 @@ _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 _BATCH = 200  # rows per mount call; yields the event loop between batches
 
 
-class FavTrackRow(ListItem):
+class FavTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     FavTrackRow { height: 2; padding: 0 0 0 1; }
     FavTrackRow Label { width: 1fr; }
@@ -40,13 +42,19 @@ class FavTrackRow(ListItem):
         super().__init__()
         self.track = track
 
+    def _primary(self) -> Content:
+        t = self.track
+        if self._is_playing:
+            return playing_content(f"{t.artist} — {t.display_title}", True, self._is_paused)
+        return playing_content(f"{ICON_TRACK}  {t.artist} — {t.display_title}", False, False)
+
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(f"{ICON_TRACK}  {t.artist} — {t.display_title}", classes="primary")
+        yield Label(self._primary(), classes="primary")
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
 
 
-class TracksView(Widget):
+class TracksView(NowPlayingViewMixin, Widget):
     BINDINGS = [
         Binding("s", "cycle_sort", "Sort"),
         Binding("r", "toggle_reverse", "Rev"),
@@ -100,6 +108,7 @@ class TracksView(Widget):
         container = self.query_one("#tracks-container", Vertical)
         container.border_title = "Favourite Tracks"
         self._update_subtitle()
+        self._wire_now_playing(FavTrackRow, "#fav-tracks")
 
     def on_show(self) -> None:
         if not self._loaded:
@@ -233,7 +242,10 @@ class TracksView(Widget):
         for i in range(0, len(tracks), _BATCH):
             if version != self._render_version:
                 return
-            await lv.mount(*[FavTrackRow(t) for t in tracks[i : i + _BATCH]])
+            rows = [FavTrackRow(t) for t in tracks[i : i + _BATCH]]
+            self._apply_now_playing(rows, first_batch=(i == 0))
+            await lv.mount(*rows)
+        self.call_after_refresh(lv.focus)
 
     @work
     async def _load(self) -> None:
@@ -274,4 +286,4 @@ class TracksView(Widget):
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)
-            event.list_view.focus()
+            self.call_after_refresh(lv.focus)

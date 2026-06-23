@@ -18,6 +18,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
+from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, playing_content
 from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, strip_html
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from ..app import QobitApp
 
 
-class TrackRow(ListItem):
+class TrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     TrackRow { height: 1; padding: 0 1; }
     TrackRow Label { width: 1fr; }
@@ -41,19 +42,22 @@ class TrackRow(ListItem):
 
     def _primary(self) -> Content:
         t = self.track
-        num = f"{self._number:2}. {ICON_TRACK}"
         heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
-        return Content.assemble(f"{num}  {t.display_title}  {t.duration_str}", heart)
+        if self._is_playing:
+            text = f"{self._number:2}.  {t.display_title}  {t.duration_str}"
+        else:
+            text = f"{self._number:2}. {ICON_TRACK}  {t.display_title}  {t.duration_str}"
+        return playing_content(text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
         yield Label(self._primary(), classes="primary")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
-        self.query_one(".primary", Label).update(self._primary())
+        self._refresh_primary()
 
 
-class AlbumDetailPanel(Widget):
+class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     """Reusable inline album detail panel: art, metadata, and track list.
 
     Usage: call ``load(album)`` to populate. Emits ``TrackSelected`` when the
@@ -133,6 +137,7 @@ class AlbumDetailPanel(Widget):
 
     def on_mount(self) -> None:
         self._size_art(14)
+        self._wire_now_playing(TrackRow, ".ap-tracklist")
 
     def _size_art(self, height: int) -> None:
         """Set the art width to keep it square for the given cell height."""
@@ -241,12 +246,12 @@ class AlbumDetailPanel(Widget):
 
         try:
             lv = self.query_one(".ap-tracklist", ListView)
-            await lv.mount(
-                *[
-                    TrackRow(track, i, str(track.id) in fav_ids)
-                    for i, track in enumerate(full.tracks, 1)
-                ]
-            )
+            rows = [
+                TrackRow(track, i, str(track.id) in fav_ids)
+                for i, track in enumerate(full.tracks, 1)
+            ]
+            self._apply_now_playing(rows)
+            await lv.mount(*rows)
         except NoMatches:
             pass
 
@@ -254,11 +259,12 @@ class AlbumDetailPanel(Widget):
     def _on_list_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, TrackRow):
             event.stop()
-            rows = list(self.query_one(".ap-tracklist", ListView).query(TrackRow))
+            lv = self.query_one(".ap-tracklist", ListView)
+            rows = list(lv.query(TrackRow))
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             self.post_message(AlbumDetailPanel.TrackSelected(event.item.track, queue))
-            event.list_view.focus()
+            self.call_after_refresh(event.list_view.focus)
 
 
 class AlbumScreen(Screen):

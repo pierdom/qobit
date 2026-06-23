@@ -405,15 +405,17 @@ class QueueView(Widget):
         if version != self._render_version:
             return
         app: QobitApp = self.app  # type: ignore[assignment]
-        lv = self.query_one("#queue-list", ListView)
-        await lv.clear()
-        if version != self._render_version:
-            return
 
+        # Snapshot state and resolve async data while the list is still visible.
         now_playing = app.now_playing
         history = list(app._history)
         queue = list(app._play_queue)
         fav_ids = await app.ensure_favorite_ids()
+        if version != self._render_version:
+            return
+
+        lv = self.query_one("#queue-list", ListView)
+        await lv.clear()
         if version != self._render_version:
             return
 
@@ -457,7 +459,8 @@ class QueueView(Widget):
             self.call_after_refresh(
                 lambda: lv.scroll_to_widget(items[now_idx], animate=False, center=True)
             )
-        self.call_after_refresh(lv.focus)
+        if self.display:
+            self.call_after_refresh(lv.focus)
 
     @on(ListView.Selected, "#queue-list")
     def _on_queue_selected(self, event: ListView.Selected) -> None:
@@ -471,4 +474,4 @@ class QueueView(Widget):
         elif isinstance(event.item, HistoryTrackRow):
             # Replay a past track as a one-off; leave Up Next untouched.
             app.play_track(event.item.track)
-        event.list_view.focus()
+        self.call_after_refresh(event.list_view.focus)

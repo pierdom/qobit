@@ -36,6 +36,7 @@ from ..store import load as load_state
 from ..store import save as save_state
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
+from .screens.mixes import MixesView
 from .screens.playlists import PlaylistsView
 from .screens.queue import QueueView
 from .screens.search import SearchView
@@ -122,6 +123,7 @@ _TABS = [
     ("artists", "Artists"),
     ("albums", "Albums"),
     ("playlists", "Playlists"),
+    ("mixes", "Mixes"),
     ("search", "Search"),
     ("queue", "Queue"),
 ]
@@ -256,6 +258,7 @@ class QobitApp(App[None]):
             yield TracksView(id="view-tracks")
             yield ArtistsView(id="view-artists")
             yield AlbumsView(id="view-albums")
+            yield MixesView(id="view-mixes")
             yield SearchView(id="view-search")
             yield QueueView(id="view-queue")
         yield TransportBar()
@@ -588,6 +591,66 @@ class QobitApp(App[None]):
             if str(track.id) in seen:
                 continue
             seen.add(str(track.id))
+            out.append(track)
+        return out
+
+    async def generate_mix(self, kind: str) -> list[Track]:
+        """Generate a DailyQ / WeeklyQ from history + favourites via dynamic/suggest.
+
+        Seeds up to 50 tracks from recent history (most-recent-first) topped up
+        with favourites.  A spread of up to 12 seeds is enriched with
+        artist/label/genre metadata for the `track_to_analysed` payload.  Returns
+        an empty list when there are no seeds or the API fails."""
+        fav_tracks: list[Track] = []
+        try:
+            fav_tracks = await self.ensure_favorite_tracks()
+        except Exception:
+            pass
+
+        seen: set[str] = set()
+        seeds: list[Track] = []
+        for t in [*reversed(self._history), *fav_tracks]:
+            if t.id not in seen:
+                seen.add(t.id)
+                seeds.append(t)
+            if len(seeds) >= 50:
+                break
+
+        if not seeds:
+            return []
+
+        listened: list[int] = [
+            tid for t in seeds if (tid := self._as_int(t.id)) is not None
+        ]
+
+        analyse_count = min(12, len(seeds))
+        if analyse_count > 1:
+            step = (len(seeds) - 1) / (analyse_count - 1)
+            picks = [seeds[round(i * step)] for i in range(analyse_count)]
+        else:
+            picks = seeds[:analyse_count]
+
+        analysed_results = await asyncio.gather(
+            *[self._analysed_entry(t) for t in picks], return_exceptions=True
+        )
+        analysed = [e for e in analysed_results if isinstance(e, dict)]
+
+        try:
+            resp = await self._client.get_dynamic_suggestions(listened, analysed)
+        except QobuzError:
+            return []
+
+        seed_ids = {str(i) for i in listened}
+        out: list[Track] = []
+        seen2: set[str] = set(seed_ids)
+        for item in (resp.get("tracks") or {}).get("items") or []:
+            try:
+                track = Track.from_api(item)
+            except Exception:
+                continue
+            if track.id in seen2:
+                continue
+            seen2.add(track.id)
             out.append(track)
         return out
 
