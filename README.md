@@ -66,7 +66,7 @@ qobit
 | `PageUp` `PageDown` | Jump the selection one page in long lists and grids (Tracks, Queue, Artists, Albums) |
 | `Home` `End` | Jump the selection to the first / last item |
 | `f` | Favourite / unfavourite the highlighted track (in any track list) |
-| `i` | Open the context menu for the highlighted track (Play next / Add to queue / Play radio / Go to artist / Go to album) |
+| `i` | Open the context menu for the highlighted track (Play next / Add to queue / Play radio / Go to artist / Go to album; plus Remove from queue on Up Next rows) |
 | `Enter` | Open selected item or play selected track |
 
 ### Playback

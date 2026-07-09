@@ -43,7 +43,8 @@ src/qobit/
     ├── screens/
     │   ├── context_menu.py  TrackContextMenu — ModalScreen popup for one track
     │   │                    (Play next / Add to queue / Play radio / Go to
-    │   │                    artist / Go to album); opened app-wide with `i`
+    │   │                    artist / Go to album; + Remove from queue when
+    │   │                    in_queue=True); opened app-wide with `i`
     │   ├── search.py        SearchView + shared item widgets (TrackItem,
     │   │                    AlbumItem, ArtistItem, PlaylistItem)
     │   ├── album_detail.py  AlbumDetailPanel (shared: art + metadata +
@@ -124,7 +125,9 @@ whose `highlighted_child` exposes a `.track`, it pushes `TrackContextMenu`. This
 covers every track list (search, tracks, queue, album/artist/playlist panels)
 with no per-widget binding — every track row already exposes `.track`. The modal
 is decoupled: it `dismiss()`es the chosen action id and `_on_track_menu`
-dispatches (queue_next/queue_last/_start_radio/_open_artist/_open_album). "Go to
+dispatches (queue_next/queue_last/remove_from_queue/_start_radio/_open_artist/
+_open_album). "Remove from queue" is offered only when the highlighted row is a
+`QueueTrackRow`, and removes by identity so the exact queued instance goes. "Go to
 album" builds a lean `Album` from the track (panel re-fetches the rest); "Go to
 artist" needs a `get_track` round-trip since `Track` carries no `artist_id`.
 

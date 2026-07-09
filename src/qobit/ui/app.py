@@ -479,6 +479,22 @@ class QobitApp(App[None]):
         self._play_queue.append(track)
         self.queue_version += 1
 
+    def remove_from_queue(self, track: Track) -> bool:
+        """Drop a track from Up Next. Matches by identity first so the exact
+        queued instance is removed even if the same track sits at several
+        positions; falls back to the first id match. Returns whether it removed."""
+        for i, t in enumerate(self._play_queue):
+            if t is track:
+                del self._play_queue[i]
+                self.queue_version += 1
+                return True
+        for i, t in enumerate(self._play_queue):
+            if t.id == track.id:
+                del self._play_queue[i]
+                self.queue_version += 1
+                return True
+        return False
+
     @work
     async def _advance_queue(self) -> None:
         async with self._advance_lock:
@@ -631,9 +647,7 @@ class QobitApp(App[None]):
         if not seeds:
             return []
 
-        listened: list[int] = [
-            tid for t in seeds if (tid := self._as_int(t.id)) is not None
-        ]
+        listened: list[int] = [tid for t in seeds if (tid := self._as_int(t.id)) is not None]
 
         analyse_count = min(12, len(seeds))
         if analyse_count > 1:
@@ -855,6 +869,7 @@ class QobitApp(App[None]):
         """Open the context menu for the track highlighted in the focused list.
         No-op unless a ListView with a track row currently holds focus."""
         from .screens.context_menu import TrackContextMenu
+        from .screens.queue import QueueTrackRow
 
         focused = self.focused
         if not isinstance(focused, ListView):
@@ -863,10 +878,18 @@ class QobitApp(App[None]):
         if child is None or not hasattr(child, "track"):
             return
         track: Track = child.track
-        self.push_screen(TrackContextMenu(track), lambda action: self._on_track_menu(action, track))
+        # "Remove from queue" only makes sense for an Up Next row.
+        in_queue = isinstance(child, QueueTrackRow)
+        self.push_screen(
+            TrackContextMenu(track, in_queue=in_queue),
+            lambda action: self._on_track_menu(action, track),
+        )
 
     def _on_track_menu(self, action: str | None, track: Track) -> None:
-        if action == "play_next":
+        if action == "remove_queue":
+            if self.remove_from_queue(track):
+                self._flash_status(f"Removed from queue: {track.display_title}")
+        elif action == "play_next":
             self.queue_next(track)
             self._flash_status(f"Playing next: {track.display_title}")
         elif action == "add_queue":
