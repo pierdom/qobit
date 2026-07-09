@@ -41,6 +41,9 @@ src/qobit/
     │                        concurrent HTTP fetches; module-level URL→PIL cache
     │                        prevents re-downloading the same image within a session
     ├── screens/
+    │   ├── context_menu.py  TrackContextMenu — ModalScreen popup for one track
+    │   │                    (Play next / Add to queue / Play radio / Go to
+    │   │                    artist / Go to album); opened app-wide with `i`
     │   ├── search.py        SearchView + shared item widgets (TrackItem,
     │   │                    AlbumItem, ArtistItem, PlaylistItem)
     │   ├── album_detail.py  AlbumDetailPanel (shared: art + metadata +
@@ -88,7 +91,7 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 
 ## Roadmap
 
-- Context menus (add to queue / open artist / open album) on card and track rows
+- Context menus: `i` opens a per-track popup (done for track rows); still todo on album/artist cards
 - AlbumScreen / PlaylistScreen / PlaylistsView redesign (art, rich header, queue actions, format badges)
 - Search UI overhaul (art thumbnails, quality badges, better layout)
 - TrackScreen detail overlay (composer, performer, related albums)
@@ -114,6 +117,16 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 **Container-owns-cursor (grids)** — `AlbumGrid`/`ArtistGrid` hold focus; the container tracks `_cursor: int` and toggles `-selected` on child cards. `ScrollableContainer` has `can_focus=True` so Tab targets the container, not its children — children can't hold focus themselves.
 
 **Custom back navigation** — views implement `action_navigate_back() -> bool` (Escape, `priority=True`). Return `True` if the event was consumed (panel pop, filter teardown), `False` to let `QobitApp.action_focus_tabs` fall through. The app checks `hasattr(active_view, "action_navigate_back")` before dispatching.
+
+**Track context menu resolves via focus** — `i` is a single app-level binding
+(`QobitApp.action_track_menu`). It reads `self.focused`; if it's a `ListView`
+whose `highlighted_child` exposes a `.track`, it pushes `TrackContextMenu`. This
+covers every track list (search, tracks, queue, album/artist/playlist panels)
+with no per-widget binding — every track row already exposes `.track`. The modal
+is decoupled: it `dismiss()`es the chosen action id and `_on_track_menu`
+dispatches (queue_next/queue_last/_start_radio/_open_artist/_open_album). "Go to
+album" builds a lean `Album` from the track (panel re-fetches the rest); "Go to
+artist" needs a `get_track` round-trip since `Track` carries no `artist_id`.
 
 **Queue version pattern** — `queue_version: reactive[int]` on `QobitApp` is bumped whenever `_play_queue` or `_history` changes. Widgets watch this to re-render. Combined with a local `_render_version` they guard against stale workers.
 

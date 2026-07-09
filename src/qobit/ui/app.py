@@ -181,6 +181,7 @@ class QobitApp(App[None]):
         Binding("[", "seek_back", "◀10s"),
         Binding("]", "seek_fwd", "10s▶"),
         Binding("R", "start_radio", "Radio"),
+        Binding("i", "track_menu", "Menu", show=False),
         # 1-5 work when Tabs has focus; escape brings focus to Tabs from anywhere
         Binding("1", "switch_tab('tracks')", "Tracks", show=False),
         Binding("2", "switch_tab('artists')", "Artists", show=False),
@@ -466,6 +467,17 @@ class QobitApp(App[None]):
         if self._history:
             self._history.clear()
             self.queue_version += 1
+
+    def queue_next(self, track: Track) -> None:
+        """Insert a track at the head of Up Next so it plays immediately after
+        the current one."""
+        self._play_queue.insert(0, track)
+        self.queue_version += 1
+
+    def queue_last(self, track: Track) -> None:
+        """Append a track to the tail of Up Next."""
+        self._play_queue.append(track)
+        self.queue_version += 1
 
     @work
     async def _advance_queue(self) -> None:
@@ -836,6 +848,70 @@ class QobitApp(App[None]):
     @work
     async def _play_previous(self, track: Track) -> None:
         await self._do_play(track, record_history=False)
+
+    # ── track context menu ───────────────────────────────────────────────────
+
+    def action_track_menu(self) -> None:
+        """Open the context menu for the track highlighted in the focused list.
+        No-op unless a ListView with a track row currently holds focus."""
+        from .screens.context_menu import TrackContextMenu
+
+        focused = self.focused
+        if not isinstance(focused, ListView):
+            return
+        child = focused.highlighted_child
+        if child is None or not hasattr(child, "track"):
+            return
+        track: Track = child.track
+        self.push_screen(TrackContextMenu(track), lambda action: self._on_track_menu(action, track))
+
+    def _on_track_menu(self, action: str | None, track: Track) -> None:
+        if action == "play_next":
+            self.queue_next(track)
+            self._flash_status(f"Playing next: {track.display_title}")
+        elif action == "add_queue":
+            self.queue_last(track)
+            self._flash_status(f"Added to queue: {track.display_title}")
+        elif action == "radio":
+            self.play_track(track)
+            self._start_radio(track)
+        elif action == "artist":
+            self._open_artist(track)
+        elif action == "album":
+            self._open_album(track)
+
+    def _open_album(self, track: Track) -> None:
+        from .screens.album_detail import AlbumScreen
+
+        if not track.album_id:
+            self._flash_status("No album for this track")
+            return
+        album = Album(
+            id=track.album_id,
+            title=track.album,
+            artist=track.artist,
+            year=None,
+            tracks_count=0,
+            image_url=track.image_url,
+        )
+        self.push_screen(AlbumScreen(album, source="Back"))
+
+    @work
+    async def _open_artist(self, track: Track) -> None:
+        from .screens.artist_detail import ArtistScreen
+
+        try:
+            data = await self._client.get_track(str(track.id))
+        except QobuzError:
+            self._flash_status("Couldn't open artist")
+            return
+        album = data.get("album") or {}
+        artist = album.get("artist") or data.get("performer") or {}
+        artist_id = artist.get("id")
+        if not artist_id:
+            self._flash_status("Artist not available")
+            return
+        self.push_screen(ArtistScreen(str(artist_id), source="Back"))
 
     def action_seek_back(self) -> None:
         self._player.seek(-10.0)
