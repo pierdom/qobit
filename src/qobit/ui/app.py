@@ -216,11 +216,13 @@ class QobitApp(App[None]):
         super().__init__()
         self._client = QobuzClient()
         self._player = MpvPlayer(audio_device=get_audio_device())
-        self._play_queue: list[Track] = []
-        # Tracks played earlier this session, oldest first. The just-finished
-        # track is appended on each track change (see _do_play). Session-only —
-        # not persisted. Capped at _HISTORY_MAX to bound memory.
-        self._history: list[Track] = []
+        # The play context is one ordered timeline plus a cursor at the
+        # now-playing track. Everything behind the cursor is "Recently Played",
+        # everything ahead is "Up Next". Selecting a queue row just moves the
+        # cursor, so skipping back and forth never drops tracks. Session-only —
+        # not persisted; the past is trimmed to _HISTORY_MAX to bound memory.
+        self._timeline: list[Track] = []
+        self._cursor: int = -1
         # A restored-but-not-yet-loaded track: (track, position). Set on launch
         # from the persisted player state; resumed on the next play/pause press.
         self._pending_resume: tuple[Track, float] | None = None
@@ -446,6 +448,26 @@ class QobitApp(App[None]):
                     self.call_from_thread(self._advance_queue)
             time.sleep(0.5)
 
+    # ── timeline slices (read-only views onto _timeline for the Queue UI) ────
+
+    @property
+    def _history(self) -> list[Track]:
+        """Recently Played: everything behind the cursor."""
+        return self._timeline[: self._cursor] if self._cursor >= 0 else []
+
+    @property
+    def _play_queue(self) -> list[Track]:
+        """Up Next: everything ahead of the cursor."""
+        return self._timeline[self._cursor + 1 :] if self._cursor >= 0 else []
+
+    def _trim_history(self) -> None:
+        """Bound the past to _HISTORY_MAX tracks by dropping the oldest and
+        pulling the cursor back to match."""
+        if self._cursor > _HISTORY_MAX:
+            drop = self._cursor - _HISTORY_MAX
+            del self._timeline[:drop]
+            self._cursor -= drop
+
     # ── play (async worker — shares event loop with httpx) ───────────────────
 
     @work
@@ -453,44 +475,65 @@ class QobitApp(App[None]):
         self, track: Track, queue: list[Track] | None = None, start: float = 0.0
     ) -> None:
         self._pending_resume = None
-        if queue is not None:
-            self._play_queue = list(queue)
-            self.queue_version += 1
+        # Resume-in-place: a bare replay of the current track (e.g. session
+        # restore) shouldn't spawn a duplicate context entry.
+        if queue is None and self._cursor >= 0 and self._timeline[self._cursor].id == track.id:
+            await self._do_play(track, start=start)
+            return
+        # Launch a new context: keep the past (history + the interrupted track),
+        # then splice in the new track and its queue. The old Up Next is dropped
+        # — this is a deliberate new selection, not a skip within the queue.
+        past = self._timeline[: self._cursor + 1] if self._cursor >= 0 else []
+        self._timeline = past + [track] + list(queue or [])
+        self._cursor = len(past)
+        self._trim_history()
+        self.queue_version += 1
         await self._do_play(track, start=start)
+
+    @work
+    async def jump_to(self, index: int) -> None:
+        """Move the cursor to any position on the timeline and play it. This is
+        how the Queue view skips back and forth without dropping tracks."""
+        if not 0 <= index < len(self._timeline):
+            return
+        self._cursor = index
+        self.queue_version += 1
+        await self._do_play(self._timeline[index])
 
     def clear_queue(self) -> None:
         if self._play_queue:
-            self._play_queue.clear()
+            del self._timeline[self._cursor + 1 :]
             self.queue_version += 1
 
     def clear_history(self) -> None:
         if self._history:
-            self._history.clear()
+            del self._timeline[: self._cursor]
+            self._cursor = 0
             self.queue_version += 1
 
     def queue_next(self, track: Track) -> None:
-        """Insert a track at the head of Up Next so it plays immediately after
-        the current one."""
-        self._play_queue.insert(0, track)
+        """Insert a track just after the now-playing one so it plays next."""
+        self._timeline.insert(self._cursor + 1, track)
         self.queue_version += 1
 
     def queue_last(self, track: Track) -> None:
         """Append a track to the tail of Up Next."""
-        self._play_queue.append(track)
+        self._timeline.append(track)
         self.queue_version += 1
 
     def remove_from_queue(self, track: Track) -> bool:
-        """Drop a track from Up Next. Matches by identity first so the exact
-        queued instance is removed even if the same track sits at several
-        positions; falls back to the first id match. Returns whether it removed."""
-        for i, t in enumerate(self._play_queue):
-            if t is track:
-                del self._play_queue[i]
+        """Drop a track from Up Next (positions ahead of the cursor). Matches by
+        identity first so the exact queued instance is removed even if the same
+        track sits at several positions; falls back to the first id match ahead
+        of the cursor. Returns whether it removed."""
+        for i in range(self._cursor + 1, len(self._timeline)):
+            if self._timeline[i] is track:
+                del self._timeline[i]
                 self.queue_version += 1
                 return True
-        for i, t in enumerate(self._play_queue):
-            if t.id == track.id:
-                del self._play_queue[i]
+        for i in range(self._cursor + 1, len(self._timeline)):
+            if self._timeline[i].id == track.id:
+                del self._timeline[i]
                 self.queue_version += 1
                 return True
         return False
@@ -498,18 +541,20 @@ class QobitApp(App[None]):
     @work
     async def _advance_queue(self) -> None:
         async with self._advance_lock:
-            if not self._play_queue and self.radio_mode and self.now_playing is not None:
-                # Queue ran dry under endless radio: refill from suggestions seeded
-                # by the just-finished track (now_playing is still that track here).
+            at_end = self._cursor + 1 >= len(self._timeline)
+            if at_end and self.radio_mode and self.now_playing is not None:
+                # Timeline ran out under endless radio: refill from suggestions
+                # seeded by the just-finished track (still now_playing here).
                 suggestions = await self._fetch_radio(self.now_playing)
                 if suggestions:
-                    self._play_queue = suggestions
-                    self.queue_version += 1
-            if not self._play_queue:
+                    self._timeline.extend(suggestions)
+                    at_end = False
+            if at_end:
                 return
-            next_track = self._play_queue.pop(0)
+            self._cursor += 1
+            self._trim_history()
             self.queue_version += 1
-            await self._do_play(next_track)
+            await self._do_play(self._timeline[self._cursor])
 
     # ── song radio (dynamic/suggest) ─────────────────────────────────────────
 
@@ -542,8 +587,13 @@ class QobitApp(App[None]):
         if not suggestions:
             self._flash_status("No radio suggestions available")
             return
-        # Replace Up Next with the fresh station.
-        self._play_queue = suggestions
+        # Replace Up Next with the fresh station, keeping the current track.
+        if self._cursor >= 0:
+            del self._timeline[self._cursor + 1 :]
+            self._timeline.extend(suggestions)
+        else:
+            self._timeline = list(suggestions)
+            self._cursor = -1
         self.queue_version += 1
         self._flash_status(f"Radio: {len(suggestions)} tracks queued")
 
@@ -680,7 +730,7 @@ class QobitApp(App[None]):
             out.append(track)
         return out
 
-    async def _do_play(self, track: Track, start: float = 0.0, record_history: bool = True) -> None:
+    async def _do_play(self, track: Track, start: float = 0.0) -> None:
         self.status_msg = f"Loading {track.display_title}…"
         stream: StreamUrl | None = None
         track_id = str(track.id)
@@ -710,16 +760,9 @@ class QobitApp(App[None]):
             self.status_msg = "No stream available"
             return
 
-        # Push the outgoing track to history before it's replaced. Skipped when
-        # stepping backwards (record_history=False) so previous/next don't
-        # ping-pong. This is the single chokepoint for every track change.
-        prev = self.now_playing
-        if record_history and prev is not None and prev.id != track.id:
-            if len(self._history) >= _HISTORY_MAX:
-                del self._history[0]
-            self._history.append(prev)
-            self.queue_version += 1
-
+        # History is derived from the cursor position, not pushed here: the
+        # caller (advance/previous/jump/play_track) has already placed the
+        # cursor. _do_play just loads and plays the resolved track.
         if self._player.running:
             self._player.stop()
         self._player.play(stream.url, start=start)
@@ -813,6 +856,8 @@ class QobitApp(App[None]):
         self.playback_dur = duration
         self.playback_pos = position
         self.is_paused = True
+        self._timeline = [track]
+        self._cursor = 0
         self.now_playing = track
         self._restoring = False
         self._pending_resume = (track, position)
@@ -846,22 +891,14 @@ class QobitApp(App[None]):
             self.play_track(track, start=position)
 
     def action_previous(self) -> None:
-        # Within the first few seconds, step back to the previous track in
-        # history; otherwise (or with no history) restart the current track.
+        # Within the first few seconds, step the cursor back one track;
+        # otherwise (or at the start of the timeline) restart the current track.
         if (
             self._player.running and self.playback_pos > _PREV_RESTART_THRESHOLD
-        ) or not self._history:
+        ) or self._cursor <= 0:
             self._player.seek_to(0.0)
             return
-        prev = self._history.pop()
-        self.queue_version += 1
-        # record_history=False so the track we just left isn't pushed back onto
-        # history (which would make the next "previous" press ping-pong).
-        self._play_previous(prev)
-
-    @work
-    async def _play_previous(self, track: Track) -> None:
-        await self._do_play(track, record_history=False)
+        self.jump_to(self._cursor - 1)
 
     # ── track context menu ───────────────────────────────────────────────────
 
