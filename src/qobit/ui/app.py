@@ -917,7 +917,7 @@ class QobitApp(App[None]):
             tracks_count=0,
             image_url=track.image_url,
         )
-        self.push_screen(AlbumScreen(album, source="Back"))
+        self.push_screen(AlbumScreen(album, source=self._current_tab_source()))
 
     @work
     async def _open_artist(self, track: Track) -> None:
@@ -934,7 +934,17 @@ class QobitApp(App[None]):
         if not artist_id:
             self._flash_status("Artist not available")
             return
-        self.push_screen(ArtistScreen(str(artist_id), source="Back"))
+        self.push_screen(ArtistScreen(str(artist_id), source=self._current_tab_source()))
+
+    def _current_tab_source(self) -> str:
+        """Breadcrumb / back-target label for a pushed detail screen opened from
+        the context menu. ArtistScreen maps it back to a tab via ``.lower()``, so
+        it must be a real tab label (e.g. "Tracks" → tab id "tracks")."""
+        try:
+            active = self.query_one("#nav-tabs", Tabs).active
+        except Exception:
+            return "Tracks"
+        return dict(_TABS).get(active, active.capitalize() or "Tracks")
 
     def action_seek_back(self) -> None:
         self._player.seek(-10.0)
