@@ -130,6 +130,10 @@ _open_album). "Remove from queue" is offered only when the highlighted row is a
 `QueueTrackRow`, and removes by identity so the exact queued instance goes. "Go to
 album" builds a lean `Album` from the track (panel re-fetches the rest); "Go to
 artist" needs a `get_track` round-trip since `Track` carries no `artist_id`.
+Both push their detail screen with `source=_current_tab_source()` (the active
+tab's label), **not** a free-form string: `ArtistScreen.action_navigate_back`
+maps `source.lower()` back to a tab id, so a bogus source (e.g. "Back") crashes
+Escape with `No Tab with id …`.
 
 **Queue version pattern** — `queue_version: reactive[int]` on `QobitApp` is bumped whenever `_play_queue` or `_history` changes. Widgets watch this to re-render. Combined with a local `_render_version` they guard against stale workers.
 
