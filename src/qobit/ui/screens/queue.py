@@ -415,6 +415,11 @@ class QueueView(Widget):
             return
 
         lv = self.query_one("#queue-list", ListView)
+        # Only the list should re-grab focus after a rebuild — and only if it
+        # already had it. Otherwise a refresh triggered by favouriting the
+        # now-playing track (f on the hero) would yank focus off the hero.
+        # Tab-entry focus is handled separately by on_show.
+        keep_focus = self.app.focused is lv
         await lv.clear()
         if version != self._render_version:
             return
@@ -474,7 +479,7 @@ class QueueView(Widget):
             self.call_after_refresh(
                 lambda: lv.scroll_to_widget(items[now_idx], animate=False, center=True)
             )
-        if self.display:
+        if self.display and keep_focus:
             self.call_after_refresh(lv.focus)
 
     @on(ListView.Selected, "#queue-list")
