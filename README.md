@@ -6,6 +6,29 @@ Hi-res FLAC with no resampling and no DSP in the signal path — output device
 sample rate and bit depth matched to each track — is the core, non-negotiable
 requirement.
 
+## Why this exists
+
+This is a personal project. If you want a serious, mature terminal Qobuz player,
+use **[qbz](https://github.com/vicrodh/qbz)** by [vicrodh](https://github.com/vicrodh)
+— it's more complete, more battle-tested, and frankly a better player.
+
+qobit exists for one reason: I wanted a Qobuz client that looks *fancy* on a
+cyberdeck build — big Kitty-protocol cover art, a rich now-playing panel, the
+whole thing driven from a terminal. It borrows a lot of ideas from qbz,
+especially its bit-perfect audio strategy (ALSA `hw:` / CoreAudio exclusive
+mode), which maps directly onto mpv flags here. Credit for the hard-won
+bit-perfect groundwork goes to qbz; this is a Textual-flavoured reinterpretation
+with a different aesthetic, not a replacement.
+
+## Disclaimer
+
+Unofficial client, not affiliated with or endorsed by Qobuz. It talks to the
+same private API the Qobuz web player uses (the app id and signing secrets are
+derived from the public web bundle at login, the way most third-party Qobuz
+clients do). You need your own valid Qobuz subscription; qobit stores nothing
+server-side and adds no DRM circumvention — it just plays streams your account
+is already entitled to. Use at your own risk and within Qobuz's terms of service.
+
 ## Requirements
 
 - Python 3.11+
