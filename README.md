@@ -8,17 +8,22 @@ requirement.
 
 ## Why this exists
 
-This is a personal project. If you want a serious, mature terminal Qobuz player,
-use **[qbz](https://github.com/vicrodh/qbz)** by [vicrodh](https://github.com/vicrodh)
-— it's more complete, more battle-tested, and frankly a better player.
+This is a personal project, and there are better-established options:
+
+- **[qbz](https://github.com/vicrodh/qbz)** by [vicrodh](https://github.com/vicrodh)
+  is a serious, mature Qobuz player with a full graphical UI — more complete and
+  more battle-tested than qobit. qobit borrows a lot of its ideas, especially its
+  bit-perfect audio strategy (ALSA `hw:` / CoreAudio exclusive mode), which maps
+  directly onto mpv flags here. Credit for the hard-won bit-perfect groundwork
+  goes to qbz.
+- **[qobine](https://github.com/SofusA/qobine)** by
+  [SofusA](https://github.com/SofusA) is another terminal-based Qobuz client, and
+  a much more lightweight one than qobit — worth a look if you want something leaner.
 
 qobit exists for one reason: I wanted a Qobuz client that looks *fancy* on a
 cyberdeck build — big Kitty-protocol cover art, a rich now-playing panel, the
-whole thing driven from a terminal. It borrows a lot of ideas from qbz,
-especially its bit-perfect audio strategy (ALSA `hw:` / CoreAudio exclusive
-mode), which maps directly onto mpv flags here. Credit for the hard-won
-bit-perfect groundwork goes to qbz; this is a Textual-flavoured reinterpretation
-with a different aesthetic, not a replacement.
+whole thing driven from a terminal. It's a Textual-flavoured reinterpretation
+with a heavier, image-forward aesthetic, not a replacement for either of the above.
 
 ## Disclaimer
 
