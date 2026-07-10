@@ -415,6 +415,11 @@ class QueueView(Widget):
             return
 
         lv = self.query_one("#queue-list", ListView)
+        # Only the list should re-grab focus after a rebuild — and only if it
+        # already had it. Otherwise a refresh triggered by favouriting the
+        # now-playing track (f on the hero) would yank focus off the hero.
+        # Tab-entry focus is handled separately by on_show.
+        keep_focus = self.app.focused is lv
         await lv.clear()
         if version != self._render_version:
             return
@@ -422,22 +427,37 @@ class QueueView(Widget):
         items: list[ListItem] = []
         now_idx: int | None = None
 
+        # The rendered track rows are exactly the app's timeline in order
+        # (history → now-playing → up-next), so a running counter over track
+        # rows is each row's timeline index. Selecting a row jumps the cursor
+        # there (see _on_queue_selected), which is why nothing is dropped when
+        # skipping around.
+        ti = 0
+
+        def _tag(row: ListItem) -> ListItem:
+            nonlocal ti
+            row.timeline_index = ti  # type: ignore[attr-defined]
+            ti += 1
+            return row
+
         # Recently Played region: history, then the now-playing track as its tail
         # (no separate section — it's the 'now' point of the timeline).
         if history:
             items.append(SectionHeader("Recently Played", count=len(history)))
-            items.extend(HistoryTrackRow(t, str(t.id) in fav_ids) for t in history)
+            items.extend(_tag(HistoryTrackRow(t, str(t.id) in fav_ids)) for t in history)
         if now_playing:
             now_idx = len(items)
             items.append(
-                NowPlayingListRow(now_playing, app.is_paused, str(now_playing.id) in fav_ids)
+                _tag(NowPlayingListRow(now_playing, app.is_paused, str(now_playing.id) in fav_ids))
             )
 
         if queue:
             items.append(
                 SectionHeader("Up Next", count=len(queue), spaced=bool(history or now_playing))
             )
-            items.extend(QueueTrackRow(t, i, str(t.id) in fav_ids) for i, t in enumerate(queue, 1))
+            items.extend(
+                _tag(QueueTrackRow(t, i, str(t.id) in fav_ids)) for i, t in enumerate(queue, 1)
+            )
 
         if not items:
             await lv.append(ListItem(Label("[dim]Queue is empty.[/dim]", markup=True)))
@@ -459,19 +479,17 @@ class QueueView(Widget):
             self.call_after_refresh(
                 lambda: lv.scroll_to_widget(items[now_idx], animate=False, center=True)
             )
-        if self.display:
+        if self.display and keep_focus:
             self.call_after_refresh(lv.focus)
 
     @on(ListView.Selected, "#queue-list")
     def _on_queue_selected(self, event: ListView.Selected) -> None:
+        # Every track row carries its timeline index; selecting any of them —
+        # history, now-playing, or up-next — just moves the cursor there. Jumping
+        # back resumes the line (the tracks in between return to Up Next);
+        # jumping forward leaves the skipped-over tracks under Recently Played.
         app: QobitApp = self.app  # type: ignore[assignment]
-        if isinstance(event.item, QueueTrackRow):
-            lv = self.query_one("#queue-list", ListView)
-            rows = list(lv.query(QueueTrackRow))
-            idx = rows.index(event.item)
-            remaining = [r.track for r in rows[idx + 1 :]]
-            app.play_track(event.item.track, queue=remaining)
-        elif isinstance(event.item, HistoryTrackRow):
-            # Replay a past track as a one-off; leave Up Next untouched.
-            app.play_track(event.item.track)
+        index = getattr(event.item, "timeline_index", None)
+        if index is not None:
+            app.jump_to(index)
         self.call_after_refresh(event.list_view.focus)

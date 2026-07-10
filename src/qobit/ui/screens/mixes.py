@@ -300,6 +300,6 @@ class MixesView(NowPlayingViewMixin, Widget):
         lv = self.query_one("#mix-track-list", TrackListView)
         rows = list(lv.query(MixTrackRow))
         idx = rows.index(event.item)
-        queue = [r.track for r in rows[idx + 1:]]
+        queue = [r.track for r in rows[idx + 1 :]]
         app.play_track(event.item.track, queue=queue)
         self.call_after_refresh(lv.focus)

@@ -96,10 +96,29 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 - AlbumScreen / PlaylistScreen / PlaylistsView redesign (art, rich header, queue actions, format badges)
 - Search UI overhaul (art thumbnails, quality badges, better layout)
 - TrackScreen detail overlay (composer, performer, related albums)
-- Queue reorder / single-item remove
+- Queue reorder (single-item remove + free skip back/forth via timeline+cursor done)
 - Gapless playback, ReplayGain, CMAF fallback
 
 ## Key non-obvious patterns
+
+**Timeline + cursor (the play context)** — `QobitApp` holds one ordered
+`_timeline: list[Track]` plus `_cursor: int` (index of the now-playing track,
+-1 when nothing is loaded). There is **no** separate history/queue list: they're
+read-only slice-properties (`_history == _timeline[:_cursor]`, `_play_queue ==
+_timeline[_cursor+1:]`) kept for the Queue UI, which reads them unchanged.
+Invariant: `now_playing == _timeline[_cursor]`, set in `_do_play` (which no
+longer pushes history — the cursor *is* the history boundary). Transitions:
+`_advance_queue` → `_cursor += 1` (radio refill extends the timeline at the end);
+`action_previous` → `jump_to(_cursor-1)`; **selecting any Queue row →
+`jump_to(index)`** which just moves the cursor, so skipping back/forth never
+drops tracks (the old behaviour sliced `rows[idx+1:]` and silently discarded
+everything before the picked row). `play_track(t, queue=…)` launches a *new*
+context: it keeps the past (`_timeline[:_cursor+1]`), splices in `[t]+queue`, and
+drops the old Up Next — deliberate, since it's a fresh library selection, not a
+skip. `_trim_history()` bounds the past to `_HISTORY_MAX`. Queue rows carry a
+`timeline_index` tagged in `_refresh_list` (rendered order == timeline order),
+which `_on_queue_selected` passes to `jump_to`. `jump_to` is `@work` because
+sync action handlers call it.
 
 **`_stop_gen` for end-of-track** — `MpvPlayer._stop_gen` increments on every `stop()` call. The poll thread records the gen when `running=True`; on transition to `False`, equal gen = natural end (advance queue), different gen = stop was called (skip). Race-safe because even a post-`stop()` check will see the changed gen.
 
@@ -135,7 +154,7 @@ tab's label), **not** a free-form string: `ArtistScreen.action_navigate_back`
 maps `source.lower()` back to a tab id, so a bogus source (e.g. "Back") crashes
 Escape with `No Tab with id …`.
 
-**Queue version pattern** — `queue_version: reactive[int]` on `QobitApp` is bumped whenever `_play_queue` or `_history` changes. Widgets watch this to re-render. Combined with a local `_render_version` they guard against stale workers.
+**Queue version pattern** — `queue_version: reactive[int]` on `QobitApp` is bumped whenever `_timeline`/`_cursor` changes. Widgets watch this to re-render. Combined with a local `_render_version` they guard against stale workers.
 
 **`_flash_status` vs `status_msg`** — `status_msg` drives the transport bar's main `artist — title` label; setting it for transient notices would erase now-playing info until the next track. `_flash_status` sets it temporarily and auto-clears (~3 s).
 

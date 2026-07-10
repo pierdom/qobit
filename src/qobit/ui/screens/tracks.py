@@ -228,6 +228,11 @@ class TracksView(NowPlayingViewMixin, Widget):
         if version != self._render_version:
             return
         lv = self.query_one("#fav-tracks", ListView)
+        # Only re-grab focus if this list already had it and is on-screen —
+        # otherwise a rebuild triggered by favouriting a track from another tab
+        # (e.g. f on the Queue hero) would yank focus onto this off-screen list.
+        # Tab-entry focus is handled by on_show.
+        keep_focus = self.display and self.app.focused is lv
         await lv.clear()
         if version != self._render_version:
             return
@@ -245,7 +250,8 @@ class TracksView(NowPlayingViewMixin, Widget):
             rows = [FavTrackRow(t) for t in tracks[i : i + _BATCH]]
             self._apply_now_playing(rows, first_batch=(i == 0))
             await lv.mount(*rows)
-        self.call_after_refresh(lv.focus)
+        if keep_focus:
+            self.call_after_refresh(lv.focus)
 
     @work
     async def _load(self) -> None:

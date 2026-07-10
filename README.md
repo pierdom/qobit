@@ -113,10 +113,14 @@ items.
 The Queue tab is split in two. On the **left** is a timeline: **Recently
 Played** (tracks you've already heard this session, oldest first, `↺`) flows
 into the **now-playing track** (accent-highlighted, with a ▶/⏸ icon) and on into
-**Up Next**. The cursor opens on the now-playing track, so `PageUp` walks back
-into history and `PageDown` down the queue. Selecting a Recently Played track
-replays it as a one-off without disturbing Up Next; selecting an Up Next track
-plays it and re-queues the rest.
+**Up Next**. The whole thing is one ordered timeline with a cursor on the
+now-playing track, so `PageUp` walks back into history and `PageDown` down the
+queue. **Selecting any track just moves the cursor there — nothing is dropped.**
+Skip forward past a few tracks and they stay put under Recently Played; jump
+back to one and the tracks in between return to Up Next and play through again.
+This makes the Queue a place to explore a radio station back and forth, not just
+a play-through list. Launching an album or playlist from the library still
+replaces Up Next; your session's Recently Played survives across those switches.
 
 On the **right** is the **Now Playing** panel — the focal point of the page:
 large album art, title and artist, `album · year`, `genre · label`, and the
