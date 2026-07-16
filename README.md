@@ -6,6 +6,19 @@ Hi-res FLAC with no resampling and no DSP in the signal path — output device
 sample rate and bit depth matched to each track — is the core, non-negotiable
 requirement.
 
+> **Early-stage project.** qobit is functional but rough around the edges:
+> missing features, no performance optimisations, occasional UI quirks. Expect
+> breakage and breaking changes. Contributions and bug reports welcome.
+
+## Screenshots
+
+| | | |
+|---|---|---|
+| ![Tracks tab — favourite tracks list](screenshots/tracks_page.png) | ![Artists tab — favourite artists grid](screenshots/artists_page.png) | ![Artist view — bio, top tracks, album grid](screenshots/artist_view.png) |
+| Tracks | Artists | Artist detail |
+| ![Albums tab — favourite albums grid](screenshots/albums_page.png) | ![Album view — tracklist and artist bio](screenshots/album_view.png) | ![Queue tab — timeline and Now Playing panel](screenshots/queue_page.png) |
+| Albums | Album detail | Queue |
+
 ## Why this exists
 
 This is a personal project, and there are better-established options:
