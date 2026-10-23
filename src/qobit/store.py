@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -21,4 +22,9 @@ def load(name: str) -> dict[str, Any]:
 
 
 def save(name: str, data: dict[str, Any]) -> None:
-    _path(name).write_text(json.dumps(data, indent=2))
+    """Write atomically (tmp file + rename) so a crash/kill mid-write can't
+    leave a truncated, unparseable file behind."""
+    path = _path(name)
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    os.replace(tmp, path)

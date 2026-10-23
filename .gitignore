@@ -21,6 +21,9 @@ env/
 .env.*
 !.env.example
 
+# Scratch debug scripts (local, one-off API/bundle exploration)
+debug_*.py
+
 # IDE / OS
 .idea/
 .vscode/

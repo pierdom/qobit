@@ -17,12 +17,14 @@ def load() -> dict[str, Any]:
 
 
 def save(data: dict[str, Any]) -> None:
+    """Write atomically (tmp file + rename) so a crash/kill mid-write can't
+    leave a truncated config behind, and chmod 0600 on every write — this file
+    may hold a plaintext password or OAuth token, so every writer gets the
+    same protection rather than relying on call sites to remember it."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps(data, indent=2))
-
-
-def _secure_config() -> None:
-    """Restrict the config file to owner-only read/write (0o600)."""
+    tmp = CONFIG_FILE.with_name(f"{CONFIG_FILE.name}.tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    os.replace(tmp, CONFIG_FILE)
     try:
         CONFIG_FILE.chmod(0o600)
     except Exception:
@@ -59,7 +61,6 @@ def save_oauth_session(app_id: str, token: str, secrets: list[str]) -> None:
     cfg = load()
     cfg["oauth_session"] = {"app_id": app_id, "token": token, "secrets": secrets}
     save(cfg)
-    _secure_config()
 
 
 def get_saved_theme() -> str | None:
@@ -94,7 +95,7 @@ def set_radio_mode(value: bool) -> None:
 
 def prompt_and_save_credentials() -> tuple[str, str]:
     print("\nqobit needs your Qobuz credentials.")
-    print("Stored in ~/.config/qobit/config.json (chmod 600 recommended)\n")
+    print("Stored in ~/.config/qobit/config.json (chmod 600 applied automatically)\n")
     email = input("Email:    ").strip()
     password = input("Password: ").strip()
     if email and password:
@@ -102,6 +103,5 @@ def prompt_and_save_credentials() -> tuple[str, str]:
         cfg["email"] = email
         cfg["password"] = password
         save(cfg)
-        _secure_config()
         print("\nCredentials saved.\n")
     return email, password
