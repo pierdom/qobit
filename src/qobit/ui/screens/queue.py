@@ -271,7 +271,7 @@ class NowPlayingHero(Widget):
                 self.query_one(cls, Label).update("")
             return
 
-        heart = heart_suffix(self._favorite, pad="   ")
+        heart = heart_suffix(self._favorite)
         self.query_one(".hero-title", Label).update(Content.assemble(t.display_title, heart))
         self.query_one(".hero-artist", Label).update(t.artist)
 

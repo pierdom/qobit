@@ -16,8 +16,9 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist, Track
 from .._images import fetch_image
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, playing_content
+from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
 from .._utils import strip_html
+from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .search import ICON_TRACK
 
@@ -33,23 +34,29 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
     PlaylistTrackRow .secondary { color: $text-muted; }
     """
 
-    def __init__(self, track: Track, number: int) -> None:
+    def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
         super().__init__()
         self.track = track
         self._number = number
+        self._favorite = favorite
 
     def _primary(self) -> Content:
         t = self.track
+        heart = heart_suffix(self._favorite)
         if self._is_playing:
             text = f"{self._number:3}.  {t.artist} — {t.display_title}"
         else:
             text = f"{self._number:3}. {ICON_TRACK}  {t.artist} — {t.display_title}"
-        return playing_content(text, self._is_playing, self._is_paused)
+        return playing_content(text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(self._primary(), classes="primary")
         yield Label(f"        {t.album}  ·  {t.duration_str}", classes="secondary")
+
+    def set_favorite(self, favorite: bool) -> None:
+        self._favorite = favorite
+        self._refresh_primary()
 
 
 class PlaylistScreen(NowPlayingViewMixin, Screen):
@@ -116,7 +123,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
                     yield Label("", classes="pp-name", markup=True)
                     yield Label("", classes="pp-sub", markup=True)
                     yield Label("", classes="pp-desc", markup=True)
-            yield ListView(classes="pp-tracklist")
+            yield TrackListView(classes="pp-tracklist")
         yield TransportBar()
         yield Footer()
 
@@ -172,9 +179,16 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         if not playlist.tracks:
             return
 
+        fav_ids = await app.ensure_favorite_ids()
+        if not self.is_mounted:
+            return
+
         try:
             lv = self.query_one(".pp-tracklist", ListView)
-            rows = [PlaylistTrackRow(t, i) for i, t in enumerate(playlist.tracks, 1)]
+            rows = [
+                PlaylistTrackRow(t, i, str(t.id) in fav_ids)
+                for i, t in enumerate(playlist.tracks, 1)
+            ]
             self._apply_now_playing(rows)
             await lv.mount(*rows)
         except NoMatches:

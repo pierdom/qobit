@@ -168,9 +168,9 @@ class TransportBar(Widget):
 
     def _status(self) -> str:
         app: QobitApp = self.app  # type: ignore[assignment]
-        radio = "  ·  📻 Radio" if app.radio_mode else ""
+        radio = "  ·  ◈ Radio" if app.radio_mode else ""
         if not app.now_playing:
-            return "📻 Radio" if app.radio_mode else ""
+            return "◈ Radio" if app.radio_mode else ""
         status = "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
         return status + radio
 
