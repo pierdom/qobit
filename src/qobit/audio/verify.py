@@ -53,10 +53,7 @@ async def check_bit_perfect(
     # mpv may use s32 as the container format for 24-bit content; that's fine.
     # Flag a mismatch only if we see an obvious downsample (e.g. s16 for 24-bit source).
     actual_format_str = str(actual_format) if actual_format else ""
-    if expected_bit_depth >= 24 and actual_format_str in ("s16", "u16"):
-        bit_match = False
-    else:
-        bit_match = True
+    bit_match = not (expected_bit_depth >= 24 and actual_format_str in ("s16", "u16"))
 
     return VerifyResult(
         expected_rate=expected_sample_rate,

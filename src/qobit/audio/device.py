@@ -38,7 +38,7 @@ def list_devices() -> list[DeviceInfo]:
         )
         output = result.stdout + result.stderr
     except FileNotFoundError:
-        raise RuntimeError("mpv not found — install mpv and ensure it is in $PATH")
+        raise RuntimeError("mpv not found — install mpv and ensure it is in $PATH") from None
     except subprocess.TimeoutExpired:
         return []
 

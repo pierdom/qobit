@@ -100,8 +100,9 @@ qobit
 | `2` | Artists tab |
 | `3` | Albums tab |
 | `4` | Playlists tab |
-| `5` | Search tab |
-| `6` | Queue tab |
+| `5` | Mixes tab |
+| `6` | Search tab |
+| `7` | Queue tab |
 | `Escape` | Go back / clear filter / focus tab bar |
 | `↑` `↓` `←` `→` | Move cursor in grids and lists |
 | `PageUp` `PageDown` | Jump the selection one page in long lists and grids (Tracks, Queue, Artists, Albums) |
@@ -192,6 +193,23 @@ queue). Enable **Endless radio** from the command palette (`Ctrl+P` →
 *Endless radio*) to keep playback going forever: when the queue empties, qobit
 automatically refills it with fresh suggestions based on the last track. The
 setting persists across launches.
+
+### Mixes
+
+The Mixes tab (`5`) generates a personal **DailyQ** and **WeeklyQ** — the same
+Qobuz recommendation engine as song radio, seeded from your recent listening
+history plus favourites instead of a single track. Each is cached for its
+period (a calendar day for DailyQ, an ISO week for WeeklyQ): reopening the tab
+within that window reuses the cached tracks instead of regenerating.
+
+| Key | Action |
+|-----|--------|
+| `d` | Load / generate DailyQ |
+| `w` | Load / generate WeeklyQ |
+| `Enter` | Play the highlighted track |
+
+Needs some listening history or favourites to seed from — on a brand-new
+account both mixes show "Play some tracks first to seed the mix".
 
 ### Search
 
@@ -310,6 +328,7 @@ resampling.
 ~/.config/qobit/config.json            credentials, audio_device, theme
 ~/.local/share/qobit/mpv.sock          IPC socket (created per playback session)
 ~/.local/share/qobit/player_state.json last track + position (resumed on launch)
+~/.local/share/qobit/mixes_cache.json  DailyQ/WeeklyQ tracks, refreshed once per day/week
 ~/.cache/qobit/images/                 cached cover art (safe to delete; honours XDG_CACHE_HOME)
 ```
 

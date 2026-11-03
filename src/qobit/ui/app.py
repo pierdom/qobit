@@ -49,7 +49,7 @@ class _TransparentANSIToTruecolor(_ANSIToTruecolor):
     terminal's own background (transparency/blur) shows through."""
 
     @lru_cache(1024)
-    def truecolor_style(self, style: "_RichStyle", background: "_RichColor") -> "_RichStyle":
+    def truecolor_style(self, style: _RichStyle, background: _RichColor) -> _RichStyle:
         terminal_theme = self._terminal_theme
         changed = False
 
@@ -182,13 +182,15 @@ class QobitApp(App[None]):
         Binding("]", "seek_fwd", "10s▶"),
         Binding("R", "start_radio", "Radio"),
         Binding("i", "track_menu", "Menu", show=False),
-        # 1-5 work when Tabs has focus; escape brings focus to Tabs from anywhere
+        # 1-7 match the tab bar's left-to-right order; escape brings focus to
+        # Tabs from anywhere.
         Binding("1", "switch_tab('tracks')", "Tracks", show=False),
         Binding("2", "switch_tab('artists')", "Artists", show=False),
         Binding("3", "switch_tab('albums')", "Albums", show=False),
         Binding("4", "switch_tab('playlists')", "Playlists", show=False),
-        Binding("5", "switch_tab('search')", "Search", show=False),
-        Binding("6", "switch_tab('queue')", "Queue", show=False),
+        Binding("5", "switch_tab('mixes')", "Mixes", show=False),
+        Binding("6", "switch_tab('search')", "Search", show=False),
+        Binding("7", "switch_tab('queue')", "Queue", show=False),
         # priority=True so this fires even when an Input has focus
         Binding("escape", "focus_tabs", "Nav", show=False, priority=True),
     ]
@@ -316,9 +318,8 @@ class QobitApp(App[None]):
             if cs.current:
                 try:
                     active = self.query_one(f"#{cs.current}")
-                    if hasattr(active, "action_navigate_back"):
-                        if active.action_navigate_back():
-                            return
+                    if hasattr(active, "action_navigate_back") and active.action_navigate_back():
+                        return
                 except Exception:
                     pass
             self.query_one("#nav-tabs", Tabs).focus()
@@ -484,7 +485,7 @@ class QobitApp(App[None]):
         # then splice in the new track and its queue. The old Up Next is dropped
         # — this is a deliberate new selection, not a skip within the queue.
         past = self._timeline[: self._cursor + 1] if self._cursor >= 0 else []
-        self._timeline = past + [track] + list(queue or [])
+        self._timeline = [*past, track, *(queue or [])]
         self._cursor = len(past)
         self._trim_history()
         self.queue_version += 1

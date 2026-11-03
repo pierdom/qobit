@@ -170,10 +170,10 @@ class SearchView(Widget):
                 app._client.search(query, type="albums", limit=5),
                 app._client.search(query, type="artists", limit=5),
             )
-        except (QobuzError, AssertionError) as e:
+        except QobuzError as e:
             if version != self._search_version:
                 return
-            msg = str(e) if isinstance(e, QobuzError) else "Not authenticated — run: qobit auth"
+            msg = str(e)
             await asyncio.gather(lv_artists.clear(), lv_tracks.clear(), lv_albums.clear())
             await lv_artists.append(ListItem(Label(f"[red]{msg}[/red]", markup=True)))
             lv_artists.focus()

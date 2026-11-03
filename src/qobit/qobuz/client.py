@@ -97,8 +97,8 @@ async def _wait_for_oauth_code(port: int, timeout: float = 120.0) -> str:
     async with server:
         try:
             return await asyncio.wait_for(code_future, timeout=timeout)
-        except asyncio.TimeoutError:
-            raise QobuzError("OAuth login timed out (2 minutes)")
+        except TimeoutError:
+            raise QobuzError("OAuth login timed out (2 minutes)") from None
 
 
 class QobuzError(Exception):
@@ -202,7 +202,12 @@ class QobuzClient:
         return all_ids
 
     def _base_params(self) -> dict[str, Any]:
-        assert self._app_id, "app_id not resolved — call login() first"
+        # Raised as QobuzError (not `assert`) so every call site's existing
+        # `except QobuzError` already shows a clean message — `assert` would
+        # both raise the wrong exception type for callers expecting QobuzError
+        # and silently vanish under `python -O`.
+        if not self._app_id:
+            raise QobuzError("Not authenticated — run: qobit auth")
         params: dict[str, Any] = {"app_id": self._app_id}
         if self.user_auth_token:
             params["user_auth_token"] = self.user_auth_token
@@ -370,8 +375,8 @@ class QobuzClient:
         candidates = self._secret_candidates or [self._app_secret or ""]
         last_error: QobuzError | None = None
 
-        assert self._app_id, "app_id not resolved — call login() or login_oauth() first"
-        assert self.user_auth_token, "not logged in — call login() or login_oauth() first"
+        if not self._app_id or not self.user_auth_token:
+            raise QobuzError("Not authenticated — run: qobit auth")
 
         for secret in candidates:
             sig, ts = self._sign(track_id, format_id, secret)

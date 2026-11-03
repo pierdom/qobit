@@ -27,10 +27,13 @@ macos = ["pyobjc-framework-MediaPlayer>=10.0"]
 linux = ["pydbus>=0.6", "PyGObject>=3.50"]
 
 [dependency-groups]
-dev = ["ruff>=0.4", "textual-dev>=0.80"]
+dev = ["ruff>=0.4", "textual-dev>=0.80", "pytest>=8.0"]
 
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

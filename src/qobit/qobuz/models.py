@@ -1,6 +1,15 @@
 from dataclasses import dataclass, field
 
 
+def _khz_str(khz: float) -> str:
+    """Format a kHz value, dropping the decimal when it's a whole number
+    (``192`` -> ``"192"``, ``44.1`` -> ``"44.1"``). Callers must pass a value
+    already scaled to kHz — StreamUrl.sampling_rate is stored in Hz while
+    Album.maximum_sampling_rate is already kHz, so the conversion stays at
+    the call site rather than being guessed here."""
+    return f"{int(khz)}" if khz == int(khz) else f"{khz:.1f}"
+
+
 @dataclass
 class StreamUrl:
     url: str
@@ -24,17 +33,13 @@ class StreamUrl:
     @property
     def quality_label(self) -> str:
         bd = self.bit_depth or 16
-        sr_khz = self.sampling_rate / 1000
-        sr_str = f"{int(sr_khz)}" if sr_khz == int(sr_khz) else f"{sr_khz:.1f}"
-        return f"{bd}/{sr_str}"
+        return f"{bd}/{_khz_str(self.sampling_rate / 1000)}"
 
     @property
     def quality_badge(self) -> str:
         """Human-readable resolution for the transport bar, e.g. 24-bit · 192 kHz."""
         bd = self.bit_depth or 16
-        sr_khz = self.sampling_rate / 1000
-        sr_str = f"{int(sr_khz)}" if sr_khz == int(sr_khz) else f"{sr_khz:.1f}"
-        return f"{bd}-bit · {sr_str} kHz"
+        return f"{bd}-bit · {_khz_str(self.sampling_rate / 1000)} kHz"
 
 
 @dataclass
@@ -122,9 +127,7 @@ class Album:
     def quality_badge(self) -> str:
         if not self.maximum_bit_depth or not self.maximum_sampling_rate:
             return ""
-        sr = self.maximum_sampling_rate
-        sr_str = f"{int(sr)}" if sr == int(sr) else f"{sr:.1f}"
-        badge = f"{self.maximum_bit_depth}bit / {sr_str}kHz"
+        badge = f"{self.maximum_bit_depth}bit / {_khz_str(self.maximum_sampling_rate)}kHz"
         return f"Hi-Res {badge}" if self.hires_streamable else badge
 
     @classmethod

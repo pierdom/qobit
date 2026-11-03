@@ -64,6 +64,11 @@ src/qobit/
     │   │                    (Date Added/Artist/Title/Album), full pagination,
     │   │                    lazy load, in-border live filter (/)
     │   ├── playlists.py     PlaylistsView — user playlists library tab
+    │   ├── mixes.py         MixesView — DailyQ/WeeklyQ: two MixCards (d/w) +
+    │   │                    a track list; generated via QobitApp.generate_mix()
+    │   │                    (history + favourites seeds → get_dynamic_suggestions)
+    │   │                    and cached a day/ISO-week at a time in
+    │   │                    mixes_cache.json keyed by _cache_key(kind)
     │   └── queue.py         QueueView — responsive two-pane: left TrackListView
     │                        timeline (Recently Played HistoryTrackRow →
     │                        NowPlayingListRow (accent, live ▶/⏸) → Up Next
@@ -128,7 +133,7 @@ sync action handlers call it.
 
 **Filter by hide/show, not remount (image grids)** — `AlbumGrid/ArtistGrid.filter_cards(ids)` toggles `card.display` on already-mounted cards so Kitty images are never re-transmitted. `_visible_cards` skips hidden cards during cursor navigation. Remount is reserved for data load and sort only.
 
-**`Content.assemble` for safe label text** — track rows use `Content.assemble(text, ("  ♥", "$accent"))` rather than Rich markup strings. Titles containing `[`/`]` corrupt markup-parsed labels; `Content` parts are literal, so they can't crash the render.
+**`Content.assemble` for safe label text** — track rows use `Content.assemble(text, heart_suffix(favorite))` (`ui/_now_playing.py`) rather than Rich markup strings. Titles containing `[`/`]` corrupt markup-parsed labels; `Content` parts are literal, so they can't crash the render. `heart_suffix()` is the one place the `♥` tuple is built — every *TrackRow class across screens/ calls it instead of hand-rolling `(f"  {ICON_FAV}", "$accent")`.
 
 **Favourites single source of truth** — `QobitApp.ensure_favorite_tracks()` fetches exactly once (double-checked `_fav_lock`). `ensure_favorite_ids()` derives the id set from it. `toggle_favorite` updates both caches and surgically patches `TracksView` so no tab ever re-fetches.
 
@@ -168,13 +173,15 @@ Escape with `No Tab with id …`.
 
 `client.py` reverse-engineers `app_id` and signing secrets from the web player bundle on login; cached in config. Streaming URLs expire ~10 min — re-fetch on track start. Quality fallback: FLAC_24_192 → FLAC_24_96 → FLAC_CD.
 
-`get_artist_detail` (`artist/get`) and `get_artist_top_tracks` (`artist/page`) fire concurrently. `Track.from_api` handles both `performer.name` (string) and `artist.name.display` (nested dict) formats. The legacy `get_artist_page` still exists but is unused.
+`get_artist_detail` (`artist/get`) and `get_artist_top_tracks` (`artist/page`) fire concurrently. `Track.from_api` handles both `performer.name` (string) and `artist.name.display` (nested dict) formats. `get_artist` is a third, lighter `artist/get` call (`albums_limit` instead of `limit`, no cache) used only by `_fetch_now_playing_bio` to pull a radio-seed track's artist bio.
 
 `get_all_favorite_tracks/albums/artists()` issue parallel 50-item page requests after the first. `Track`, `Album`, `Artist` carry `favorited_at: int | None` for Date Added sorting.
 
 `Album.from_api` backfills its own `image_url` onto nested tracks whose `image_url` is unset — without this, cover art is missing in the transport bar and OS media controls when playing tracks from an album payload.
 
 **Song radio** (`get_dynamic_suggestions`): `POST dynamic/suggest`, JSON body sent as `text/plain;charset=UTF-8` (same quirk as OAuth `user/login`). Body fields: `limit`, `listened_tracks_ids` (int ids), `track_to_analysed` (`[{track_id, artist_id, label_id, genre_id}]`). Response: `{"tracks": {"items": [...]}}`. Reverse-engineered from HAR; not in official docs.
+
+`generate_mix(kind)` (`QobitApp`) is the same `dynamic/suggest` call reused for DailyQ/WeeklyQ: seeds up to 50 tracks from recent history + favourites, enriches a spread of up to 12 with `track_to_analysed` metadata, and `mixes.py` caches the result in `mixes_cache.json` keyed by day (`daily`) or ISO year-week (`weekly`) so reopening the tab within the same period doesn't regenerate.
 
 ## Image protocol
 
@@ -186,6 +193,7 @@ Kitty graphics protocol only (no iTerm2 IIP, no sixel). `textual_image.widget.TG
 ~/.config/qobit/config.json            credentials, audio_device, theme, radio_mode, oauth session
 ~/.local/share/qobit/mpv.sock          IPC socket (re-created on each play call)
 ~/.local/share/qobit/player_state.json last track + position (restored on launch)
+~/.local/share/qobit/mixes_cache.json  DailyQ/WeeklyQ tracks, keyed by day/ISO-week
 ~/.cache/qobit/images/                 on-disk cover-art cache (qobit clear-cache)
 ```
 
@@ -199,8 +207,18 @@ uv run qobit play "test"   # smoke test CLI playback
 uv run qobit               # launch TUI
 uv run ruff check .
 uv run ruff format .
+uv run pytest              # unit tests — models, config/store, client auth,
+                            # image cache, app timeline+cursor logic
 uv run textual console     # Textual dev console (separate terminal)
 ```
+
+Tests live in `tests/`; `conftest.py`'s autouse fixture redirects `config.py`/
+`store.py`/`_images.py`'s real paths (under `~/.config` and `~/.local/share`)
+to a tmp dir for every test — never add a test that touches those modules'
+module-level path constants without going through it, or a test run can read
+or overwrite a developer's real saved session. Widget/screen rendering isn't
+covered by this suite (no Kitty-protocol terminal in CI); that's exercised
+manually via `textual console` / a tmux-driven smoke run instead.
 
 ## Reference repos
 

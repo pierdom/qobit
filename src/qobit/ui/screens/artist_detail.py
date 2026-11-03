@@ -19,11 +19,11 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, playing_content
+from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
-from .search import ICON_FAV, ICON_TRACK
+from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -48,7 +48,7 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
 
     def _primary(self) -> Content:
         t = self.track
-        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
+        heart = heart_suffix(self._favorite)
         if self._is_playing:
             text = f"{self._number}.  {t.display_title}"
         else:

@@ -17,8 +17,7 @@ from textual.widgets import Label, ListItem, ListView
 from ...qobuz.models import Track
 from ...store import load as load_state
 from ...store import save as save_state
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, playing_content
-from ..screens.search import ICON_FAV
+from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
@@ -96,7 +95,7 @@ class MixTrackRow(NowPlayingRowMixin, ListItem):
 
     def _primary(self) -> Content:
         t = self.track
-        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
+        heart = heart_suffix(self._favorite)
         body = f"{self._number:>2}.  {t.artist} — {t.display_title}"
         return playing_content(body, self._is_playing, self._is_paused, heart)
 

@@ -17,9 +17,9 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Track
 from .._images import fetch_image
+from .._now_playing import heart_suffix
 from .._utils import strip_html
 from ..widgets.lists import TrackListView
-from .search import ICON_FAV
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -78,7 +78,7 @@ class QueueTrackRow(ListItem):
 
     def _primary(self) -> Content:
         t = self.track
-        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
+        heart = heart_suffix(self._favorite)
         return Content.assemble(f"{self._number:>2}.  {t.artist} — {t.display_title}", heart)
 
     def compose(self) -> ComposeResult:
@@ -109,7 +109,7 @@ class HistoryTrackRow(ListItem):
 
     def _primary(self) -> Content:
         t = self.track
-        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
+        heart = heart_suffix(self._favorite)
         return Content.assemble(f"↺  {t.artist} — {t.display_title}", heart)
 
     def compose(self) -> ComposeResult:
@@ -143,7 +143,7 @@ class NowPlayingListRow(ListItem):
     def _primary(self) -> Content:
         t = self.track
         icon = "⏸" if self._is_paused else "▶"
-        heart = (f"  {ICON_FAV}", "$accent") if self._favorite else ""
+        heart = heart_suffix(self._favorite)
         return Content.assemble(f"{icon}  {t.artist} — {t.display_title}", heart)
 
     def compose(self) -> ComposeResult:
@@ -271,7 +271,7 @@ class NowPlayingHero(Widget):
                 self.query_one(cls, Label).update("")
             return
 
-        heart = (f"   {ICON_FAV}", "$accent") if self._favorite else ""
+        heart = heart_suffix(self._favorite, pad="   ")
         self.query_one(".hero-title", Label).update(Content.assemble(t.display_title, heart))
         self.query_one(".hero-artist", Label).update(t.artist)
 

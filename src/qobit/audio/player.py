@@ -34,7 +34,7 @@ class MpvPlayer:
         if self._sock.exists():
             self._sock.unlink()
 
-        cmd = ["mpv"] + self._flags()
+        cmd = ["mpv", *self._flags()]
         if start > 0:
             cmd.append(f"--start={start:.3f}")
         cmd.append(url)
