@@ -2,6 +2,7 @@ import json
 import platform
 import socket
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -16,6 +17,14 @@ class MpvPlayer:
         self._sock = _SOCK_PATH
         # incremented on every stop(); lets _poll_player distinguish natural end from forced stop
         self._stop_gen: int = 0
+        # One IPC connection reused for the life of the mpv process, instead of
+        # reconnecting per call — _poll_player alone was opening/closing a fresh
+        # socket 6x/second. Guarded by a lock since the poll thread and the main
+        # thread (pause/seek actions) can both call _ipc concurrently.
+        self._conn: socket.socket | None = None
+        self._conn_lock = threading.Lock()
+        self._recv_buf: bytes = b""
+        self._request_id: int = 0
 
     # --- public API ---
 
@@ -40,6 +49,7 @@ class MpvPlayer:
             except subprocess.TimeoutExpired:
                 self._proc.kill()
         self._proc = None
+        self._close_conn()
 
     def pause_toggle(self) -> None:
         self._cmd(["cycle", "pause"])
@@ -83,30 +93,78 @@ class MpvPlayer:
             flags.append("--audio-exclusive=yes")
         return flags
 
-    def _ipc(self, cmd: list) -> dict | None:
+    def _close_conn(self) -> None:
+        with self._conn_lock:
+            self._close_conn_locked()
+
+    def _close_conn_locked(self) -> None:
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+        self._recv_buf = b""
+
+    def _connect_locked(self) -> socket.socket | None:
+        """Open a fresh IPC connection. Caller must hold _conn_lock."""
         # Wait up to 3 s for the IPC socket to appear after mpv starts.
         deadline = time.monotonic() + 3.0
         while time.monotonic() < deadline:
             if self._sock.exists():
                 break
             time.sleep(0.05)
-
         try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-                s.settimeout(2.0)
-                s.connect(str(self._sock))
-                msg = json.dumps({"command": cmd}) + "\n"
-                s.sendall(msg.encode())
-                data = b""
-                while True:
-                    chunk = s.recv(4096)
-                    if not chunk:
-                        break
-                    data += chunk
-                    if b"\n" in data:
-                        break
-            return json.loads(data.split(b"\n")[0])
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(2.0)
+            s.connect(str(self._sock))
         except Exception:
+            return None
+        self._conn = s
+        self._recv_buf = b""
+        return s
+
+    def _recv_line_locked(self, s: socket.socket) -> bytes | None:
+        """Read one newline-delimited message, buffering any extra bytes
+        (mpv may batch several JSON lines, or an event may split across
+        recv() calls)."""
+        while b"\n" not in self._recv_buf:
+            chunk = s.recv(4096)
+            if not chunk:
+                return None
+            self._recv_buf += chunk
+        line, self._recv_buf = self._recv_buf.split(b"\n", 1)
+        return line
+
+    def _ipc(self, cmd: list) -> dict | None:
+        with self._conn_lock:
+            self._request_id += 1
+            req_id = self._request_id
+            msg = json.dumps({"command": cmd, "request_id": req_id}) + "\n"
+            # One retry on a fresh connection if the reused one turns out dead
+            # (e.g. mpv exited between calls) or desynced.
+            for _attempt in range(2):
+                s = self._conn if self._conn is not None else self._connect_locked()
+                if s is None:
+                    return None
+                try:
+                    s.sendall(msg.encode())
+                    # mpv shares this connection for unsolicited events (seek,
+                    # pause, start-file, ...); skip any line that isn't the
+                    # response to *this* request.
+                    while True:
+                        line = self._recv_line_locked(s)
+                        if line is None:
+                            raise OSError("mpv IPC connection closed")
+                        try:
+                            obj = json.loads(line)
+                        except ValueError:
+                            continue
+                        if obj.get("request_id") == req_id and "error" in obj:
+                            return obj
+                except Exception:
+                    self._close_conn_locked()
+                    continue
             return None
 
     def _cmd(self, cmd: list) -> None:
