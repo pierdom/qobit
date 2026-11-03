@@ -33,6 +33,16 @@ _CARD_IMG_H_FULL = 6
 _TILE_MIN_W = 22
 
 
+def _set_art_width(image: TGPImage, height: int) -> None:
+    """Fix a card/header art widget's width so it renders square for the given
+    cell height, using the terminal's actual cell aspect ratio. Shared by every
+    grid card (AlbumCard, ArtistCard, PlaylistCard) and detail header that
+    sizes a TGPImage against a fixed height."""
+    cell = get_cell_size()
+    if cell.width > 0 and cell.height > 0:
+        image.styles.width = round(height * cell.height / cell.width)
+
+
 class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     ArtistTrackRow { height: 2; padding: 0 1; }
@@ -139,10 +149,7 @@ class AlbumCard(Widget):
 
     def on_mount(self) -> None:
         img_h = _CARD_IMG_H_FULL if self._show_artist else _CARD_IMG_H
-        cell = get_cell_size()
-        if cell.width > 0 and cell.height > 0:
-            img_w = round(img_h * cell.height / cell.width)
-            self.query_one(TGPImage).styles.width = img_w
+        _set_art_width(self.query_one(TGPImage), img_h)
         # Art is fetched lazily by the parent grid's sync_visible_art() once
         # this card's region is known — not eagerly here — so a 200-card
         # favourites grid doesn't fire 200 fetches for art never scrolled to.
@@ -418,10 +425,7 @@ class ArtistCard(Widget):
             yield Label(escape(self._artist.name), classes="card-name", markup=True)
 
     def on_mount(self) -> None:
-        cell = get_cell_size()
-        if cell.width > 0 and cell.height > 0:
-            img_w = round(5 * cell.height / cell.width)
-            self.query_one(TGPImage).styles.width = img_w
+        _set_art_width(self.query_one(TGPImage), 5)
         # See AlbumCard.on_mount — art loads lazily via the grid's
         # sync_visible_art(), not eagerly here.
 
@@ -567,10 +571,7 @@ class ArtistHeader(Widget):
             yield Label("", classes="ah-bio")
 
     def on_mount(self) -> None:
-        cell = get_cell_size()
-        if cell.width > 0 and cell.height > 0:
-            img_w = round(7 * cell.height / cell.width)
-            self.query_one(TGPImage).styles.width = img_w
+        _set_art_width(self.query_one(TGPImage), 7)
 
     def set_loading(self, name: str = "Loading…") -> None:
         self.query_one(".ah-bio-section").border_title = name

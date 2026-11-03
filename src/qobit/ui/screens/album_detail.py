@@ -19,7 +19,13 @@ from textual_image.widget import TGPImage
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
 from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
-from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, strip_html
+from .._utils import (
+    DETAIL_HEADER_CSS,
+    HIDE_ARTIST_BELOW,
+    SMALL_ART_BELOW,
+    TWO_COL_BELOW,
+    strip_html,
+)
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .search import ICON_TRACK
@@ -70,7 +76,9 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
             self.track = track
             self.queue = queue
 
-    DEFAULT_CSS = """
+    DEFAULT_CSS = (
+        DETAIL_HEADER_CSS
+        + """
     AlbumDetailPanel {
         height: 1fr;
         layout: vertical;
@@ -82,62 +90,42 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         border: round $accent;
         border-title-color: $accent;
     }
-    AlbumDetailPanel .ap-header {
-        height: 16;
-        layout: horizontal;
-        padding: 1 2;
-        background: $boost;
-    }
-    AlbumDetailPanel .ap-art {
-        width: 16;
-        height: 14;
-        margin-right: 2;
-    }
-    AlbumDetailPanel .ap-meta   { width: 1fr; height: 14; }
-    /* Constrain the text rows to the meta column so long text wraps instead of
-       overflowing to the right (the description in particular). */
-    AlbumDetailPanel .ap-meta Label { width: 1fr; }
-    AlbumDetailPanel .ap-title  { height: auto; text-style: bold; }
+    /* Album-specific extras the shared .detail-* header doesn't cover. */
     AlbumDetailPanel .ap-version { height: auto; color: $text-muted; text-style: italic; }
-    AlbumDetailPanel .ap-sub    { height: auto; color: $text-muted; margin-top: 1; }
     AlbumDetailPanel .ap-badges { height: auto; color: $text-muted; }
     AlbumDetailPanel .ap-awards { height: auto; color: $accent 70%; margin-top: 1; }
-    AlbumDetailPanel .ap-desc   { height: auto; color: $text-muted; margin-top: 1; }
-    AlbumDetailPanel .ap-tracklist {
-        height: 1fr;
-        border-top: solid $accent 40%;
-    }
-    AlbumDetailPanel:focus-within .ap-tracklist {
+    AlbumDetailPanel:focus-within .detail-tracklist {
         border-top: solid $accent;
     }
     /* Vertical-compact modes (see set_compact): halve the album art, then lay
        the tracklist out in two columns when space is tight. */
-    AlbumDetailPanel.-small-art .ap-header { height: 9; }
-    AlbumDetailPanel.-small-art .ap-art    { height: 7; }
-    AlbumDetailPanel.-small-art .ap-meta   { height: 7; }
-    AlbumDetailPanel.-two-col .ap-tracklist {
+    AlbumDetailPanel.-small-art .detail-header { height: 9; }
+    AlbumDetailPanel.-small-art .detail-art    { height: 7; }
+    AlbumDetailPanel.-small-art .detail-meta   { height: 7; }
+    AlbumDetailPanel.-two-col .detail-tracklist {
         layout: grid;
         grid-size: 2;
         grid-rows: 1;
         grid-gutter: 0 2;
     }
     """
+    )
 
     def compose(self) -> ComposeResult:
-        with Horizontal(classes="ap-header"):
-            yield TGPImage(classes="ap-art")
-            with VerticalScroll(classes="ap-meta"):
-                yield Label("", classes="ap-title", markup=True)
+        with Horizontal(classes="detail-header"):
+            yield TGPImage(classes="detail-art")
+            with VerticalScroll(classes="detail-meta"):
+                yield Label("", classes="detail-title", markup=True)
                 yield Label("", classes="ap-version", markup=True)
-                yield Label("", classes="ap-sub", markup=True)
+                yield Label("", classes="detail-sub", markup=True)
                 yield Label("", classes="ap-badges", markup=True)
                 yield Label("", classes="ap-awards", markup=True)
-                yield Label("", classes="ap-desc", markup=True)
-        yield TrackListView(classes="ap-tracklist")
+                yield Label("", classes="detail-desc", markup=True)
+        yield TrackListView(classes="detail-tracklist")
 
     def on_mount(self) -> None:
         self._size_art(14)
-        self._wire_now_playing(TrackRow, ".ap-tracklist")
+        self._wire_now_playing(TrackRow, ".detail-tracklist")
 
     def _size_art(self, height: int) -> None:
         """Set the art width to keep it square for the given cell height."""
@@ -159,17 +147,17 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         parts: list[str] = [escape(album.artist), year]
         if album.genre:
             parts.append(escape(album.genre))
-        self.query_one(".ap-title", Label).update(escape(album.title))
-        self.query_one(".ap-sub", Label).update(f"[dim]{' · '.join(parts)}[/dim]")
-        for cls in (".ap-version", ".ap-badges", ".ap-awards", ".ap-desc"):
+        self.query_one(".detail-title", Label).update(escape(album.title))
+        self.query_one(".detail-sub", Label).update(f"[dim]{' · '.join(parts)}[/dim]")
+        for cls in (".ap-version", ".ap-badges", ".ap-awards", ".detail-desc"):
             self._set_optional(cls, "")
-        self.query_one(".ap-tracklist", ListView).clear()
+        self.query_one(".detail-tracklist", ListView).clear()
         if album.image_url:
             self._fetch_art(album.image_url)
         self._fetch_full_album(album)
 
     def focus_tracklist(self) -> None:
-        self.query_one(".ap-tracklist", ListView).focus()
+        self.query_one(".detail-tracklist", ListView).focus()
 
     def _set_optional(self, selector: str, content: str) -> None:
         """Update an optional meta label and collapse it (display: none) when
@@ -195,7 +183,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         except Exception:
             if self.is_mounted:
                 try:
-                    self._set_optional(".ap-desc", "[dim]Failed to load album details.[/dim]")
+                    self._set_optional(".detail-desc", "[dim]Failed to load album details.[/dim]")
                 except NoMatches:
                     pass
             return
@@ -214,7 +202,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
                 sub_parts.append(escape(full.genre))
             if dur := full.total_duration_str:
                 sub_parts.append(dur)
-            self.query_one(".ap-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+            self.query_one(".detail-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
 
             badge_parts: list[str] = []
             if full.label:
@@ -231,7 +219,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
                 ".ap-awards", "  ".join(escape(a) for a in full.awards) if full.awards else ""
             )
             self._set_optional(
-                ".ap-desc", escape(strip_html(full.description)) if full.description else ""
+                ".detail-desc", escape(strip_html(full.description)) if full.description else ""
             )
         except NoMatches:
             return
@@ -245,7 +233,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
             return
 
         try:
-            lv = self.query_one(".ap-tracklist", ListView)
+            lv = self.query_one(".detail-tracklist", ListView)
             rows = [
                 TrackRow(track, i, str(track.id) in fav_ids)
                 for i, track in enumerate(full.tracks, 1)
@@ -259,7 +247,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     def _on_list_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, TrackRow):
             event.stop()
-            lv = self.query_one(".ap-tracklist", ListView)
+            lv = self.query_one(".detail-tracklist", ListView)
             rows = list(lv.query(TrackRow))
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]

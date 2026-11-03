@@ -11,12 +11,11 @@ from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Label
-from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist
 from .._images import fetch_image
-from .artist_detail import _GridNav
+from .artist_detail import _GridNav, _set_art_width
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -113,10 +112,7 @@ class PlaylistCard(Widget):
             yield Label(f"[dim]{escape(date)}[/dim]", classes="card-date", markup=True)
 
     def on_mount(self) -> None:
-        cell = get_cell_size()
-        if cell.width > 0 and cell.height > 0:
-            img_w = round(_CARD_IMG_H * cell.height / cell.width)
-            self.query_one(TGPImage).styles.width = img_w
+        _set_art_width(self.query_one(TGPImage), _CARD_IMG_H)
         # See AlbumCard.on_mount (artist_detail.py) — art loads lazily via the
         # grid's sync_visible_art(), not eagerly here.
 

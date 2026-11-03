@@ -11,15 +11,15 @@ from textual.content import Content
 from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView
-from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist, Track
 from .._images import fetch_image
 from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
-from .._utils import strip_html
+from .._utils import DETAIL_HEADER_CSS, strip_html
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
+from .artist_detail import _set_art_width
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
@@ -62,7 +62,9 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
 class PlaylistScreen(NowPlayingViewMixin, Screen):
     BINDINGS = [Binding("escape", "app.pop_screen", "Back")]
 
-    DEFAULT_CSS = """
+    DEFAULT_CSS = (
+        DETAIL_HEADER_CSS
+        + """
     PlaylistScreen { layout: vertical; }
     PlaylistScreen #breadcrumb {
         height: 1;
@@ -86,29 +88,11 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         border: round $accent;
         border-title-color: $accent;
     }
-    PlaylistScreen .pp-header {
-        height: 16;
-        layout: horizontal;
-        padding: 1 2;
-        background: $boost;
-    }
-    PlaylistScreen .pp-art {
-        width: 16;
-        height: 14;
-        margin-right: 2;
-    }
-    PlaylistScreen .pp-meta { width: 1fr; height: 14; }
-    PlaylistScreen .pp-name { height: auto; text-style: bold; }
-    PlaylistScreen .pp-sub { height: auto; color: $text-muted; margin-top: 1; }
-    PlaylistScreen .pp-desc { height: auto; color: $text-muted; margin-top: 1; }
-    PlaylistScreen .pp-tracklist {
-        height: 1fr;
-        border-top: solid $accent 40%;
-    }
-    PlaylistScreen #playlist-panel:focus-within .pp-tracklist {
+    PlaylistScreen #playlist-panel:focus-within .detail-tracklist {
         border-top: solid $accent;
     }
     """
+    )
 
     def __init__(self, playlist_id: str) -> None:
         super().__init__()
@@ -117,24 +101,21 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
     def compose(self) -> ComposeResult:
         yield Label("← Playlists", id="breadcrumb")
         with Vertical(id="playlist-panel"):
-            with Horizontal(classes="pp-header"):
-                yield TGPImage(classes="pp-art")
-                with VerticalScroll(classes="pp-meta"):
-                    yield Label("", classes="pp-name", markup=True)
-                    yield Label("", classes="pp-sub", markup=True)
-                    yield Label("", classes="pp-desc", markup=True)
-            yield TrackListView(classes="pp-tracklist")
+            with Horizontal(classes="detail-header"):
+                yield TGPImage(classes="detail-art")
+                with VerticalScroll(classes="detail-meta"):
+                    yield Label("", classes="detail-title", markup=True)
+                    yield Label("", classes="detail-sub", markup=True)
+                    yield Label("", classes="detail-desc", markup=True)
+            yield TrackListView(classes="detail-tracklist")
         yield TransportBar()
         yield Footer()
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
-        cell = get_cell_size()
-        if cell.width > 0 and cell.height > 0:
-            img_w = round(14 * cell.height / cell.width)
-            self.query_one(".pp-art", TGPImage).styles.width = img_w
+        _set_art_width(self.query_one(".detail-art", TGPImage), 14)
         self.query_one("#playlist-panel").border_title = "Loading…"
-        self._wire_now_playing(PlaylistTrackRow, ".pp-tracklist")
+        self._wire_now_playing(PlaylistTrackRow, ".detail-tracklist")
         self._load()
 
     @work
@@ -146,7 +127,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             if self.is_mounted:
                 try:
                     self.query_one("#playlist-panel").border_title = "Error"
-                    self.query_one(".pp-name", Label).update(f"[red]{escape(str(e))}[/red]")
+                    self.query_one(".detail-title", Label).update(f"[red]{escape(str(e))}[/red]")
                 except NoMatches:
                     pass
             return
@@ -158,18 +139,18 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             panel = self.query_one("#playlist-panel")
             panel.border_title = escape(playlist.name)
 
-            self.query_one(".pp-name", Label).update(escape(playlist.name))
+            self.query_one(".detail-title", Label).update(escape(playlist.name))
 
             sub_parts = [f"by {escape(playlist.owner)}", f"{playlist.tracks_count} tracks"]
             if playlist.duration_str:
                 sub_parts.append(playlist.duration_str)
             if playlist.date_str:
                 sub_parts.append(playlist.date_str)
-            self.query_one(".pp-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+            self.query_one(".detail-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
 
             if playlist.description:
                 cleaned = escape(strip_html(playlist.description))
-                self.query_one(".pp-desc", Label).update(f"[dim]{cleaned}[/dim]")
+                self.query_one(".detail-desc", Label).update(f"[dim]{cleaned}[/dim]")
         except NoMatches:
             return
 
@@ -184,7 +165,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             return
 
         try:
-            lv = self.query_one(".pp-tracklist", ListView)
+            lv = self.query_one(".detail-tracklist", ListView)
             rows = [
                 PlaylistTrackRow(t, i, str(t.id) in fav_ids)
                 for i, t in enumerate(playlist.tracks, 1)
@@ -196,7 +177,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
 
         if self.is_mounted:
             try:
-                self.call_after_refresh(self.query_one(".pp-tracklist", ListView).focus)
+                self.call_after_refresh(self.query_one(".detail-tracklist", ListView).focus)
             except NoMatches:
                 pass
 
@@ -205,15 +186,15 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         img = await fetch_image(url)
         if img is not None and self.is_mounted:
             try:
-                self.query_one(".pp-art", TGPImage).image = img
+                self.query_one(".detail-art", TGPImage).image = img
             except NoMatches:
                 pass
 
-    @on(ListView.Selected, ".pp-tracklist")
+    @on(ListView.Selected, ".detail-tracklist")
     def _on_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, PlaylistTrackRow):
             app: QobitApp = self.app  # type: ignore[assignment]
-            lv = self.query_one(".pp-tracklist", ListView)
+            lv = self.query_one(".detail-tracklist", ListView)
             rows = list(lv.query(PlaylistTrackRow))
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]

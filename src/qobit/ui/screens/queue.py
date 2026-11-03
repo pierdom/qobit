@@ -37,6 +37,11 @@ class SectionHeader(ListItem):
     SectionHeader Label { width: 1fr; color: $accent; text-style: bold; }
     """
 
+    # Arbitrary placeholder width for the single frame between compose() (no
+    # layout info yet) and the on_resize that always follows once this row is
+    # actually laid out — never shown long enough to need to be exact.
+    _INITIAL_WIDTH_GUESS = 56
+
     def __init__(self, title: str, count: int | None = None, spaced: bool = False) -> None:
         super().__init__(disabled=True)
         self._title = title
@@ -45,7 +50,7 @@ class SectionHeader(ListItem):
             self.add_class("-spaced")
 
     def compose(self) -> ComposeResult:
-        yield Label(self._line(56))
+        yield Label(self._line(self._INITIAL_WIDTH_GUESS))
 
     def on_resize(self, event: Resize) -> None:
         # event.size is the border-box width; subtract our own horizontal padding

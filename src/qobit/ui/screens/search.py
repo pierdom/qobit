@@ -6,11 +6,14 @@ from typing import TYPE_CHECKING
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.content import Content
 from textual.widget import Widget
 from textual.widgets import Input, Label, ListItem, ListView
 
 from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Playlist, Track
+from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
+from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -25,7 +28,7 @@ ICON_FAV = "♥"  # appended to a track row when it's in the user's favourites
 # ── result item widgets (shared with library tabs) ────────────────────────────
 
 
-class TrackItem(ListItem):
+class TrackItem(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     TrackItem { height: 2; padding: 0 1; }
     TrackItem Label { width: 1fr; }
@@ -33,14 +36,28 @@ class TrackItem(ListItem):
     TrackItem .secondary { color: $text-muted; }
     """
 
-    def __init__(self, track: Track) -> None:
+    def __init__(self, track: Track, favorite: bool = False) -> None:
         super().__init__()
         self.track = track
+        self._favorite = favorite
+
+    def _primary(self) -> Content:
+        t = self.track
+        heart = heart_suffix(self._favorite)
+        if self._is_playing:
+            text = f"{t.artist} — {t.display_title}"
+        else:
+            text = f"{ICON_TRACK}  {t.artist} — {t.display_title}"
+        return playing_content(text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(f"{ICON_TRACK}  {t.artist} — {t.display_title}", classes="primary")
+        yield Label(self._primary(), classes="primary")
         yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+
+    def set_favorite(self, favorite: bool) -> None:
+        self._favorite = favorite
+        self._refresh_primary()
 
 
 class AlbumItem(ListItem):
@@ -102,7 +119,7 @@ class PlaylistItem(ListItem):
 # ── search view ───────────────────────────────────────────────────────────────
 
 
-class SearchView(Widget):
+class SearchView(NowPlayingViewMixin, Widget):
     BINDINGS = [Binding("/", "focus_input", "Search")]
 
     _search_version: int = 0
@@ -137,7 +154,7 @@ class SearchView(Widget):
     def compose(self) -> ComposeResult:
         yield Input(placeholder="Search Qobuz…", id="search-input")
         yield ListView(id="artists-results")
-        yield ListView(id="tracks-results")
+        yield TrackListView(id="tracks-results")
         yield ListView(id="albums-results")
 
     def on_mount(self) -> None:
@@ -146,6 +163,7 @@ class SearchView(Widget):
         self.query_one("#tracks-results", ListView).border_title = "Tracks"
         self.query_one("#albums-results", ListView).border_title = "Albums"
         self.query_one("#search-input").focus()
+        self._wire_now_playing(TrackItem, "#tracks-results")
 
     def action_focus_input(self) -> None:
         self.query_one("#search-input").focus()
@@ -165,10 +183,11 @@ class SearchView(Widget):
         lv_albums = self.query_one("#albums-results", ListView)
 
         try:
-            tracks_r, albums_r, artists_r = await asyncio.gather(
+            tracks_r, albums_r, artists_r, fav_ids = await asyncio.gather(
                 app._client.search(query, type="tracks", limit=5),
                 app._client.search(query, type="albums", limit=5),
                 app._client.search(query, type="artists", limit=5),
+                app.ensure_favorite_ids(),
             )
         except QobuzError as e:
             if version != self._search_version:
@@ -190,8 +209,11 @@ class SearchView(Widget):
 
         for raw in artists:
             await lv_artists.append(ArtistItem(Artist.from_api(raw)))
-        for raw in tracks:
-            await lv_tracks.append(TrackItem(Track.from_api(raw)))
+        track_rows = [
+            TrackItem(t, str(t.id) in fav_ids) for t in (Track.from_api(raw) for raw in tracks)
+        ]
+        self._apply_now_playing(track_rows)
+        await lv_tracks.mount(*track_rows)
         for raw in albums:
             await lv_albums.append(AlbumItem(Album.from_api(raw)))
 

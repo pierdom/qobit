@@ -118,9 +118,12 @@ class TransportBar(Widget):
     DEFAULT_CSS = """
     TransportBar {
         height: 6;
-        border: round $primary-lighten-2;
+        /* Same dim-accent → full-accent ladder every other panel uses on
+           focus, here driven by playback state instead since the transport
+           bar is never keyboard-focused. */
+        border: round $accent 40%;
         /* top-left: play/pause status ("Now Playing") */
-        border-title-color: $primary-lighten-2;
+        border-title-color: $accent 40%;
         border-title-align: left;
         border-title-style: bold;
         /* bottom-right: audio resolution of the current track */
