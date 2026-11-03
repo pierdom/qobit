@@ -293,6 +293,7 @@ class ArtistsView(Widget):
             if version != self._render_version:
                 return
             await grid.mount(*[ArtistCard(a) for a in shown[i : i + _BATCH]])
+            grid.sync_visible_art()
         self._apply_filter()
 
     @work
@@ -365,6 +366,7 @@ class ArtistsView(Widget):
             if artist.albums:
                 grid = self.query_one("#artist-albums-grid", AlbumGrid)
                 await grid.mount(*[AlbumCard(album) for album in artist.albums])
+                grid.sync_visible_art()
         except Exception:
             pass
 

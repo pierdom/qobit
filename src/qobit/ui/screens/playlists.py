@@ -16,6 +16,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist
 from .._images import fetch_image
+from .artist_detail import _GridNav
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -88,6 +89,7 @@ class PlaylistCard(Widget):
     def __init__(self, playlist: Playlist) -> None:
         super().__init__()
         self._playlist = playlist
+        self._art_requested = False
 
     @property
     def playlist(self) -> Playlist:
@@ -115,8 +117,14 @@ class PlaylistCard(Widget):
         if cell.width > 0 and cell.height > 0:
             img_w = round(_CARD_IMG_H * cell.height / cell.width)
             self.query_one(TGPImage).styles.width = img_w
-        if self._playlist.image_url:
-            self._fetch_art(self._playlist.image_url)
+        # See AlbumCard.on_mount (artist_detail.py) — art loads lazily via the
+        # grid's sync_visible_art(), not eagerly here.
+
+    def maybe_fetch_art(self) -> None:
+        if self._art_requested or not self._playlist.image_url:
+            return
+        self._art_requested = True
+        self._fetch_art(self._playlist.image_url)
 
     @work
     async def _fetch_art(self, url: str) -> None:
@@ -131,7 +139,7 @@ class PlaylistCard(Widget):
         self.post_message(PlaylistCard.Selected(self._playlist))
 
 
-class PlaylistGrid(ScrollableContainer):
+class PlaylistGrid(_GridNav, ScrollableContainer):
     """Scrollable grid of PlaylistCards; column count adapts to available width."""
 
     BINDINGS = [
@@ -169,9 +177,18 @@ class PlaylistGrid(ScrollableContainer):
     def on_resize(self) -> None:
         self._cols = max(1, self.content_size.width // self._tile_min_width)
         self.styles.grid_size_columns = self._cols
+        self._schedule_sync_art()
 
-    def _move_cursor(self, idx: int, top: bool = False) -> None:
-        cards = list(self.query(PlaylistCard))
+    def _visible_cards(self) -> list[PlaylistCard]:
+        # PlaylistGrid has no hide/show filter (filtering remounts instead),
+        # so every mounted card is "visible" in the _GridNav sense.
+        return list(self.query(PlaylistCard))
+
+    def _move_cursor(
+        self, idx: int, cards: list[PlaylistCard] | None = None, top: bool = False
+    ) -> None:
+        if cards is None:
+            cards = self._visible_cards()
         if not cards or idx < 0 or idx >= len(cards):
             return
         if self._cursor >= 0 and self._cursor < len(cards):
@@ -183,65 +200,10 @@ class PlaylistGrid(ScrollableContainer):
         else:
             cards[idx].scroll_visible()
 
-    def _page_rows(self) -> int:
-        cards = list(self.query(PlaylistCard))
-        if not cards:
-            return 1
-        pitch = cards[0].region.height
-        if len(cards) > self._cols:
-            step = cards[self._cols].region.y - cards[0].region.y
-            if step > 0:
-                pitch = step
-        if pitch <= 0:
-            pitch = 1
-        return max(1, self.scrollable_content_region.height // pitch)
-
     def action_open_selected(self) -> None:
-        cards = list(self.query(PlaylistCard))
+        cards = self._visible_cards()
         if 0 <= self._cursor < len(cards):
             self.post_message(PlaylistCard.Selected(cards[self._cursor]._playlist))
-
-    def action_move(self, direction: str) -> None:
-        cards = list(self.query(PlaylistCard))
-        if not cards:
-            return
-        if self._cursor == -1:
-            self._move_cursor(0)
-            return
-        idx = self._cursor
-        target: int | None = None
-        if direction == "right" and idx + 1 < len(cards):
-            target = idx + 1
-        elif direction == "left" and idx > 0:
-            target = idx - 1
-        elif direction == "down" and idx + self._cols < len(cards):
-            target = idx + self._cols
-        elif direction == "up" and idx - self._cols >= 0:
-            target = idx - self._cols
-        if target is not None:
-            self._move_cursor(target)
-
-    def action_page(self, direction: str) -> None:
-        cards = list(self.query(PlaylistCard))
-        if not cards:
-            return
-        if self._cursor == -1:
-            self._move_cursor(0, top=True)
-            return
-        delta = self._page_rows() * self._cols
-        if direction == "up":
-            target = max(0, self._cursor - delta)
-        else:
-            target = min(len(cards) - 1, self._cursor + delta)
-        self._move_cursor(target, top=True)
-
-    def action_jump_first(self) -> None:
-        self._move_cursor(0, top=True)
-
-    def action_jump_last(self) -> None:
-        cards = list(self.query(PlaylistCard))
-        if cards:
-            self._move_cursor(len(cards) - 1)
 
 
 class PlaylistsView(Widget):
@@ -416,6 +378,7 @@ class PlaylistsView(Widget):
             if version != self._render_version:
                 return
             await grid.mount(*[PlaylistCard(p) for p in shown[i : i + _BATCH]])
+            grid.sync_visible_art()
 
     @work
     async def _load(self) -> None:

@@ -11,6 +11,7 @@ from textual.content import Content
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import Screen
+from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Footer, Label, ListItem, ListView
 from textual_image._terminal import get_cell_size
@@ -126,6 +127,7 @@ class AlbumCard(Widget):
         super().__init__(classes="full" if show_artist else "")
         self._album = album
         self._show_artist = show_artist
+        self._art_requested = False
 
     def compose(self) -> ComposeResult:
         yield TGPImage()
@@ -141,8 +143,17 @@ class AlbumCard(Widget):
         if cell.width > 0 and cell.height > 0:
             img_w = round(img_h * cell.height / cell.width)
             self.query_one(TGPImage).styles.width = img_w
-        if self._album.image_url:
-            self._fetch_art(self._album.image_url)
+        # Art is fetched lazily by the parent grid's sync_visible_art() once
+        # this card's region is known — not eagerly here — so a 200-card
+        # favourites grid doesn't fire 200 fetches for art never scrolled to.
+
+    def maybe_fetch_art(self) -> None:
+        """Fetch art once, the first time the grid decides this card is within
+        the visible range (+ margin). No-op on repeat calls."""
+        if self._art_requested or not self._album.image_url:
+            return
+        self._art_requested = True
+        self._fetch_art(self._album.image_url)
 
     @work
     async def _fetch_art(self, url: str) -> None:
@@ -158,12 +169,66 @@ class AlbumCard(Widget):
 
 
 class _GridNav:
-    """Shared Page/Home/End navigation for the card grids.
+    """Shared Page/Home/End navigation, plus viewport-lazy art loading, for the
+    card grids.
 
-    Moves the cursor by a page (visible rows × columns) and top-aligns the
-    scroll so the selection follows the visible page, mirroring PagedListView.
-    Relies on the host grid providing ``_visible_cards()``, ``_move_cursor()``,
-    ``_cols`` and ``_cursor`` — both AlbumGrid and ArtistGrid do."""
+    Navigation moves the cursor by a page (visible rows × columns) and
+    top-aligns the scroll so the selection follows the visible page, mirroring
+    PagedListView. Relies on the host grid providing ``_visible_cards()``,
+    ``_move_cursor()``, ``_cols`` and ``_cursor`` — AlbumGrid, ArtistGrid and
+    PlaylistGrid all do.
+
+    Art loading: ``sync_visible_art()`` fetches art only for cards within the
+    viewport plus one page of margin above/below, instead of every mounted
+    card fetching eagerly on its own ``on_mount``. Cards must implement
+    ``maybe_fetch_art()`` (idempotent — safe to call repeatedly). Call
+    ``sync_visible_art()`` after mounting/filtering cards; it also self-wires
+    to scroll and resize so it keeps up as the user scrolls or the layout
+    changes. Once fetched, a card's art is never released — consistent with
+    the hide-don't-remove filtering elsewhere, so Kitty images are never
+    re-transmitted."""
+
+    _art_sync_timer: Timer | None = None
+
+    def sync_visible_art(self) -> None:
+        """Fetch art for cards in the viewport + margin. Deferred until after
+        layout so freshly mounted/filtered cards have real regions to measure."""
+        self.call_after_refresh(self._sync_visible_art_now)  # type: ignore[attr-defined]
+
+    def _schedule_sync_art(self) -> None:
+        """Coalesce a burst of scroll/resize events into one sync pass."""
+        if self._art_sync_timer is not None:
+            self._art_sync_timer.stop()
+        self._art_sync_timer = self.set_timer(0.1, self.sync_visible_art)  # type: ignore[attr-defined]
+
+    def _sync_visible_art_now(self) -> None:
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        if not cards:
+            return
+        lo, hi = self._visible_art_range(cards)
+        for card in cards[lo:hi]:
+            card.maybe_fetch_art()  # type: ignore[attr-defined]
+
+    def _visible_art_range(self, cards: list) -> tuple[int, int]:
+        """Row-based index range covering the viewport plus one page of
+        margin above and below (same row-pitch measurement as _page_rows)."""
+        pitch = cards[0].region.height
+        if len(cards) > self._cols:  # type: ignore[attr-defined]
+            step = cards[self._cols].region.y - cards[0].region.y  # type: ignore[attr-defined]
+            if step > 0:
+                pitch = step
+        if pitch <= 0:
+            pitch = 1
+        page_rows = max(1, self.scrollable_content_region.height // pitch)  # type: ignore[attr-defined]
+        first_row = max(0, int(self.scroll_y // pitch) - page_rows)  # type: ignore[attr-defined]
+        row_span = page_rows * 3  # margin above + viewport + margin below
+        lo = first_row * self._cols  # type: ignore[attr-defined]
+        hi = lo + row_span * self._cols  # type: ignore[attr-defined]
+        return lo, hi
+
+    def watch_scroll_y(self, old_value: float, new_value: float) -> None:
+        super().watch_scroll_y(old_value, new_value)  # type: ignore[misc]
+        self._schedule_sync_art()
 
     def _page_rows(self) -> int:
         cards = self._visible_cards()  # type: ignore[attr-defined]
@@ -179,6 +244,26 @@ class _GridNav:
         if pitch <= 0:
             pitch = 1
         return max(1, self.scrollable_content_region.height // pitch)  # type: ignore[attr-defined]
+
+    def action_move(self, direction: str) -> None:
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        if not cards:
+            return
+        if self._cursor == -1:  # type: ignore[attr-defined]
+            self._move_cursor(0, cards)  # type: ignore[attr-defined]
+            return
+        idx = self._cursor  # type: ignore[attr-defined]
+        target: int | None = None
+        if direction == "right" and idx + 1 < len(cards):
+            target = idx + 1
+        elif direction == "left" and idx > 0:
+            target = idx - 1
+        elif direction == "down" and idx + self._cols < len(cards):  # type: ignore[attr-defined]
+            target = idx + self._cols  # type: ignore[attr-defined]
+        elif direction == "up" and idx - self._cols >= 0:  # type: ignore[attr-defined]
+            target = idx - self._cols  # type: ignore[attr-defined]
+        if target is not None:
+            self._move_cursor(target, cards)  # type: ignore[attr-defined]
 
     def action_page(self, direction: str) -> None:
         cards = self._visible_cards()  # type: ignore[attr-defined]
@@ -243,6 +328,7 @@ class AlbumGrid(_GridNav, ScrollableContainer):
     def on_resize(self) -> None:
         self._cols = max(1, self.content_size.width // self._tile_min_width)
         self.styles.grid_size_columns = self._cols
+        self._schedule_sync_art()
 
     def _visible_cards(self) -> list[AlbumCard]:
         return [c for c in self.query(AlbumCard) if c.display]
@@ -259,6 +345,7 @@ class AlbumGrid(_GridNav, ScrollableContainer):
             any_visible = any_visible or vis
         self._cursor = -1
         self.scroll_home(animate=False)
+        self.sync_visible_art()
         return any_visible
 
     def _move_cursor(
@@ -281,26 +368,6 @@ class AlbumGrid(_GridNav, ScrollableContainer):
         cards = self._visible_cards()
         if 0 <= self._cursor < len(cards):
             self.post_message(AlbumCard.Selected(cards[self._cursor]._album))
-
-    def action_move(self, direction: str) -> None:
-        cards = self._visible_cards()
-        if not cards:
-            return
-        if self._cursor == -1:
-            self._move_cursor(0, cards)
-            return
-        idx = self._cursor
-        target: int | None = None
-        if direction == "right" and idx + 1 < len(cards):
-            target = idx + 1
-        elif direction == "left" and idx > 0:
-            target = idx - 1
-        elif direction == "down" and idx + self._cols < len(cards):
-            target = idx + self._cols
-        elif direction == "up" and idx - self._cols >= 0:
-            target = idx - self._cols
-        if target is not None:
-            self._move_cursor(target, cards)
 
 
 class ArtistCard(Widget):
@@ -339,6 +406,7 @@ class ArtistCard(Widget):
     def __init__(self, artist: Artist) -> None:
         super().__init__()
         self._artist = artist
+        self._art_requested = False
 
     @property
     def artist(self) -> Artist:
@@ -354,8 +422,14 @@ class ArtistCard(Widget):
         if cell.width > 0 and cell.height > 0:
             img_w = round(5 * cell.height / cell.width)
             self.query_one(TGPImage).styles.width = img_w
-        if self._artist.image_url:
-            self._fetch_art(self._artist.image_url)
+        # See AlbumCard.on_mount — art loads lazily via the grid's
+        # sync_visible_art(), not eagerly here.
+
+    def maybe_fetch_art(self) -> None:
+        if self._art_requested or not self._artist.image_url:
+            return
+        self._art_requested = True
+        self._fetch_art(self._artist.image_url)
 
     @work
     async def _fetch_art(self, url: str) -> None:
@@ -408,6 +482,7 @@ class ArtistGrid(_GridNav, ScrollableContainer):
     def on_resize(self) -> None:
         self._cols = max(1, self.content_size.width // self._tile_min_width)
         self.styles.grid_size_columns = self._cols
+        self._schedule_sync_art()
 
     def _visible_cards(self) -> list[ArtistCard]:
         return [c for c in self.query(ArtistCard) if c.display]
@@ -424,6 +499,7 @@ class ArtistGrid(_GridNav, ScrollableContainer):
             any_visible = any_visible or vis
         self._cursor = -1
         self.scroll_home(animate=False)
+        self.sync_visible_art()
         return any_visible
 
     def _move_cursor(
@@ -446,26 +522,6 @@ class ArtistGrid(_GridNav, ScrollableContainer):
         cards = self._visible_cards()
         if 0 <= self._cursor < len(cards):
             self.post_message(ArtistCard.Selected(cards[self._cursor]._artist))
-
-    def action_move(self, direction: str) -> None:
-        cards = self._visible_cards()
-        if not cards:
-            return
-        if self._cursor == -1:
-            self._move_cursor(0, cards)
-            return
-        idx = self._cursor
-        target: int | None = None
-        if direction == "right" and idx + 1 < len(cards):
-            target = idx + 1
-        elif direction == "left" and idx > 0:
-            target = idx - 1
-        elif direction == "down" and idx + self._cols < len(cards):
-            target = idx + self._cols
-        elif direction == "up" and idx - self._cols >= 0:
-            target = idx - self._cols
-        if target is not None:
-            self._move_cursor(target, cards)
 
 
 class ArtistHeader(Widget):
@@ -667,6 +723,7 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
             if artist.albums:
                 grid = self.query_one("#albums", AlbumGrid)
                 await grid.mount(*[AlbumCard(album) for album in artist.albums])
+                grid.sync_visible_art()
         except NoMatches:
             pass
 
