@@ -93,6 +93,31 @@ def set_radio_mode(value: bool) -> None:
     save(cfg)
 
 
+def get_software_volume_enabled() -> bool:
+    """Off by default: qobit's whole purpose is the DAC receiving exactly the
+    bits from the file, and software volume is DSP — it scales every sample
+    before playback. Must be explicitly opted into."""
+    return bool(load().get("software_volume_enabled", False))
+
+
+def set_software_volume_enabled(value: bool) -> None:
+    cfg = load()
+    cfg["software_volume_enabled"] = value
+    save(cfg)
+
+
+def get_saved_volume() -> int:
+    """0-100. Defaults to 100 (unity gain) so merely enabling software volume
+    doesn't itself alter the signal until the user actually lowers it."""
+    return int(load().get("volume", 100))
+
+
+def set_saved_volume(value: int) -> None:
+    cfg = load()
+    cfg["volume"] = value
+    save(cfg)
+
+
 def prompt_and_save_credentials() -> tuple[str, str]:
     print("\nqobit needs your Qobuz credentials.")
     print("Stored in ~/.config/qobit/config.json (chmod 600 applied automatically)\n")

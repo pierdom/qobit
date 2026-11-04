@@ -11,8 +11,14 @@ _SYSTEM = platform.system()
 
 
 class MpvPlayer:
-    def __init__(self, audio_device: str | None = None) -> None:
+    def __init__(self, audio_device: str | None = None, volume: int | None = None) -> None:
         self._device = audio_device
+        # None = bit-perfect default: no --volume flag at all, mpv plays at its
+        # own unity gain. Only ever set to a non-None value by the caller when
+        # the user has explicitly opted into software volume (see
+        # QobitApp.action_toggle_software_volume) — this class never decides
+        # that on its own.
+        self._volume = volume
         self._proc: subprocess.Popen | None = None
         self._sock = _SOCK_PATH
         # incremented on every stop(); lets _poll_player distinguish natural end from forced stop
@@ -54,6 +60,18 @@ class MpvPlayer:
     def pause_toggle(self) -> None:
         self._cmd(["cycle", "pause"])
 
+    def set_volume(self, value: int) -> None:
+        """Apply a software volume level (0-100) to the running track and
+        remember it for the next play() call."""
+        self._volume = value
+        self._cmd(["set_property", "volume", value])
+
+    def reset_volume(self) -> None:
+        """Back to unity gain on the running track, and stop passing
+        --volume at all on future plays (the true bit-perfect default)."""
+        self._volume = None
+        self._cmd(["set_property", "volume", 100])
+
     def seek(self, delta: float) -> None:
         self._cmd(["seek", delta, "relative"])
 
@@ -91,6 +109,16 @@ class MpvPlayer:
         # On Linux with alsa/hw: the hw plugin itself refuses to resample.
         if _SYSTEM == "Darwin" and self._device and "coreaudio" in self._device:
             flags.append("--audio-exclusive=yes")
+        # Only ever present when the user opted into software volume (see
+        # QobitApp.action_toggle_software_volume) — omitting the flag entirely
+        # at unity gain, rather than passing --volume=100, keeps the default,
+        # never-touched-this-feature path identical to before it existed.
+        if self._volume is not None:
+            flags.append(f"--volume={self._volume}")
+            # mpv's default volume-max (130) permits amplification above
+            # unity; cap it at exactly 100 so this is only ever attenuation,
+            # never clipping-risk gain, regardless of what value is passed.
+            flags.append("--volume-max=100")
         return flags
 
     def _close_conn(self) -> None:

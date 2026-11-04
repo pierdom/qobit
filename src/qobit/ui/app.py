@@ -25,9 +25,13 @@ from ..config import (
     get_oauth_session,
     get_radio_mode,
     get_saved_theme,
+    get_saved_volume,
+    get_software_volume_enabled,
     get_transparent_background,
     set_radio_mode,
     set_saved_theme,
+    set_saved_volume,
+    set_software_volume_enabled,
     set_transparent_background,
 )
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
@@ -95,6 +99,12 @@ class QobitCommands(Provider):
                 f"Endless radio: turn {'off' if app.radio_mode else 'on'}",
                 app.action_toggle_radio_mode,
                 "Auto-fill Up Next with Qobuz song-radio suggestions when the queue runs dry",
+            ),
+            (
+                f"Software volume: turn {'off' if app.software_volume_enabled else 'on'}",
+                app.action_toggle_software_volume,
+                "-/= to adjust once on. Below 100% this is DSP — the DAC no longer "
+                "receives the file's exact bits. OFF (default) restores unity gain.",
             ),
         ]
 
@@ -191,6 +201,10 @@ class QobitApp(App[None]):
         Binding("]", "seek_fwd", "10s▶"),
         Binding("R", "start_radio", "Radio"),
         Binding("i", "track_menu", "Menu", show=False),
+        # No-op (with an explanatory flash) until software volume is turned on
+        # via the command palette — see action_toggle_software_volume.
+        Binding("minus", "volume_down", "Vol-"),
+        Binding("equals_sign", "volume_up", "Vol+"),
         # 1-7 match the tab bar's left-to-right order; escape brings focus to
         # Tabs from anywhere.
         Binding("1", "switch_tab('tracks')", "Tracks", show=False),
@@ -222,11 +236,25 @@ class QobitApp(App[None]):
     # Endless radio: when on, _advance_queue refills an empty queue with Qobuz
     # song-radio suggestions. Reactive so the transport indicator stays live.
     radio_mode: reactive[bool] = reactive(False)
+    # Software volume (see action_toggle_software_volume): off by default,
+    # since this is the one control that can take the signal path out of
+    # bit-perfect. `volume` is meaningless while disabled; TransportBar only
+    # surfaces it when software_volume_enabled and volume != 100.
+    software_volume_enabled: reactive[bool] = reactive(False)
+    volume: reactive[int] = reactive(100)
 
     def __init__(self) -> None:
         super().__init__()
         self._client = QobuzClient()
-        self._player = MpvPlayer(audio_device=get_audio_device())
+        # Software volume is loaded here too (not just into the `volume` /
+        # `software_volume_enabled` reactives in on_mount) so the very first
+        # play() of the session already carries --volume, instead of racing
+        # the reactives' later assignment.
+        _sw_vol_on = get_software_volume_enabled()
+        self._player = MpvPlayer(
+            audio_device=get_audio_device(),
+            volume=get_saved_volume() if _sw_vol_on else None,
+        )
         # The play context is one ordered timeline plus a cursor at the
         # now-playing track. Everything behind the cursor is "Recently Played",
         # everything ahead is "Up Next". Selecting a queue row just moves the
@@ -288,6 +316,8 @@ class QobitApp(App[None]):
         if get_transparent_background():
             self.action_toggle_background()
         self.radio_mode = get_radio_mode()
+        self.software_volume_enabled = _sw_vol_on = get_software_volume_enabled()
+        self.volume = get_saved_volume() if _sw_vol_on else 100
         self._restore_player_state()
         self._warm_favorite_ids()
         self._prune_image_cache()
@@ -611,6 +641,46 @@ class QobitApp(App[None]):
         self.radio_mode = not self.radio_mode
         set_radio_mode(self.radio_mode)
         self._flash_status(f"Endless radio {'on' if self.radio_mode else 'off'}")
+
+    # ── software volume (off by default — see config.get_software_volume_enabled) ──
+
+    _VOLUME_STEP = 5
+
+    def action_toggle_software_volume(self) -> None:
+        self.software_volume_enabled = not self.software_volume_enabled
+        set_software_volume_enabled(self.software_volume_enabled)
+        if self.software_volume_enabled:
+            # Re-enabling resumes at unity gain, not whatever was last dialed
+            # in — turning the feature on should never by itself degrade the
+            # signal; only an explicit volume_down after this does that.
+            self.volume = 100
+            self._player._volume = 100
+            self._flash_status("Software volume on — bit-perfect while at 100%")
+        else:
+            self.volume = 100
+            set_saved_volume(100)
+            if self._player.running:
+                self._player.reset_volume()
+            else:
+                self._player._volume = None
+            self._flash_status("Software volume off — bit-perfect restored")
+
+    def action_volume_down(self) -> None:
+        self._adjust_volume(-self._VOLUME_STEP)
+
+    def action_volume_up(self) -> None:
+        self._adjust_volume(self._VOLUME_STEP)
+
+    def _adjust_volume(self, delta: int) -> None:
+        if not self.software_volume_enabled:
+            self._flash_status("Software volume is off — turn it on from the command palette (^p)")
+            return
+        self.volume = max(0, min(100, self.volume + delta))
+        set_saved_volume(self.volume)
+        if self._player.running:
+            self._player.set_volume(self.volume)
+        else:
+            self._player._volume = self.volume
 
     @staticmethod
     def _as_int(value: object) -> int | None:
@@ -1023,7 +1093,14 @@ class QobitApp(App[None]):
                     self._filters[index] = _ANSIToTruecolor(theme, enabled=True)
                 break
         set_transparent_background(self._transparent)
-        self.refresh(layout=True)
+        # self.refresh(layout=True) alone leaves stale `background: transparent`
+        # (Textual's own alpha=0, not the `ansi_default` this toggle needs) on
+        # any widget Textual hasn't recomputed styles for yet at the moment of
+        # the toggle — reproducibly so for widgets on a tab other than the
+        # active one, and even for always-visible ones (TransportBar) if the
+        # toggle fires before the first layout settles. refresh_css() forces a
+        # full stylesheet re-apply across every screen, not just the active one.
+        self.refresh_css()
 
     async def on_unmount(self) -> None:
         from ._images import close_client

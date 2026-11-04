@@ -168,6 +168,8 @@ class TransportBar(Widget):
         self.watch(app, "status_msg", self._on_status_msg, init=True)
         self.watch(app, "quality_label", self._on_quality, init=True)
         self.watch(app, "radio_mode", self._on_radio_mode, init=True)
+        self.watch(app, "volume", self._on_volume, init=True)
+        self.watch(app, "software_volume_enabled", self._on_volume, init=True)
 
     def _status(self) -> str:
         app: QobitApp = self.app  # type: ignore[assignment]
@@ -199,9 +201,26 @@ class TransportBar(Widget):
         self.is_paused = paused
         self.border_title = self._status()
 
+    _quality_label: str = ""
+
     def _on_quality(self, label: str) -> None:
         # Audio resolution on the bottom-right of the border (no content space used).
-        self.border_subtitle = label
+        self._quality_label = label
+        self._update_subtitle()
+
+    def _on_volume(self, _: object) -> None:
+        self._update_subtitle()
+
+    def _update_subtitle(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        parts = [self._quality_label] if self._quality_label else []
+        # Only ever shown when software volume is actually altering the
+        # signal (enabled AND below unity) — at 100% or while the feature is
+        # off, this stays silent and the badge is just the quality label,
+        # exactly as before this feature existed.
+        if app.software_volume_enabled and app.volume < 100:
+            parts.append(f"♪ {app.volume}%")
+        self.border_subtitle = "  ·  ".join(parts)
 
     def _on_pos(self, pos: float) -> None:
         self.query_one(_TransportContent).position = pos
