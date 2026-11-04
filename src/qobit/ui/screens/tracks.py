@@ -27,6 +27,15 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
+# Only mount this many rows at once. Textual's style/layout pass on a mount
+# scales with how many siblings already exist in the container, so mounting
+# rows one batch at a time into an ever-growing ListView is *quadratic* in
+# total row count — a multi-thousand-track favourites library (no cap existed
+# here before, unlike every other library tab) could take tens of seconds to
+# render on launch. Matches the _MAX_GRID pattern already used by
+# Albums/Artists/Playlists; the live filter (/) still searches the *full*
+# unfiltered library, it just caps how many matches get mounted.
+_MAX_LIST = 200
 _BATCH = 200  # rows per mount call; yields the event loop between batches
 
 
@@ -173,11 +182,15 @@ class TracksView(NowPlayingViewMixin, Widget):
         if self._filter_active:
             container.border_subtitle = f"/ {self._filter_query}_"
         elif self._filter_query:
-            container.border_subtitle = f"⌕ {self._filter_query}"
+            matched = len(self._filtered_tracks())
+            suffix = f"  ·  {_MAX_LIST} of {matched}" if matched > _MAX_LIST else ""
+            container.border_subtitle = f"⌕ {self._filter_query}{suffix}"
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            container.border_subtitle = f"{arrow} {label}"
+            total = len(self._tracks)
+            suffix = f"  ·  {_MAX_LIST} of {total}" if total > _MAX_LIST else ""
+            container.border_subtitle = f"{arrow} {label}{suffix}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -221,7 +234,7 @@ class TracksView(NowPlayingViewMixin, Widget):
             self._filter_timer.stop()
             self._filter_timer = None
         self._render_version += 1
-        self._mount_rows(self._filtered_tracks(), self._render_version)
+        self._mount_rows(self._filtered_tracks()[:_MAX_LIST], self._render_version)
 
     @work
     async def _mount_rows(self, tracks: list[Track], version: int) -> None:

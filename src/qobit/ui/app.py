@@ -135,6 +135,18 @@ class QobitApp(App[None]):
     CSS = """
     Screen {
         layout: vertical;
+        /* The whole app's horizontal inset lives here, not on individual
+           children's margin. Textual's vertical-layout arrangement
+           subtracts a margined child's *own* left+right margin from the
+           width basis it uses to resolve `1fr` for every sibling in the
+           same layout — so giving ContentSwitcher's content views and
+           TransportBar their own independent horizontal margins made them
+           drift out of alignment with each other (and with Tabs/Footer,
+           which had no margin and so weren't inset at all). Padding on
+           the shared Screen ancestor has no such cross-sibling effect, and
+           it now insets Tabs/Footer identically to everything else.
+        */
+        padding: 0 1;
     }
     /* Unified scrollbar design across every scrollable widget / page. */
     * {
@@ -153,12 +165,9 @@ class QobitApp(App[None]):
     ContentSwitcher {
         height: 1fr;
     }
-    SearchView, PlaylistsView, TracksView, ArtistsView, AlbumsView, QueueView {
+    SearchView, PlaylistsView, TracksView, ArtistsView, AlbumsView, MixesView, QueueView {
         height: 1fr;
-        margin: 0 1 1 1;
-    }
-    TransportBar {
-        margin: 0 1;
+        margin-bottom: 1;
     }
     ListItem.--highlight {
         background: $accent 35%;

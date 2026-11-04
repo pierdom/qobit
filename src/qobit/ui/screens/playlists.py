@@ -79,6 +79,10 @@ class PlaylistCard(Widget):
         color: $text-disabled;
         overflow: hidden hidden;
     }
+    PlaylistCard.-selected {
+        outline: round $accent;
+        background: $accent 35%;
+    }
     PlaylistCard.-selected .card-name { color: $accent; text-style: bold; }
     PlaylistCard.-selected .card-owner { color: $accent; }
     PlaylistCard.-selected .card-meta { color: $accent; }

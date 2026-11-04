@@ -123,9 +123,12 @@ class MixesView(NowPlayingViewMixin, Widget):
     MixesView #mix-cards {
         height: 9;
         layout: horizontal;
-        padding: 1 1 0 1;
+        padding: 1 0 0 0;
     }
-    MixesView MixCard {
+    /* Gutter before the second card only (there are exactly two: daily,
+       weekly) — a trailing margin on the last one too would leave the row
+       short of #mix-track-list's right edge below it. */
+    MixesView MixCard:first-of-type {
         margin-right: 2;
     }
     MixesView #mix-track-list {
@@ -136,7 +139,7 @@ class MixesView(NowPlayingViewMixin, Widget):
         border-subtitle-color: $accent 40%;
         border-subtitle-align: right;
         padding: 0 1;
-        margin: 0 1 1 1;
+        margin-bottom: 1;
     }
     MixesView #mix-track-list:focus {
         border: round $accent;

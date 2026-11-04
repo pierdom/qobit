@@ -128,6 +128,12 @@ class AlbumCard(Widget):
         color: $text-muted;
         overflow: hidden hidden;
     }
+    /* outline draws on top of the card instead of adding a border row/column,
+       so the tight fixed-height layout above never has to make room for it. */
+    AlbumCard.-selected {
+        outline: round $accent;
+        background: $accent 35%;
+    }
     AlbumCard.-selected .card-title { color: $accent; text-style: bold; }
     AlbumCard.-selected .card-artist { color: $accent; }
     AlbumCard.-selected .card-year { color: $accent; text-style: bold; }
@@ -406,6 +412,10 @@ class ArtistCard(Widget):
         width: 1fr;
         text-style: bold;
         overflow: hidden hidden;
+    }
+    ArtistCard.-selected {
+        outline: round $accent;
+        background: $accent 35%;
     }
     ArtistCard.-selected .card-name { color: $accent; text-style: bold; }
     """
