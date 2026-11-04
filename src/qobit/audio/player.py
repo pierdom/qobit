@@ -103,6 +103,16 @@ class MpvPlayer:
             # the MPRIS surface via audio/media_keys.py instead.
             "--load-scripts=no",
         ]
+        if _SYSTEM == "Darwin":
+            # mpv's own macOS backend (no script involved, so --load-scripts
+            # above doesn't touch it) registers natively with
+            # MPNowPlayingInfoCenter/MPRemoteCommandCenter by default,
+            # publishing its own metadata derived from the raw stream URL —
+            # the macOS Now Playing widget shows "file?uid=...&eid=..." junk
+            # instead of qobit's artist/title/art, racing qobit's own clean
+            # registration in audio/media_keys.py. Same fix as --load-scripts
+            # above, for the native (not script-based) macOS equivalent.
+            flags.append("--input-media-keys=no")
         if self._device:
             flags.append(f"--audio-device={self._device}")
         # Exclusive mode on macOS prevents the system mixer from resampling.
