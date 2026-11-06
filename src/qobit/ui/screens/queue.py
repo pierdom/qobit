@@ -59,12 +59,16 @@ class SectionHeader(ListItem):
         self.query_one(Label).update(self._line(event.size.width - pad))
 
     def _line(self, width: int) -> Text:
-        left = f"── {self._title} "
-        right = f" {self._count} ──" if self._count is not None else "──"
+        # Double rule + uppercase — the timeline reads as a console readout,
+        # distinct from the single-line rules used for plain list dividers
+        # elsewhere (there are none elsewhere; this is the only divider in
+        # the app, which is exactly why it gets the distinct treatment).
+        left = f"══ {self._title.upper()} "
+        right = f" {self._count} ══" if self._count is not None else "══"
         # `width` is the Label's content width; -1 leaves slack for the list's
         # scrollbar gutter so the rule never wraps onto a second line.
         fill = max(2, width - len(left) - len(right) - 1)
-        return Text(left + "─" * fill + right, no_wrap=True, overflow="crop")
+        return Text(left + "═" * fill + right, no_wrap=True, overflow="crop")
 
 
 class QueueTrackRow(ListItem):
@@ -190,13 +194,16 @@ class NowPlayingHero(Widget):
         width: 2fr;
         max-width: 66;
         height: 1fr;
-        border: round $accent 40%;
+        /* heavy, not round — the console-readout treatment, matching
+           TransportBar (same now-playing information), distinct from the
+           round library panel it sits next to. */
+        border: heavy $accent 40%;
         layout: vertical;
         align-horizontal: center;
         padding: 1 2;
     }
     NowPlayingHero:focus {
-        border: round $accent;
+        border: heavy $accent;
     }
     NowPlayingHero #hero-art-row {
         width: 1fr;

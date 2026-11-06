@@ -120,8 +120,10 @@ class TransportBar(Widget):
         height: 6;
         /* Same dim-accent → full-accent ladder every other panel uses on
            focus, here driven by playback state instead since the transport
-           bar is never keyboard-focused. */
-        border: round $accent 40%;
+           bar is never keyboard-focused. heavy (not round, unlike every
+           library panel) — this is the one console-readout element that's
+           always on screen, so it gets a deliberately bolder frame. */
+        border: heavy $accent 40%;
         /* top-left: play/pause status ("Now Playing") */
         border-title-color: $accent 40%;
         border-title-align: left;
@@ -133,7 +135,7 @@ class TransportBar(Widget):
         padding: 0 1;
     }
     TransportBar.-playing {
-        border: round $accent;
+        border: heavy $accent;
         border-title-color: $accent;
     }
     TransportBar:hover {
@@ -172,11 +174,13 @@ class TransportBar(Widget):
         self.watch(app, "software_volume_enabled", self._on_volume, init=True)
 
     def _status(self) -> str:
+        # Bracket-readout style — the one piece of chrome that's always on
+        # screen reads like a console status line, not a sentence.
         app: QobitApp = self.app  # type: ignore[assignment]
-        radio = "  ·  ◈ Radio" if app.radio_mode else ""
+        radio = "  ·  [ ◈ RADIO ]" if app.radio_mode else ""
         if not app.now_playing:
-            return "◈ Radio" if app.radio_mode else ""
-        status = "⏸  Now Playing" if app.is_paused else "▶  Now Playing"
+            return "[ ◈ RADIO ]" if app.radio_mode else ""
+        status = "[ ⏸ PAUSED ]" if app.is_paused else "[ ▶ PLAYING ]"
         return status + radio
 
     def _on_radio_mode(self, _: bool) -> None:
@@ -219,7 +223,7 @@ class TransportBar(Widget):
         # off, this stays silent and the badge is just the quality label,
         # exactly as before this feature existed.
         if app.software_volume_enabled and app.volume < 100:
-            parts.append(f"♪ {app.volume}%")
+            parts.append(f"[ ♪ {app.volume}% ]")
         self.border_subtitle = "  ·  ".join(parts)
 
     def _on_pos(self, pos: float) -> None:

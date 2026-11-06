@@ -15,6 +15,7 @@ from textual.command import Hit, Hits, Provider
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
+from textual.theme import Theme
 from textual.widgets import ContentSwitcher, Footer, Label, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
@@ -120,6 +121,32 @@ class QobitCommands(Provider):
             yield Hit(0, label, callback, help=help_text)
 
 
+# qobit's signature theme — the whole point of this app is looking right on a
+# cyberdeck, so it ships its own neon-noir palette rather than leaning on a
+# borrowed Textual built-in. $accent drives essentially every highlight,
+# border-on-focus, and now-playing state in qobit's own CSS (118 uses) — that
+# token carries the electric-cyan "this is live" read; $primary (magenta)
+# shows up in Textual's own chrome (the command palette, default widget
+# focus) for a two-tone neon identity rather than a single accent colour.
+# Registered in __init__ and set as the default in on_mount; still an
+# ordinary theme choice a user can switch away from via the command palette.
+CYBERDECK_THEME = Theme(
+    name="qobit-cyberdeck",
+    primary="#ff2ec4",  # hot magenta — Textual's own chrome (palette, focus)
+    secondary="#6e3bff",  # electric violet — secondary emphasis
+    accent="#00e5ff",  # electric cyan — qobit's own $accent: borders, now-playing,
+    # selection, hearts
+    warning="#ffb000",  # amber — CRT-terminal warning colour
+    error="#ff2965",  # hot red
+    success="#39ff88",  # acid green
+    foreground="#d6faff",  # pale cyan-white body text
+    background="#0a0612",  # near-black with a violet undertone
+    surface="#140d24",
+    panel="#2f2252",
+    boost="#231a3d",
+    dark=True,
+)
+
 _PLAYER_STATE_FILE = "player_state.json"
 
 # Most recently-played tracks kept in the session history (oldest dropped first).
@@ -179,7 +206,14 @@ class QobitApp(App[None]):
         height: 1fr;
         margin-bottom: 1;
     }
-    ListItem.--highlight {
+    /* .--highlight doubled: its specificity otherwise exactly ties
+       Screen.-transparent *'s below, and this rule lives in the same
+       App.CSS stylesheet source as that one, so plain specificity decides —
+       doubling the class is enough to win here. (That's NOT true for any
+       rule defined in a *widget's own* DEFAULT_CSS instead of here — see
+       the "transparency survives" block right before Screen.-transparent
+       for why those need a different fix.) */
+    ListItem.--highlight.--highlight {
         background: $accent 35%;
     }
     ListItem.--highlight > Label {
@@ -187,6 +221,32 @@ class QobitApp(App[None]):
     }
     Label.-hl {
         color: $accent;
+    }
+    /* Selection/status backgrounds that must survive transparency mode.
+       Textual gives this App.CSS stylesheet an unconditional priority layer
+       over *every* widget's own DEFAULT_CSS — a widget's rule can never
+       out-rank an App.CSS rule by being more specific, no matter how it's
+       written (confirmed empirically, not assumed). So the only place an
+       override can actually win against Screen.-transparent * below is
+       here, scoped under it so it only applies in transparent mode (the
+       widgets' own rules already supply the same values the rest of the
+       time). These are UI *state* — selection, now-playing, a divider, a
+       modal's legibility — not page background, and losing them silently
+       under transparency is worse than the terminal not showing through
+       there specifically. */
+    Screen.-transparent AlbumCard.-selected,
+    Screen.-transparent ArtistCard.-selected,
+    Screen.-transparent PlaylistCard.-selected {
+        background: $accent 55%;
+    }
+    Screen.-transparent MixCard.-selected {
+        background: $boost;
+    }
+    Screen.-transparent NowPlayingListRow {
+        background: $accent 8%;
+    }
+    Screen.-transparent SectionHeader {
+        background: $surface;
     }
     Screen.-transparent,
     Screen.-transparent * {
@@ -245,6 +305,7 @@ class QobitApp(App[None]):
 
     def __init__(self) -> None:
         super().__init__()
+        self.register_theme(CYBERDECK_THEME)
         self._client = QobuzClient()
         # Software volume is loaded here too (not just into the `volume` /
         # `software_volume_enabled` reactives in on_mount) so the very first
@@ -311,6 +372,12 @@ class QobitApp(App[None]):
         saved_theme = get_saved_theme()
         if saved_theme and saved_theme in self.available_themes:
             self.theme = saved_theme
+        else:
+            # No saved preference (first launch, or an invalid/removed theme
+            # name) — default to qobit's own look rather than a generic
+            # Textual built-in. Still just an ordinary theme choice: `^p` →
+            # Theme switches away from it like any other.
+            self.theme = CYBERDECK_THEME.name
         # Persist any subsequent theme changes (skip the initial/default ones).
         self._theme_ready = True
         if get_transparent_background():

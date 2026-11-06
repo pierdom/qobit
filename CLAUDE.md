@@ -104,6 +104,44 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 - Queue reorder (single-item remove + free skip back/forth via timeline+cursor done)
 - Gapless playback, ReplayGain, CMAF fallback
 
+## Known issues / in progress
+
+**Grid card selection highlight still looks wrong on the user's real terminal (Ghostty), cause not found.**
+`AlbumCard`/`ArtistCard`/`PlaylistCard`'s `.-selected` state (`outline: round $accent` on `.card-info`
++ `background: $accent N%` on the card) has gone through three rounds of fixes this session, each
+verified by a different method, and the user still reports it looking wrong on their machine:
+
+1. *Outline fragmenting where it crossed the TGPImage* — fixed by scoping `outline` to `.card-info`
+   only (never overlaps the Kitty-protocol image cells). Confirmed via `tmux capture-pane`: a
+   complete `╭──╮`/`╰──╯` box, no stray corner fragments, on cards with and without art.
+2. *Selection background vanishing entirely under `Screen.-transparent`* — root cause: Textual gives
+   `App.CSS` an unconditional priority layer over *every* widget's own `DEFAULT_CSS`, checked before
+   selector specificity — confirmed empirically with a minimal repro (see git log on `app.py`'s CSS
+   block for the comment trail). No amount of specificity in a widget's own file can beat an App.CSS
+   rule, so the fix had to move into `QobitApp.CSS` itself, under a `Screen.-transparent
+   AlbumCard.-selected, ...` override block. Confirmed via raw ANSI escape codes in a live `tmux`
+   session (real RGB values present, not the `ansi_default` sentinel) and via `widget.styles.background`
+   introspection in a test harness.
+3. *Fill too subtle to register* — bumped 35% → 55% opacity (list rows elsewhere intentionally left at
+   35%; a full-width row gives the eye enough area to register a subtle tint, a card's mostly-empty
+   `.card-info` doesn't). Confirmed the computed colour got meaningfully stronger in two different
+   themes via the same raw-ANSI method.
+
+Despite all three being independently verified *at the data/computation level*, the user's last report
+was "it didn't solve it" with no further detail. **The missing piece is a real pixel-level screenshot of
+the user's actual terminal** — every verification above went through `tmux capture-pane`, which is not
+the same renderer as Ghostty. One attempt was made to get a real screenshot (open a Terminal.app window,
+`tmux attach` into it, `screencapture`) and it came back blank — not debugged further. Before trying
+another fix blind, get a real screenshot working first (or ask the user to share one showing the
+*current* code, since multiple fixes have landed since their last screenshot), otherwise this is liable
+to repeat the same guess-and-check cycle.
+
+Secondary, smaller finding from the same investigation, not yet fixed: **screens pushed after
+`action_toggle_background()` runs never receive the `-transparent` CSS class** — the toggle only loops
+`self.screen_stack` at call time, so `TrackContextMenu`, `AlbumScreen`, `ArtistScreen`, `PlaylistScreen`,
+etc. pushed *afterward* stay opaque regardless of the setting. Not reported by the user; found
+incidentally while testing fix #2 above.
+
 ## Key non-obvious patterns
 
 **Timeline + cursor (the play context)** — `QobitApp` holds one ordered

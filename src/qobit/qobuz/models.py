@@ -37,9 +37,9 @@ class StreamUrl:
 
     @property
     def quality_badge(self) -> str:
-        """Human-readable resolution for the transport bar, e.g. 24-bit · 192 kHz."""
+        """Console-readout style for the transport bar, e.g. [ 24-BIT · 192 kHz ]."""
         bd = self.bit_depth or 16
-        return f"{bd}-bit · {_khz_str(self.sampling_rate / 1000)} kHz"
+        return f"[ {bd}-BIT · {_khz_str(self.sampling_rate / 1000)} kHz ]"
 
 
 @dataclass

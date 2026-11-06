@@ -80,8 +80,14 @@ class PlaylistCard(Widget):
         overflow: hidden hidden;
     }
     PlaylistCard.-selected {
+        /* 55% — see AlbumCard.-selected in artist_detail.py for why. */
+        background: $accent 55%;
+    }
+    /* outline scoped to .card-info — see AlbumCard.-selected in
+       artist_detail.py for why (Kitty-image cells silently eat whatever
+       outline path crosses them). */
+    PlaylistCard.-selected .card-info {
         outline: round $accent;
-        background: $accent 35%;
     }
     PlaylistCard.-selected .card-name { color: $accent; text-style: bold; }
     PlaylistCard.-selected .card-owner { color: $accent; }
