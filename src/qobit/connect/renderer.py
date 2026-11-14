@@ -11,9 +11,11 @@ Split of authority (docs/qobuz-connect-design.md):
 Protocol facts this relies on, all verified against the iOS app (see the
 "Verified end-to-end" table in docs/qobuz-connect.md):
 
-- ``SET_STATE`` is a delta. ``current_track`` always means *jump to it* —
-  queue item ids restart at 0 on every new queue, so never compare ids to
-  decide whether to reload.
+- ``SET_STATE`` is a delta. ``current_track`` means *jump to it* unless it
+  names the item already held **in the same queue version** — queue item ids
+  restart at 0 on every new queue, so the id alone never decides. (The server
+  re-sends the current item with its activation handover, sometimes *after* a
+  queue load already started it; reloading then would restart/stop it.)
 - Picking a song in an app is only ``QUEUE_TRACKS_LOADED``; no ``SET_STATE``
   follows. The active renderer must start ``tracks[queue_position]`` itself.
 
@@ -90,6 +92,10 @@ class ConnectRenderer:
         self.loop = LOOP_OFF
         self._pos_s = 0.0  # position while not running (paused/prepared)
         self._loaded = False  # player holds the current item (mpv started for it)
+        # Queue major version in force when the current item became current.
+        # Item ids restart at 0 per queue, so (item, track) alone can't tell
+        # "the item we already have" from "item 0 of a brand-new queue".
+        self._item_major = -1
 
     # ── server → renderer ─────────────────────────────────────────────────────
 
@@ -145,18 +151,33 @@ class ConnectRenderer:
         if s.HasField("next_track"):
             nt = s.next_track
             self._hint = QueueItem(nt.queue_item_id, nt.track_id) if nt.queue_item_id >= 0 else None
+        same = False  # current_track names the item we already hold
         if s.HasField("current_track"):
             ct = s.current_track
+            major = s.queue_version.major if s.HasField("queue_version") else self._item_major
+            same = (
+                ct.queue_item_id >= 0
+                and ct.queue_item_id == self.item_id
+                and ct.track_id == self.track_id
+                and major == self._item_major
+            )
             if ct.queue_item_id < 0:
                 self._stop()
+            elif same:
+                # The item we already hold, same queue — e.g. the server's
+                # delayed activation handover arriving after a queue load had
+                # already started it. Reloading would restart (and, with the
+                # handover's PAUSED, stop) the track. Apply position/state only.
+                pass
             else:
-                # Always a jump, even for the "same" item id (see module doc).
+                # A different item, or the same item id in a newer queue (ids
+                # restart at 0 per queue): jump to it.
                 start = s.current_position / 1000 if s.HasField("current_position") else 0.0
                 state = s.playing_state if s.HasField("playing_state") else self.state
                 await self._go(QueueItem(ct.queue_item_id, ct.track_id), start, state)
                 return
         seeked = False
-        if not s.HasField("current_track") and s.HasField("current_position"):
+        if (same or not s.HasField("current_track")) and s.HasField("current_position"):
             await self.seek(s.current_position / 1000, report=False)
             seeked = True
         if s.HasField("playing_state"):
@@ -256,6 +277,7 @@ class ConnectRenderer:
             self.item_id, self.track_id = item.item_id, item.track_id
             self._pos_s = start_s
             self._loaded = False
+            self._item_major = self.queue.version.major
             self.state = state
             play = state == PLAYING
             ok = await self.port.load_track(item.track_id, start_s, play)

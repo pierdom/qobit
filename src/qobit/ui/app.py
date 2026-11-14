@@ -555,8 +555,11 @@ class QobitApp(App[None]):
         worker = get_current_worker()
         _seen_gen: int = 0
         while not worker.is_cancelled:
-            if self._player.running:
-                _seen_gen = self._player._stop_gen
+            # One atomic read: a stop() racing this loop can't make a forced
+            # stop look like a natural end (see MpvPlayer.snapshot).
+            gen, running = self._player.snapshot()
+            if running:
+                _seen_gen = gen
                 pos = self._player.get_property("time-pos")
                 dur = self._player.get_property("duration")
                 paused = self._player.get_property("pause")
@@ -574,7 +577,7 @@ class QobitApp(App[None]):
                     self._last_state_save = now
                     self.call_from_thread(self._save_player_state)
             elif self.is_playing:
-                natural_end = self._player._stop_gen == _seen_gen
+                natural_end = gen == _seen_gen
                 self.call_from_thread(setattr, self, "is_playing", False)
                 self.call_from_thread(setattr, self, "is_paused", False)
                 self.call_from_thread(setattr, self, "playback_pos", 0.0)
