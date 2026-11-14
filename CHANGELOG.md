@@ -7,6 +7,31 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.3.0] — 2026-11-14
+
+### Added
+
+- **Qobuz Connect phase 2:** while qobit is the active Connect device you can
+  edit the queue from qobit too — play from the library, play next, add to
+  queue, remove, clear, song radio (`R`). Changes go through Qobuz, so qobit
+  and the app always show the same queue.
+- **Playback first:** the Queue tab is now **Playback**, the first tab, and
+  qobit opens on it. Tabs are labelled with their key — `[1] Playback`,
+  `[2] Tracks` … `[7] Search` (compact `1 Playback` below 90 columns).
+- **The queue survives restarts:** history, current track and Up Next are
+  restored on launch, paused where you left off.
+
+### Fixed
+
+- Albums, Artists and Playlists tiles are the same, slightly smaller size, and
+  playlist covers are sharp (qobit used 50 px thumbnails).
+- One selection style for all three grids. With a transparent background the
+  selection tint was hidden behind the card's text — likely the cause of the
+  long-standing "selection looks wrong" issue.
+- Qobuz Connect: a second qobit on the same computer no longer knocks the first
+  out of the apps' device list — only one can have Connect on, and a dropped
+  registration rejoins by itself.
+
 ## [0.2.2] — 2026-11-14
 
 ### Fixed
@@ -81,6 +106,7 @@ releases (development phases 1–9).
 - Session restore (last track + position).
 - CLI: `play`, `auth`, `devices`, `set-device`, `clear-cache`.
 
+[0.3.0]: https://github.com/pierdom/qobit/releases/tag/v0.3.0
 [0.2.2]: https://github.com/pierdom/qobit/releases/tag/v0.2.2
 [0.2.1]: https://github.com/pierdom/qobit/releases/tag/v0.2.1
 [0.2.0]: https://github.com/pierdom/qobit/releases/tag/v0.2.0
