@@ -105,7 +105,8 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 - Gapless playback, ReplayGain, CMAF fallback
 - Qobuz Connect (renderer first): protocol spike verified on branch
   `spike/qobuz-connect` — write-up in `docs/qobuz-connect.md`, throwaway script in
-  `spikes/qobuz_connect/` (standalone, not imported by `src/`)
+  `spikes/qobuz_connect/` (standalone, not imported by `src/`); queue-ownership design
+  proposal in `docs/qobuz-connect-design.md` (server owns queue, renderer owns playback)
 
 ## Known issues / in progress
 
