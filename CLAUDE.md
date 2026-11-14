@@ -103,6 +103,9 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 - TrackScreen detail overlay (composer, performer, related albums)
 - Queue reorder (single-item remove + free skip back/forth via timeline+cursor done)
 - Gapless playback, ReplayGain, CMAF fallback
+- Qobuz Connect (renderer first): protocol spike verified on branch
+  `spike/qobuz-connect` — write-up in `docs/qobuz-connect.md`, throwaway script in
+  `spikes/qobuz_connect/` (standalone, not imported by `src/`)
 
 ## Known issues / in progress
 

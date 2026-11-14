@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package qcloud;
+
+enum MessageType {
+  MESSAGE_TYPE_UNSPECIFIED = 0;
+  AUTHENTICATE = 1;
+  SUBSCRIBE = 2;
+  UNSUBSCRIBE = 3;
+  PAYLOAD = 6;
+  ERROR = 9;
+  DISCONNECT = 10;
+}
+
+enum Proto {
+  PROTO_UNKNOWN = 0;
+  PROTO_QCONNECT = 1;
+}
+
+enum ChannelType {
+  CHANNEL_TYPE_UNSPECIFIED = 0;
+  CHANNEL_TYPE_DEVICE = 1;
+  CHANNEL_TYPE_BACKEND = 2;
+  CHANNEL_TYPE_SESSION_CONTROLLERS = 3;
+}
+
+message Authenticate {
+  uint32 msg_id = 1;
+  uint64 msg_date = 2;
+  string jwt = 3;
+}
+
+message Subscribe {
+  uint32 msg_id = 1;
+  uint64 msg_date = 2;
+  uint32 proto = 3;
+  repeated bytes channels = 4;
+}
+
+message Unsubscribe {
+  uint32 msg_id = 1;
+  uint64 msg_date = 2;
+  uint32 proto = 3;
+  repeated bytes channels = 4;
+}
+
+message Payload {
+  uint32 msg_id = 1;
+  uint64 msg_date = 2;
+  optional uint32 proto = 3;
+  optional bytes src = 4;
+  repeated bytes dests = 5;
+  bytes payload = 7;
+}
+
+message Disconnect {
+  uint32 msg_id = 1;
+  uint64 msg_date = 2;
+  bool reconnect = 3;
+}
