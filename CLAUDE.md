@@ -247,6 +247,18 @@ Both push their detail screen with the active tab from `_current_tab()` →
 display name — names aren't ids (the Playback tab's id is `queue`), and a bad
 id crashes Escape with `No Tab with id …`.
 
+**One Connect device per machine** — the device uuid is derived from the
+hostname, so two qobits on one host *are the same device* to Qobuz: when either
+leaves, the server drops the device for both while the survivor's socket stays
+open (verified live — the device just vanishes from every app, the "client
+disappears" report). Hence `connect.acquire_instance_lock` (flock on
+`DATA_DIR/connect.lock`, released by the OS on crash) in `_start_connect`: a
+second instance doesn't join. And `ConnectSession` rejoins when it sees
+`SRVR_CTRL_REMOVE_RENDERER` for its own id (rate-limited to one per 10 s, so two
+clients can't flap). Test harnesses that build `QobitApp()` read the user's real
+config — pass `connect=False` unless Connect is under test, or they evict the
+user's running qobit.
+
 **Top bar** — `_TABS` (app.py) is the single source of truth: `(id, name)` in
 left-to-right order. Labels (`[N] Name`) and the `1`–`7` bindings are generated
 from it, so reordering is a one-line change. Below `_TABBAR_FULL_WIDTH` (90

@@ -284,6 +284,10 @@ While active:
 - The app's volume slider has no effect, on purpose: software volume would
   change the bits the DAC receives.
 
+Only one qobit per computer can have Connect on: a second one shows "Qobuz
+Connect is already on in another qobit on this machine" (both would share one
+device identity and knock each other out of the app's device list).
+
 When another device takes over (or you turn Connect off), qobit stops and keeps
 the queue as its own, paused, so Space carries on locally.
 

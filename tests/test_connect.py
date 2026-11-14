@@ -590,3 +590,60 @@ def test_radio_replace_with_nothing_upcoming_skips_the_remove():
     sent.clear()
     r.queue_replace_upcoming([900])
     assert _cmds(sent) == ["QUEUE_ADD_TRACKS"]
+
+
+# ── duplicate device id: rejoin + one instance per machine ──────────────────
+
+
+def test_session_rejoins_when_the_server_drops_our_registration(monkeypatch):
+    # Verified live: a second client with our device id joining and leaving
+    # makes the server drop the device while our socket stays up.
+    from qobit.connect import session as session_mod
+    from qobit.connect.session import ConnectSession
+
+    statuses: list[str] = []
+    s = ConnectSession(None, qp.DeviceInfo(device_uuid=b"me"), None, statuses.append)
+    sent: list[qp.QConnectMessage] = []
+    monkeypatch.setattr(s, "send", lambda *ms: sent.extend(ms))
+    add = qp.SrvrCtrlAddRenderer(renderer_id=4, device_info=qp.DeviceInfo(device_uuid=b"me"))
+    s._note_registration(_msg(srvr_ctrl_add_renderer=add))
+    assert s.renderer_id == 4 and statuses[-1] == "ready"
+
+    gone = _msg(srvr_ctrl_remove_renderer=qp.SrvrCtrlRemoveRenderer(renderer_id=4))
+    s._note_registration(gone)
+    assert s.renderer_id is None and statuses[-1] == "connecting"
+    assert [m.message_type for m in sent] == [qp.MESSAGE_TYPE_CTRL_SRVR_JOIN_SESSION]
+
+    # Re-registered then dropped again right away: rate-limited, no flapping.
+    s._note_registration(_msg(srvr_ctrl_add_renderer=add))
+    s._note_registration(gone)
+    assert len(sent) == 1
+    monkeypatch.setattr(session_mod.time, "monotonic", lambda: 1e9)
+    s._note_registration(_msg(srvr_ctrl_add_renderer=add))
+    s._note_registration(gone)
+    assert len(sent) == 2
+
+
+def test_someone_elses_removal_is_ignored(monkeypatch):
+    from qobit.connect.session import ConnectSession
+
+    s = ConnectSession(None, qp.DeviceInfo(device_uuid=b"me"), None, lambda st: None)
+    sent: list = []
+    monkeypatch.setattr(s, "send", lambda *ms: sent.extend(ms))
+    add = qp.SrvrCtrlAddRenderer(renderer_id=4, device_info=qp.DeviceInfo(device_uuid=b"me"))
+    s._note_registration(_msg(srvr_ctrl_add_renderer=add))
+    s._note_registration(_msg(srvr_ctrl_remove_renderer=qp.SrvrCtrlRemoveRenderer(renderer_id=9)))
+    assert s.renderer_id == 4 and sent == []
+
+
+def test_only_one_connect_instance_per_machine(tmp_path):
+    from qobit.connect import acquire_instance_lock
+
+    path = str(tmp_path / "connect.lock")
+    first = acquire_instance_lock(path)
+    assert first is not None
+    assert acquire_instance_lock(path) is None  # a second qobit is refused
+    first.close()  # quitting (or crashing) releases it
+    again = acquire_instance_lock(path)
+    assert again is not None
+    again.close()

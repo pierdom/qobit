@@ -26,6 +26,9 @@ log = logging.getLogger(__name__)
 _BACKOFF = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20]
 # Only a connection that stayed up this long resets the backoff.
 _STABLE_S = 40.0
+# If the server drops our registration while the socket stays up, rejoin — but
+# at most this often, so two clients fighting over one device id can't flap.
+_REJOIN_MIN_S = 10.0
 
 Mint = Callable[[], Awaitable[tuple[str, str]]]  # -> (endpoint, jwt)
 OnMessage = Callable[[qp.QConnectMessage], Awaitable[None]]
@@ -45,6 +48,7 @@ class ConnectSession:
         self._batch_id = 0
         self._stopped = False
         self.renderer_id: int | None = None
+        self._last_rejoin = 0.0
 
     # ── public ────────────────────────────────────────────────────────────────
 
@@ -101,12 +105,7 @@ class ConnectSession:
             # queue versions; the renderer re-reports once registered.
             while not self._outbox.empty():
                 self._outbox.get_nowait()
-            self.send(
-                qp.QConnectMessage(
-                    message_type=qp.MESSAGE_TYPE_CTRL_SRVR_JOIN_SESSION,
-                    ctrl_srvr_join_session=qp.CtrlSrvrJoinSession(device_info=self.device),
-                )
-            )
+            self.send(self._join_message())
             writer = asyncio.create_task(self._writer(ws))
             try:
                 async for raw in ws:
@@ -128,9 +127,29 @@ class ConnectSession:
             self._batch_id += 1
             await ws.send(wire.payload(self._next_id(), self._batch_id, batch))
 
+    def _join_message(self) -> qp.QConnectMessage:
+        return qp.QConnectMessage(
+            message_type=qp.MESSAGE_TYPE_CTRL_SRVR_JOIN_SESSION,
+            ctrl_srvr_join_session=qp.CtrlSrvrJoinSession(device_info=self.device),
+        )
+
     def _note_registration(self, m: qp.QConnectMessage) -> None:
         if m.message_type == qp.MESSAGE_TYPE_SRVR_CTRL_ADD_RENDERER:
             added = m.srvr_ctrl_add_renderer
             if added.device_info.device_uuid == self.device.device_uuid:
                 self.renderer_id = added.renderer_id
                 self._on_status("ready")
+        elif m.message_type == qp.MESSAGE_TYPE_SRVR_CTRL_REMOVE_RENDERER:
+            removed = m.srvr_ctrl_remove_renderer.renderer_id
+            if self.renderer_id is not None and removed == self.renderer_id:
+                # Our registration is gone but the socket is fine — e.g. another
+                # client joined with this device id and then left (verified:
+                # the server then drops the device, and nothing else tells us).
+                # Without this the device silently vanishes from every app.
+                self.renderer_id = None
+                self._on_status("connecting")
+                now = time.monotonic()
+                if now - self._last_rejoin >= _REJOIN_MIN_S:
+                    self._last_rejoin = now
+                    log.info("connect: registration removed by the server, rejoining")
+                    self.send(self._join_message())

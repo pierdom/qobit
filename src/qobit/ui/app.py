@@ -162,6 +162,8 @@ _PLAYER_STATE_FILE = "player_state.json"
 # every few seconds for the position; this one only when the queue changes.
 _QUEUE_STATE_FILE = "queue_state.json"
 _QUEUE_SAVE_DELAY = 1.0  # debounce — queue_version bumps in bursts
+# One Connect device per machine (see connect.acquire_instance_lock).
+_CONNECT_LOCK_FILE = "connect.lock"
 
 # Most recently-played tracks kept in the session history (oldest dropped first).
 _HISTORY_MAX = 100
@@ -366,6 +368,7 @@ class QobitApp(App[None]):
         self.register_theme(CYBERDECK_THEME)
         self._connect_wanted = get_connect_enabled() if connect is None else connect
         self._connect: ConnectPlayContext | None = None
+        self._connect_lock: object | None = None  # flock'd file while Connect is on
         self._local_ctx = LocalPlayContext(self)
         self._client = QobuzClient()
         # Software volume is loaded here too (not just into the `volume` /
@@ -1298,6 +1301,16 @@ class QobitApp(App[None]):
     def _start_connect(self) -> None:
         if self._connect is not None:
             return
+        from ..connect import acquire_instance_lock
+        from ..store import _path as store_path
+
+        self._connect_lock = acquire_instance_lock(str(store_path(_CONNECT_LOCK_FILE)))
+        if self._connect_lock is None:
+            self.connect_state = "off"
+            self._flash_status(
+                "Qobuz Connect is already on in another qobit on this machine", secs=6.0
+            )
+            return
         self._connect = ConnectPlayContext(self)
         self.connect_state = "connecting"
         self.run_worker(self._connect.session.run(), group="connect", exclusive=True)
@@ -1308,6 +1321,9 @@ class QobitApp(App[None]):
             return
         ctx.session.stop()
         self.workers.cancel_group(self, "connect")
+        if self._connect_lock is not None:
+            self._connect_lock.close()  # releases the flock
+            self._connect_lock = None
         # Leaving while active keeps the music going locally: the mirrored
         # timeline simply becomes the local one.
         self.connect_state = "off"
