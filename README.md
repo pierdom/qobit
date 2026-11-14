@@ -358,6 +358,10 @@ converted through float32 — not bit-perfect. This is just Option A without the
 
 Fallback order: FLAC_24_192 → FLAC_24_96 → FLAC_CD.
 
+Tracks your account can't stream (Qobuz answers with a 30-second MP3 preview
+instead of the file) are never played: the TUI shows "Not streamable (preview
+only)" and skips to the next track, and `qobit play` exits with an error.
+
 ## Bit-perfect verification
 
 After playback starts, qobit queries mpv's actual output sample rate via IPC

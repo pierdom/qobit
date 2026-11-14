@@ -100,6 +100,9 @@ async def cmd_play(args: argparse.Namespace) -> int:
             try:
                 url_data = await client.get_streaming_url(str(track.id), quality)
                 stream = StreamUrl.from_api(url_data)
+                if stream.sample:
+                    print("preview only — not streamable on this account")
+                    return 1
                 print(f"OK ({stream.quality_badge})")
                 break
             except QobuzError as e:

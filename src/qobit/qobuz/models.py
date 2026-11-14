@@ -18,6 +18,11 @@ class StreamUrl:
     sampling_rate: float
     bit_depth: int | None
     file_size: int | None = None
+    # True when Qobuz answered with a ~30 s MP3 preview instead of the real file
+    # (e.g. restriction TrackRestrictedByPurchaseCredentials). It's returned at
+    # *every* requested quality, so a quality fallback never escapes it — and
+    # playing it would silently break the bit-perfect FLAC guarantee.
+    sample: bool = False
 
     @classmethod
     def from_api(cls, data: dict) -> "StreamUrl":
@@ -28,6 +33,7 @@ class StreamUrl:
             sampling_rate=float(data.get("sampling_rate", 44.1)) * 1000,
             bit_depth=data.get("bit_depth"),
             file_size=data.get("file_size"),
+            sample=bool(data.get("sample", False)),
         )
 
     @property

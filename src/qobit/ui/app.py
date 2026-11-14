@@ -877,10 +877,11 @@ class QobitApp(App[None]):
             out.append(track)
         return out
 
-    async def _do_play(self, track: Track, start: float = 0.0) -> None:
-        self.status_msg = f"Loading {track.display_title}…"
-        stream: StreamUrl | None = None
-        track_id = str(track.id)
+    async def _resolve_stream(self, track_id: str) -> StreamUrl | None:
+        """Walk the quality fallback chain and return the first stream Qobuz
+        hands back, or None. A preview (``stream.sample``) is returned as-is
+        and ends the walk: Qobuz returns the same preview at every quality, so
+        trying the rest would only cost round-trips. Raises AuthExpiredError."""
         # Prefer the quality that worked last time for this track; fall through to
         # the full list on first play or if the cached quality fails.
         all_qualities = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
@@ -892,19 +893,41 @@ class QobitApp(App[None]):
         for quality in qualities:
             try:
                 data = await self._client.get_streaming_url(track_id, quality)
-                stream = StreamUrl.from_api(data)
-                self._track_quality_cache[track_id] = quality
-                if len(self._track_quality_cache) > 1000:
-                    del self._track_quality_cache[next(iter(self._track_quality_cache))]
-                break
             except AuthExpiredError:
-                self.status_msg = "Session expired — run: qobit auth"
-                return
+                raise
             except QobuzError:
                 continue
+            stream = StreamUrl.from_api(data)
+            if stream.sample:
+                return stream
+            self._track_quality_cache[track_id] = quality
+            if len(self._track_quality_cache) > 1000:
+                del self._track_quality_cache[next(iter(self._track_quality_cache))]
+            return stream
+        return None
+
+    async def _do_play(self, track: Track, start: float = 0.0) -> None:
+        self.status_msg = f"Loading {track.display_title}…"
+        try:
+            stream = await self._resolve_stream(str(track.id))
+        except AuthExpiredError:
+            self.status_msg = "Session expired — run: qobit auth"
+            return
 
         if stream is None:
             self.status_msg = "No stream available"
+            return
+
+        if stream.sample:
+            # Never play a preview: it's a 30 s MP3, not the FLAC. Treat the track
+            # as unavailable — skip forward like the official apps do, or stop
+            # if nothing is queued after it.
+            self.status_msg = ""
+            self._flash_status(f"Not streamable (preview only): {track.display_title}")
+            if self._cursor + 1 < len(self._timeline) or self.radio_mode:
+                self._advance_queue()
+            elif self._player.running:
+                self._player.stop()
             return
 
         # History is derived from the cursor position, not pushed here: the
