@@ -7,6 +7,15 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.2.2] — 2026-11-14
+
+### Fixed
+
+- Qobuz Connect: the Qobuz apps showed "unknown quality" while qobit played.
+  qobit now reports the real stream format (sample rate, bit depth, CD/Hi-Res
+  level) on every track; file and device format are the same, since output
+  is bit-perfect.
+
 ## [0.2.1] — 2026-11-14
 
 ### Fixed
@@ -72,6 +81,7 @@ releases (development phases 1–9).
 - Session restore (last track + position).
 - CLI: `play`, `auth`, `devices`, `set-device`, `clear-cache`.
 
+[0.2.2]: https://github.com/pierdom/qobit/releases/tag/v0.2.2
 [0.2.1]: https://github.com/pierdom/qobit/releases/tag/v0.2.1
 [0.2.0]: https://github.com/pierdom/qobit/releases/tag/v0.2.0
 [0.1.1]: https://github.com/pierdom/qobit/releases/tag/v0.1.1
