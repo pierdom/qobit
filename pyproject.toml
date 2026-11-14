@@ -13,6 +13,12 @@ dependencies = [
     "textual>=0.80",
     "textual-image>=0.7",
     "pillow>=10.0",
+    # OS media controls (audio/media_keys.py). Required per platform rather
+    # than extras: `uv sync` strips any extra not named on the command line,
+    # and media_keys degrades silently, so keys just stop working.
+    "pyobjc-framework-MediaPlayer>=10.0; sys_platform == 'darwin'",
+    "pydbus>=0.6; sys_platform == 'linux'",
+    "PyGObject>=3.50; sys_platform == 'linux'",
 ]
 
 [project.scripts]
@@ -20,11 +26,6 @@ qobit = "qobit.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/qobit"]
-
-[project.optional-dependencies]
-# OS media controls — install the group matching your platform
-macos = ["pyobjc-framework-MediaPlayer>=10.0"]
-linux = ["pydbus>=0.6", "PyGObject>=3.50"]
 
 [dependency-groups]
 dev = ["ruff>=0.4", "textual-dev>=0.80", "pytest>=8.0"]

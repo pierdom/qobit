@@ -127,9 +127,11 @@ class _MacOSBackend:
         cc.togglePlayPauseCommand().addTargetWithHandler_(_toggle)
         cc.nextTrackCommand().addTargetWithHandler_(_next)
         cc.previousTrackCommand().addTargetWithHandler_(_previous)
-        cc.togglePlayPauseCommand().enabled = True
-        cc.nextTrackCommand().enabled = True
-        cc.previousTrackCommand().enabled = True
+        # Explicit setter: pyobjc 12 no longer exposes ObjC properties as
+        # assignable Python attributes (`.enabled = True` raises).
+        cc.togglePlayPauseCommand().setEnabled_(True)
+        cc.nextTrackCommand().setEnabled_(True)
+        cc.previousTrackCommand().setEnabled_(True)
 
         self._current_info: dict | None = None
         self._artwork: object = None
