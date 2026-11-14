@@ -131,35 +131,12 @@ class AlbumCard(Widget):
         color: $text-muted;
         overflow: hidden hidden;
     }
-    /* background here is a dead letter under Screen.-transparent — see
-       QobitApp.CSS's override block for why that has to live there, not
-       here, and why no amount of selector specificity in *this* file can
-       fix it. */
-    AlbumCard.-selected {
-        /* 55%, not the 35% list rows use elsewhere — a card's .card-info is
-           mostly empty space around sparse text, where the same subtle tint
-           that reads fine as a full-width row highlight doesn't register at
-           all against this much blank area. Keep this in sync with the
-           Screen.-transparent AlbumCard.-selected override in QobitApp.CSS. */
-        background: $accent 55%;
-    }
-    /* outline (not border — draws on top instead of adding a row/column, so
-       the tight fixed-height layout above never has to make room for it) is
-       scoped to .card-info rather than the whole card: Kitty-protocol images
-       are composited by the terminal itself and persist over whatever cells
-       they occupy, so wherever an outline's path crossed the TGPImage it
-       simply didn't render — a box with two stray corner fragments instead
-       of a clean rectangle. The text side never touches image cells. */
-    AlbumCard.-selected .card-info {
-        outline: round $accent;
-    }
-    AlbumCard.-selected .card-title { color: $accent; text-style: bold; }
-    AlbumCard.-selected .card-artist { color: $accent; }
-    AlbumCard.-selected .card-year { color: $accent; text-style: bold; }
+    /* Selected state: shared by every grid card (.grid-card) and defined
+       once in QobitApp.CSS — see the "Grid card selection" block there. */
     """
 
     def __init__(self, album: Album, show_artist: bool = False) -> None:
-        super().__init__(classes="full" if show_artist else "")
+        super().__init__(classes="grid-card full" if show_artist else "grid-card")
         self._album = album
         self._show_artist = show_artist
         self._art_requested = False
@@ -167,10 +144,12 @@ class AlbumCard(Widget):
     def compose(self) -> ComposeResult:
         yield TGPImage()
         with Vertical(classes="card-info"):
-            yield Label(escape(self._album.title), classes="card-title", markup=True)
-            yield Label(escape(self._album.artist or ""), classes="card-artist", markup=True)
+            yield Label(escape(self._album.title), classes="card-title card-primary", markup=True)
+            yield Label(
+                escape(self._album.artist or ""), classes="card-artist card-secondary", markup=True
+            )
             year = str(self._album.year) if self._album.year else "—"
-            yield Label(f"[dim]{year}[/dim]", classes="card-year", markup=True)
+            yield Label(f"[dim]{year}[/dim]", classes="card-year card-secondary", markup=True)
 
     def on_mount(self) -> None:
         img_h = GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H
@@ -432,19 +411,11 @@ class ArtistCard(Widget):
         text-style: bold;
         overflow: hidden hidden;
     }
-    ArtistCard.-selected {
-        /* 55% — see AlbumCard.-selected above for why. */
-        background: $accent 55%;
-    }
-    /* outline scoped to .card-info — see AlbumCard.-selected above for why. */
-    ArtistCard.-selected .card-info {
-        outline: round $accent;
-    }
-    ArtistCard.-selected .card-name { color: $accent; text-style: bold; }
+    /* Selected state: shared .grid-card rules in QobitApp.CSS. */
     """
 
     def __init__(self, artist: Artist) -> None:
-        super().__init__()
+        super().__init__(classes="grid-card")
         self._artist = artist
         self._art_requested = False
 
@@ -455,7 +426,7 @@ class ArtistCard(Widget):
     def compose(self) -> ComposeResult:
         yield TGPImage()
         with Vertical(classes="card-info"):
-            yield Label(escape(self._artist.name), classes="card-name", markup=True)
+            yield Label(escape(self._artist.name), classes="card-name card-primary", markup=True)
 
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), GRID_CARD_IMG_H)

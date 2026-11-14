@@ -128,35 +128,17 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 
 ## Known issues / in progress
 
-**Grid card selection highlight still looks wrong on the user's real terminal (Ghostty), cause not found.**
-`AlbumCard`/`ArtistCard`/`PlaylistCard`'s `.-selected` state (`outline: round $accent` on `.card-info`
-+ `background: $accent N%` on the card) has gone through three rounds of fixes this session, each
-verified by a different method, and the user still reports it looking wrong on their machine:
-
-1. *Outline fragmenting where it crossed the TGPImage* — fixed by scoping `outline` to `.card-info`
-   only (never overlaps the Kitty-protocol image cells). Confirmed via `tmux capture-pane`: a
-   complete `╭──╮`/`╰──╯` box, no stray corner fragments, on cards with and without art.
-2. *Selection background vanishing entirely under `Screen.-transparent`* — root cause: Textual gives
-   `App.CSS` an unconditional priority layer over *every* widget's own `DEFAULT_CSS`, checked before
-   selector specificity — confirmed empirically with a minimal repro (see git log on `app.py`'s CSS
-   block for the comment trail). No amount of specificity in a widget's own file can beat an App.CSS
-   rule, so the fix had to move into `QobitApp.CSS` itself, under a `Screen.-transparent
-   AlbumCard.-selected, ...` override block. Confirmed via raw ANSI escape codes in a live `tmux`
-   session (real RGB values present, not the `ansi_default` sentinel) and via `widget.styles.background`
-   introspection in a test harness.
-3. *Fill too subtle to register* — bumped 35% → 55% opacity (list rows elsewhere intentionally left at
-   35%; a full-width row gives the eye enough area to register a subtle tint, a card's mostly-empty
-   `.card-info` doesn't). Confirmed the computed colour got meaningfully stronger in two different
-   themes via the same raw-ANSI method.
-
-Despite all three being independently verified *at the data/computation level*, the user's last report
-was "it didn't solve it" with no further detail. **The missing piece is a real pixel-level screenshot of
-the user's actual terminal** — every verification above went through `tmux capture-pane`, which is not
-the same renderer as Ghostty. One attempt was made to get a real screenshot (open a Terminal.app window,
-`tmux attach` into it, `screencapture`) and it came back blank — not debugged further. Before trying
-another fix blind, get a real screenshot working first (or ask the user to share one showing the
-*current* code, since multiple fixes have landed since their last screenshot), otherwise this is liable
-to repeat the same guess-and-check cycle.
+**Grid card selection highlight on Ghostty — likely root cause found (2026-11-14), awaiting the
+user's visual confirmation.** Three earlier rounds fixed the *card's* `.-selected` background,
+which was correct but invisible: under `Screen.-transparent *` (ansi_default for every widget)
+the card's own children — `.card-info` and its Labels — painted the terminal default over the
+tint everywhere except the 1-col gap beside the image. Every earlier check inspected the card's
+own computed colour, never what was drawn on top of it. Found by rendering screenshots
+(`app.save_screenshot` → `rsvg-convert` → PNG) with the user's real config. Fix: one shared
+`.grid-card` selection style in `QobitApp.CSS` (tint + accent text, children `background:
+transparent` when selected; three-class selectors out-rank `Screen.-transparent *` in both modes)
+and no outline (child Labels paint over the parent's outline cells, so it only showed on cards
+with spare rows). **Lesson: verify UI by looking at a rendered screenshot, not computed styles.**
 
 Secondary, smaller finding from the same investigation, not yet fixed: **screens pushed after
 `action_toggle_background()` runs never receive the `-transparent` CSS class** — the toggle only loops
@@ -231,7 +213,10 @@ skip policy belongs to the caller (`_do_play` locally, the renderer in Connect).
 height, `artist_detail.GRID_CARD_IMG_H` (5 rows); the CSS heights carry a
 `/* GRID_CARD_IMG_H */` marker. Each card's text column must fit in that many
 rows (album: title 3 + artist + year; playlist: name 2 + owner + meta + date).
-Playlist art uses `images300` (the API's `images` are 50 px thumbnails).
+Playlist art uses `images300` (the API's `images` are 50 px thumbnails). Selection
+is one shared style for all three: cards carry the `grid-card` class and labels
+`card-primary` / `card-secondary`; the rules live once in `QobitApp.CSS` — never
+add per-card `.-selected` rules back.
 
 **Filter by hide/show, not remount (image grids)** — `AlbumGrid/ArtistGrid.filter_cards(ids)` toggles `card.display` on already-mounted cards so Kitty images are never re-transmitted. `_visible_cards` skips hidden cards during cursor navigation. Remount is reserved for data load and sort only.
 

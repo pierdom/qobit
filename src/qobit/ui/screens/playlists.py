@@ -79,24 +79,11 @@ class PlaylistCard(Widget):
         color: $text-disabled;
         overflow: hidden hidden;
     }
-    PlaylistCard.-selected {
-        /* 55% — see AlbumCard.-selected in artist_detail.py for why. */
-        background: $accent 55%;
-    }
-    /* outline scoped to .card-info — see AlbumCard.-selected in
-       artist_detail.py for why (Kitty-image cells silently eat whatever
-       outline path crosses them). */
-    PlaylistCard.-selected .card-info {
-        outline: round $accent;
-    }
-    PlaylistCard.-selected .card-name { color: $accent; text-style: bold; }
-    PlaylistCard.-selected .card-owner { color: $accent; }
-    PlaylistCard.-selected .card-meta { color: $accent; }
-    PlaylistCard.-selected .card-date { color: $accent; }
+    /* Selected state: shared .grid-card rules in QobitApp.CSS. */
     """
 
     def __init__(self, playlist: Playlist) -> None:
-        super().__init__()
+        super().__init__(classes="grid-card")
         self._playlist = playlist
         self._art_requested = False
 
@@ -107,19 +94,23 @@ class PlaylistCard(Widget):
     def compose(self) -> ComposeResult:
         yield TGPImage()
         with Vertical(classes="card-info"):
-            yield Label(escape(self._playlist.name), classes="card-name", markup=True)
+            yield Label(escape(self._playlist.name), classes="card-name card-primary", markup=True)
             yield Label(
                 f"[dim]by[/dim] {escape(self._playlist.owner)}",
-                classes="card-owner",
+                classes="card-owner card-secondary",
                 markup=True,
             )
             dur = self._playlist.duration_str
             meta = f"{self._playlist.tracks_count} tracks"
             if dur:
                 meta += f"  ·  {dur}"
-            yield Label(f"[dim]{escape(meta)}[/dim]", classes="card-meta", markup=True)
+            yield Label(
+                f"[dim]{escape(meta)}[/dim]", classes="card-meta card-secondary", markup=True
+            )
             date = self._playlist.date_str
-            yield Label(f"[dim]{escape(date)}[/dim]", classes="card-date", markup=True)
+            yield Label(
+                f"[dim]{escape(date)}[/dim]", classes="card-date card-secondary", markup=True
+            )
 
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), GRID_CARD_IMG_H)

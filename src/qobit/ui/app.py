@@ -252,6 +252,37 @@ class QobitApp(App[None]):
     Label.-hl {
         color: $accent;
     }
+    /* Grid card selection — one style for every library grid tile
+       (AlbumCard / ArtistCard / PlaylistCard all carry .grid-card), matching
+       a highlighted list row: accent tint + accent text, primary line bold.
+       Lives here because App.CSS outranks every widget's DEFAULT_CSS.
+
+       The tint must cover the text block, so the card's children are made
+       see-through when selected. Under transparency, Screen.-transparent *
+       below paints *every* widget ansi_default — including .card-info and
+       its Labels, which then covered the card's tint everywhere except the
+       1-col gap beside the image (the long-standing "selection looks wrong
+       on Ghostty" issue: earlier fixes restored the *card's* background,
+       which was correct but hidden). These selectors carry three classes,
+       out-ranking that rule's one class + one type in both modes.
+
+       No outline: a 5-row tile's text fills .card-info, and child Labels
+       paint over the parent's outline cells, so it only ever showed on cards
+       with spare rows (Artists) — the visible inconsistency. */
+    .grid-card.-selected {
+        background: $accent 35%;
+    }
+    .grid-card.-selected .card-info,
+    .grid-card.-selected .card-info > Label {
+        background: transparent;
+    }
+    .grid-card.-selected .card-primary {
+        color: $accent;
+        text-style: bold;
+    }
+    .grid-card.-selected .card-secondary {
+        color: $accent;
+    }
     /* Selection/status backgrounds that must survive transparency mode.
        Textual gives this App.CSS stylesheet an unconditional priority layer
        over *every* widget's own DEFAULT_CSS — a widget's rule can never
@@ -264,11 +295,6 @@ class QobitApp(App[None]):
        modal's legibility — not page background, and losing them silently
        under transparency is worse than the terminal not showing through
        there specifically. */
-    Screen.-transparent AlbumCard.-selected,
-    Screen.-transparent ArtistCard.-selected,
-    Screen.-transparent PlaylistCard.-selected {
-        background: $accent 55%;
-    }
     Screen.-transparent MixCard.-selected {
         background: $boost;
     }
