@@ -8,11 +8,28 @@ docs/qobuz-connect.md; design: docs/qobuz-connect-design.md.
 
 from __future__ import annotations
 
+import fcntl
 import socket
 import uuid
+from typing import IO
 
 from .. import __version__
 from .proto import qconnect_pb2 as qp
+
+
+def acquire_instance_lock(path: str) -> IO[str] | None:
+    """Claim Connect for this process, or None if another qobit on this
+    machine already has it. Two instances on one host share a device id
+    (derived from the hostname): when either leaves, the server drops the
+    device for both — verified live — so only one may join. flock is released
+    by the OS if the holder dies, so a crash can't leave a stale lock."""
+    fh = open(path, "w")  # noqa: SIM115 — held open for the session's lifetime
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    return fh
 
 
 def device_info() -> qp.DeviceInfo:

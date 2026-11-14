@@ -247,7 +247,9 @@ class Playlist:
     @classmethod
     def from_api(cls, data: dict) -> "Playlist":
         tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
-        images = data.get("images") or []
+        # Prefer the 300 px covers: "images" holds 50 px thumbnails, which
+        # turned visibly blurry once scaled up to a grid tile.
+        images = data.get("images300") or data.get("images150") or data.get("images") or []
         return cls(
             id=str(data["id"]),
             name=data.get("name", ""),

@@ -30,6 +30,7 @@ src/qobit/
 │                            PlayerPort; reports RNDR_SRVR_STATE_UPDATED
 ├── store.py                 JSON persistence for runtime state (DATA_DIR);
 │                            holds player_state.json (last track + position)
+│                            and queue_state.json (timeline + cursor)
 ├── qobuz/
 │   ├── client.py            QobuzClient (reverse-engineers app_id/secret from
 │   │                        web bundle; email/password + OAuth flows)
@@ -51,7 +52,7 @@ src/qobit/
     ├── play_context.py      Who may write _timeline/_cursor: LocalPlayContext
     │                        (pre-Connect logic, moved verbatim) and
     │                        ConnectPlayContext (Connect-active: mirror +
-    │                        PlayerPort adapter; edits refused in phase 1)
+    │                        PlayerPort adapter; edits → server commands)
     ├── _images.py           Shared image fetch layer: asyncio.Semaphore(6) caps
     │                        concurrent HTTP fetches; module-level URL→PIL cache
     │                        prevents re-downloading the same image within a session
@@ -84,7 +85,7 @@ src/qobit/
     │   │                    (history + favourites seeds → get_dynamic_suggestions)
     │   │                    and cached a day/ISO-week at a time in
     │   │                    mixes_cache.json keyed by _cache_key(kind)
-    │   └── queue.py         QueueView — responsive two-pane: left TrackListView
+    │   └── queue.py         QueueView (the "Playback" tab, key 1) — responsive two-pane: left TrackListView
     │                        timeline (Recently Played HistoryTrackRow →
     │                        NowPlayingListRow (accent, live ▶/⏸) → Up Next
     │                        QueueTrackRow, full-width SectionHeader dividers with
@@ -118,44 +119,26 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 - TrackScreen detail overlay (composer, performer, related albums)
 - Queue reorder (single-item remove + free skip back/forth via timeline+cursor done)
 - Gapless playback, ReplayGain, CMAF fallback
-- Qobuz Connect: **phase 1 done** (renderer, mirror-only queue). Next: phase 2 —
-  local queue edits while active become `CTRL_SRVR_QUEUE_*` commands applied on
-  echo (fill in the refusing methods of `ConnectPlayContext`); phase 3 autoplay↔radio,
-  shuffle/repeat UI, play reporting; phase 4 qobit as controller + LAN discovery.
+- Qobuz Connect: **phases 1–2 done** (renderer; queue mirror; local queue edits as
+  server commands). Next: phase 3 — autoplay↔radio (incl. editing autoplay rows,
+  endless-radio refill while active), shuffle/repeat UI, play reporting; phase 4
+  qobit as controller + LAN discovery.
   Protocol: `docs/qobuz-connect.md`; design: `docs/qobuz-connect-design.md`; original
   throwaway spike: `spikes/qobuz_connect/` (standalone, not imported by `src/`)
 
 ## Known issues / in progress
 
-**Grid card selection highlight still looks wrong on the user's real terminal (Ghostty), cause not found.**
-`AlbumCard`/`ArtistCard`/`PlaylistCard`'s `.-selected` state (`outline: round $accent` on `.card-info`
-+ `background: $accent N%` on the card) has gone through three rounds of fixes this session, each
-verified by a different method, and the user still reports it looking wrong on their machine:
-
-1. *Outline fragmenting where it crossed the TGPImage* — fixed by scoping `outline` to `.card-info`
-   only (never overlaps the Kitty-protocol image cells). Confirmed via `tmux capture-pane`: a
-   complete `╭──╮`/`╰──╯` box, no stray corner fragments, on cards with and without art.
-2. *Selection background vanishing entirely under `Screen.-transparent`* — root cause: Textual gives
-   `App.CSS` an unconditional priority layer over *every* widget's own `DEFAULT_CSS`, checked before
-   selector specificity — confirmed empirically with a minimal repro (see git log on `app.py`'s CSS
-   block for the comment trail). No amount of specificity in a widget's own file can beat an App.CSS
-   rule, so the fix had to move into `QobitApp.CSS` itself, under a `Screen.-transparent
-   AlbumCard.-selected, ...` override block. Confirmed via raw ANSI escape codes in a live `tmux`
-   session (real RGB values present, not the `ansi_default` sentinel) and via `widget.styles.background`
-   introspection in a test harness.
-3. *Fill too subtle to register* — bumped 35% → 55% opacity (list rows elsewhere intentionally left at
-   35%; a full-width row gives the eye enough area to register a subtle tint, a card's mostly-empty
-   `.card-info` doesn't). Confirmed the computed colour got meaningfully stronger in two different
-   themes via the same raw-ANSI method.
-
-Despite all three being independently verified *at the data/computation level*, the user's last report
-was "it didn't solve it" with no further detail. **The missing piece is a real pixel-level screenshot of
-the user's actual terminal** — every verification above went through `tmux capture-pane`, which is not
-the same renderer as Ghostty. One attempt was made to get a real screenshot (open a Terminal.app window,
-`tmux attach` into it, `screencapture`) and it came back blank — not debugged further. Before trying
-another fix blind, get a real screenshot working first (or ask the user to share one showing the
-*current* code, since multiple fixes have landed since their last screenshot), otherwise this is liable
-to repeat the same guess-and-check cycle.
+**Grid card selection highlight on Ghostty — likely root cause found (2026-11-14), awaiting the
+user's visual confirmation.** Three earlier rounds fixed the *card's* `.-selected` background,
+which was correct but invisible: under `Screen.-transparent *` (ansi_default for every widget)
+the card's own children — `.card-info` and its Labels — painted the terminal default over the
+tint everywhere except the 1-col gap beside the image. Every earlier check inspected the card's
+own computed colour, never what was drawn on top of it. Found by rendering screenshots
+(`app.save_screenshot` → `rsvg-convert` → PNG) with the user's real config. Fix: one shared
+`.grid-card` selection style in `QobitApp.CSS` (tint + accent text, children `background:
+transparent` when selected; three-class selectors out-rank `Screen.-transparent *` in both modes)
+and no outline (child Labels paint over the parent's outline cells, so it only showed on cards
+with spare rows). **Lesson: verify UI by looking at a rendered screenshot, not computed styles.**
 
 Secondary, smaller finding from the same investigation, not yet fixed: **screens pushed after
 `action_toggle_background()` runs never receive the `-transparent` CSS class** — the toggle only loops
@@ -186,7 +169,19 @@ sync action handlers call it.
 
 **Play contexts (Qobuz Connect seam)** — every `_timeline`/`_cursor` *write*
 goes through `QobitApp._ctx` (`ui/play_context.py`): `LocalPlayContext` normally,
-`ConnectPlayContext` while qobit is the **active** Connect renderer. App methods
+`ConnectPlayContext` while qobit is the **active** Connect renderer (phase 2:
+its mutators send `CTRL_SRVR_QUEUE_*` commands — load/insert/add/remove — and
+return at once; the timeline changes only when the server echoes, through the
+same resync path as an edit from the phone. Commands go out **one at a time**:
+each carries the queue version it was based on, so the next waits for its
+predecessor's echo (matched by `action_uuid`, 10 s timeout); an echo's version is
+noted *before* the next is built, and the next is sent only *after* the echo
+message is fully applied — a LOADED echo must update the queue model before an
+edit queued behind it (menu "Play radio" = load + replace) picks its targets.
+`queue_replace_upcoming` therefore resolves its item ids at send time. A
+QUEUE_ERROR drops pending commands and re-syncs. Mirror rows are distinct
+`Track` objects (`dataclasses.replace`) so identity-based remove works for a
+song queued twice; autoplay rows are read-only for now). App methods
 (`play_track`, `jump_to`, `queue_next/last`, `remove_from_queue`, `clear_queue/
 history`, `_advance_queue`, `_start_radio`) are thin delegators returning
 whether the edit happened; readers (Queue tab, hero, transport) are untouched.
@@ -214,6 +209,15 @@ skip policy belongs to the caller (`_do_play` locally, the renderer in Connect).
 
 **`_render_version` counter** — each view holds `_render_version: int`, incremented before starting a `@work` load. The worker captures the version at start and discards results if it changed by the time it returns — prevents stale workers from overwriting newer results.
 
+**Grid tile size** — the Albums, Artists and Playlists tabs share one image
+height, `artist_detail.GRID_CARD_IMG_H` (5 rows); the CSS heights carry a
+`/* GRID_CARD_IMG_H */` marker. Each card's text column must fit in that many
+rows (album: title 3 + artist + year; playlist: name 2 + owner + meta + date).
+Playlist art uses `images300` (the API's `images` are 50 px thumbnails). Selection
+is one shared style for all three: cards carry the `grid-card` class and labels
+`card-primary` / `card-secondary`; the rules live once in `QobitApp.CSS` — never
+add per-card `.-selected` rules back.
+
 **Filter by hide/show, not remount (image grids)** — `AlbumGrid/ArtistGrid.filter_cards(ids)` toggles `card.display` on already-mounted cards so Kitty images are never re-transmitted. `_visible_cards` skips hidden cards during cursor navigation. Remount is reserved for data load and sort only.
 
 **`Content.assemble` for safe label text** — track rows use `Content.assemble(text, heart_suffix(favorite))` (`ui/_now_playing.py`) rather than Rich markup strings. Titles containing `[`/`]` corrupt markup-parsed labels; `Content` parts are literal, so they can't crash the render. `heart_suffix()` is the one place the `♥` tuple is built — every *TrackRow class across screens/ calls it instead of hand-rolling `(f"  {ICON_FAV}", "$accent")`.
@@ -237,14 +241,44 @@ _open_album). "Remove from queue" is offered only when the highlighted row is a
 `QueueTrackRow`, and removes by identity so the exact queued instance goes. "Go to
 album" builds a lean `Album` from the track (panel re-fetches the rest); "Go to
 artist" needs a `get_track` round-trip since `Track` carries no `artist_id`.
-Both push their detail screen with `source=_current_tab_source()` (the active
-tab's label), **not** a free-form string: `ArtistScreen.action_navigate_back`
-maps `source.lower()` back to a tab id, so a bogus source (e.g. "Back") crashes
-Escape with `No Tab with id …`.
+Both push their detail screen with the active tab from `_current_tab()` →
+`(tab id, display name)`: the name is the breadcrumb (`source=`), the id is
+`ArtistScreen`'s Escape target (`back_tab=`). Never derive a tab id from a
+display name — names aren't ids (the Playback tab's id is `queue`), and a bad
+id crashes Escape with `No Tab with id …`.
+
+**One Connect device per machine** — the device uuid is derived from the
+hostname, so two qobits on one host *are the same device* to Qobuz: when either
+leaves, the server drops the device for both while the survivor's socket stays
+open (verified live — the device just vanishes from every app, the "client
+disappears" report). Hence `connect.acquire_instance_lock` (flock on
+`DATA_DIR/connect.lock`, released by the OS on crash) in `_start_connect`: a
+second instance doesn't join. And `ConnectSession` rejoins when it sees
+`SRVR_CTRL_REMOVE_RENDERER` for its own id (rate-limited to one per 10 s, so two
+clients can't flap). Test harnesses that build `QobitApp()` read the user's real
+config — pass `connect=False` unless Connect is under test, or they evict the
+user's running qobit.
+
+**Top bar** — `_TABS` (app.py) is the single source of truth: `(id, name)` in
+left-to-right order. Labels (`[N] Name`) and the `1`–`7` bindings are generated
+from it, so reordering is a one-line change. Below `_TABBAR_FULL_WIDTH` (90
+cols, computed from the labels) `_fit_tab_labels` switches to compact `N Name`
+so the last tab isn't clipped. The Playback tab keeps the internal id `queue`,
+the view `QueueView` / `#view-queue` — renamed in the UI only.
 
 **Queue version pattern** — `queue_version: reactive[int]` on `QobitApp` is bumped whenever `_timeline`/`_cursor` changes. Widgets watch this to re-render. Combined with a local `_render_version` they guard against stale workers.
 
 **`_flash_status` vs `status_msg`** — `status_msg` drives the transport bar's main `artist — title` label; setting it for transient notices would erase now-playing info until the next track. `_flash_status` sets it temporarily and auto-clears (~3 s).
+
+**Queue persistence** — the timeline + cursor survive restarts:
+`watch_queue_version` debounces (1 s) a `_save_queue_state()` to
+`queue_state.json` (and `on_unmount` saves once more); `_restore_player_state`
+rebuilds `_timeline`/`_cursor` from it. Position stays in `player_state.json`
+(rewritten every ~5 s while playing) so the queue file is only written when the
+queue changes. If the two disagree (cursor track ≠ last-played track, e.g.
+killed between saves) restore falls back to the single last-played track —
+never a mismatched queue. Any new timeline mutator gets this for free as long
+as it bumps `queue_version` (it must anyway). The app opens on the Playback tab.
 
 **Session restore order** — `QobuzClient.restore_session()` is called in `QobitApp.__init__()`, not `on_mount`, so credentials are available before any child widget worker fires.
 
@@ -276,6 +310,7 @@ Kitty graphics protocol only (no iTerm2 IIP, no sixel). `textual_image.widget.TG
 ~/.config/qobit/config.json            credentials, audio_device, theme, radio_mode, connect_enabled, oauth session
 ~/.local/share/qobit/mpv.sock          IPC socket (re-created on each play call)
 ~/.local/share/qobit/player_state.json last track + position (restored on launch)
+~/.local/share/qobit/queue_state.json  timeline + cursor (restored on launch)
 ~/.local/share/qobit/mixes_cache.json  DailyQ/WeeklyQ tracks, keyed by day/ISO-week
 ~/.cache/qobit/images/                 on-disk cover-art cache (qobit clear-cache)
 ```

@@ -8,7 +8,7 @@ from functools import lru_cache
 from rich.color import Color as _RichColor
 from rich.color import ColorType as _ColorType
 from rich.style import Style as _RichStyle
-from textual import on, work
+from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import Hit, Hits, Provider
@@ -157,6 +157,13 @@ CYBERDECK_THEME = Theme(
 )
 
 _PLAYER_STATE_FILE = "player_state.json"
+# The whole play context (timeline + cursor), so the Playback tab shows the same
+# queue after a restart. Separate from player_state.json: that one is rewritten
+# every few seconds for the position; this one only when the queue changes.
+_QUEUE_STATE_FILE = "queue_state.json"
+_QUEUE_SAVE_DELAY = 1.0  # debounce — queue_version bumps in bursts
+# One Connect device per machine (see connect.acquire_instance_lock).
+_CONNECT_LOCK_FILE = "connect.lock"
 
 # Most recently-played tracks kept in the session history (oldest dropped first).
 _HISTORY_MAX = 100
@@ -164,15 +171,31 @@ _HISTORY_MAX = 100
 # it, steps back to the previous track in history (standard media convention).
 _PREV_RESTART_THRESHOLD = 3.0
 
+# Top bar, left to right: (tab id, display name). The bar shows "[N] Name" and
+# the number keys follow this order — both are generated from this list. Ids are
+# internal and stable (the Playback tab keeps the id "queue" / QueueView); names
+# are display-only — never derive an id from a name.
 _TABS = [
+    ("queue", "Playback"),
     ("tracks", "Tracks"),
     ("artists", "Artists"),
     ("albums", "Albums"),
     ("playlists", "Playlists"),
     ("mixes", "Mixes"),
     ("search", "Search"),
-    ("queue", "Queue"),
 ]
+
+
+def _tab_label(n: int, name: str, compact: bool) -> str:
+    return f"{n} {name}" if compact else f"[{n}] {name}"
+
+
+# Columns the full "[N] Name" bar needs: the bar's 1-col leading offset, then
+# each label plus Tab's 1-col padding on both sides (measured: 90). Narrower
+# terminals get the compact "N Name" labels instead of a clipped last tab.
+_TABBAR_FULL_WIDTH = 1 + sum(
+    len(_tab_label(n, name, False)) + 2 for n, (_, name) in enumerate(_TABS, 1)
+)
 
 
 class QobitApp(App[None]):
@@ -231,6 +254,37 @@ class QobitApp(App[None]):
     Label.-hl {
         color: $accent;
     }
+    /* Grid card selection — one style for every library grid tile
+       (AlbumCard / ArtistCard / PlaylistCard all carry .grid-card), matching
+       a highlighted list row: accent tint + accent text, primary line bold.
+       Lives here because App.CSS outranks every widget's DEFAULT_CSS.
+
+       The tint must cover the text block, so the card's children are made
+       see-through when selected. Under transparency, Screen.-transparent *
+       below paints *every* widget ansi_default — including .card-info and
+       its Labels, which then covered the card's tint everywhere except the
+       1-col gap beside the image (the long-standing "selection looks wrong
+       on Ghostty" issue: earlier fixes restored the *card's* background,
+       which was correct but hidden). These selectors carry three classes,
+       out-ranking that rule's one class + one type in both modes.
+
+       No outline: a 5-row tile's text fills .card-info, and child Labels
+       paint over the parent's outline cells, so it only ever showed on cards
+       with spare rows (Artists) — the visible inconsistency. */
+    .grid-card.-selected {
+        background: $accent 35%;
+    }
+    .grid-card.-selected .card-info,
+    .grid-card.-selected .card-info > Label {
+        background: transparent;
+    }
+    .grid-card.-selected .card-primary {
+        color: $accent;
+        text-style: bold;
+    }
+    .grid-card.-selected .card-secondary {
+        color: $accent;
+    }
     /* Selection/status backgrounds that must survive transparency mode.
        Textual gives this App.CSS stylesheet an unconditional priority layer
        over *every* widget's own DEFAULT_CSS — a widget's rule can never
@@ -243,11 +297,6 @@ class QobitApp(App[None]):
        modal's legibility — not page background, and losing them silently
        under transparency is worse than the terminal not showing through
        there specifically. */
-    Screen.-transparent AlbumCard.-selected,
-    Screen.-transparent ArtistCard.-selected,
-    Screen.-transparent PlaylistCard.-selected {
-        background: $accent 55%;
-    }
     Screen.-transparent MixCard.-selected {
         background: $boost;
     }
@@ -274,15 +323,12 @@ class QobitApp(App[None]):
         # via the command palette — see action_toggle_software_volume.
         Binding("minus", "volume_down", "Vol-"),
         Binding("equals_sign", "volume_up", "Vol+"),
-        # 1-7 match the tab bar's left-to-right order; escape brings focus to
-        # Tabs from anywhere.
-        Binding("1", "switch_tab('tracks')", "Tracks", show=False),
-        Binding("2", "switch_tab('artists')", "Artists", show=False),
-        Binding("3", "switch_tab('albums')", "Albums", show=False),
-        Binding("4", "switch_tab('playlists')", "Playlists", show=False),
-        Binding("5", "switch_tab('mixes')", "Mixes", show=False),
-        Binding("6", "switch_tab('search')", "Search", show=False),
-        Binding("7", "switch_tab('queue')", "Queue", show=False),
+        # 1-7 match the tab bar's "[N]" labels (generated from _TABS); escape
+        # brings focus to Tabs from anywhere.
+        *[
+            Binding(str(n), f"switch_tab('{tid}')", name, show=False)
+            for n, (tid, name) in enumerate(_TABS, 1)
+        ],
         # priority=True so this fires even when an Input has focus
         Binding("escape", "focus_tabs", "Nav", show=False, priority=True),
     ]
@@ -322,6 +368,7 @@ class QobitApp(App[None]):
         self.register_theme(CYBERDECK_THEME)
         self._connect_wanted = get_connect_enabled() if connect is None else connect
         self._connect: ConnectPlayContext | None = None
+        self._connect_lock: object | None = None  # flock'd file while Connect is on
         self._local_ctx = LocalPlayContext(self)
         self._client = QobuzClient()
         # Software volume is loaded here too (not just into the `volume` /
@@ -336,8 +383,9 @@ class QobitApp(App[None]):
         # The play context is one ordered timeline plus a cursor at the
         # now-playing track. Everything behind the cursor is "Recently Played",
         # everything ahead is "Up Next". Selecting a queue row just moves the
-        # cursor, so skipping back and forth never drops tracks. Session-only —
-        # not persisted; the past is trimmed to _HISTORY_MAX to bound memory.
+        # cursor, so skipping back and forth never drops tracks. Persisted to
+        # queue_state.json (see _save_queue_state); the past is trimmed to
+        # _HISTORY_MAX to bound memory.
         self._timeline: list[Track] = []
         self._cursor: int = -1
         # A restored-but-not-yet-loaded track: (track, position). Set on launch
@@ -361,6 +409,7 @@ class QobitApp(App[None]):
         # renderer reports it to the apps.
         self._last_stream: StreamUrl | None = None
         self._flash_timer: object | None = None
+        self._queue_save_timer: object | None = None
         self._media_keys = MediaKeys(
             on_play_pause=lambda: self.call_from_thread(self.action_pause),
             on_next=lambda: self.call_from_thread(self._advance_queue),
@@ -372,11 +421,11 @@ class QobitApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Tabs(
-            *[Tab(label, id=tid) for tid, label in _TABS],
+            *[Tab(_tab_label(n, name, False), id=tid) for n, (tid, name) in enumerate(_TABS, 1)],
             id="nav-tabs",
-            active="tracks",
+            active="queue",
         )
-        with ContentSwitcher(initial="view-tracks"):
+        with ContentSwitcher(initial="view-queue"):
             yield PlaylistsView(id="view-playlists")
             yield TracksView(id="view-tracks")
             yield ArtistsView(id="view-artists")
@@ -405,6 +454,7 @@ class QobitApp(App[None]):
         self.radio_mode = get_radio_mode()
         self.software_volume_enabled = _sw_vol_on = get_software_volume_enabled()
         self.volume = get_saved_volume() if _sw_vol_on else 100
+        self._fit_tab_labels(self.size.width)
         self._restore_player_state()
         if self._connect_wanted:
             self._start_connect()
@@ -431,6 +481,20 @@ class QobitApp(App[None]):
         self.query_one(ContentSwitcher).current = f"view-{event.tab.id}"
         if event.tab.id == "search":
             self._focus_search_input()
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._fit_tab_labels(event.size.width)
+
+    def _fit_tab_labels(self, width: int) -> None:
+        compact = width < _TABBAR_FULL_WIDTH
+        if compact == getattr(self, "_tabs_compact", None):
+            return
+        self._tabs_compact = compact
+        for n, (tid, name) in enumerate(_TABS, 1):
+            try:
+                self.query_one(f"#{tid}", Tab).label = _tab_label(n, name, compact)
+            except Exception:
+                pass  # not composed yet; on_mount runs this again
 
     def action_switch_tab(self, tab_id: str) -> None:
         self.query_one("#nav-tabs", Tabs).active = tab_id
@@ -627,7 +691,8 @@ class QobitApp(App[None]):
 
     # Timeline mutators delegate to the active play context (ui/play_context.py):
     # local by default; while qobit is the active Qobuz Connect renderer the
-    # server owns the queue and these are refused (phase 1) — they return False.
+    # server owns the queue and these send it commands (the timeline updates on
+    # the server's echo). They return whether an edit was made/sent.
 
     def clear_queue(self) -> bool:
         return self._ctx.clear_queue()
@@ -1013,27 +1078,76 @@ class QobitApp(App[None]):
             pass
 
     def _restore_player_state(self) -> None:
-        """Reload the last track + position into the transport bar (paused,
-        unloaded). The next play/pause press resumes it from that position."""
+        """Reload the last session: the whole queue (timeline + cursor) and the
+        last track + position, shown paused and unloaded. The next play/pause
+        press resumes from that position."""
         data = load_state(_PLAYER_STATE_FILE)
         raw = data.get("track")
-        if not isinstance(raw, dict):
+        track: Track | None = None
+        if isinstance(raw, dict):
+            try:
+                track = Track(**raw)
+            except (TypeError, ValueError):
+                track = None
+        timeline, cursor = self._load_queue_state()
+        if track is not None and not (
+            0 <= cursor < len(timeline) and timeline[cursor].id == track.id
+        ):
+            # The two files disagree (e.g. killed between saves): trust the
+            # last-played track over a stale queue rather than mismatch them.
+            timeline, cursor = [track], 0
+        if not timeline:
+            return
+        self._restoring = True
+        self._timeline, self._cursor = timeline, cursor
+        if track is not None:
+            position = float(data.get("position") or 0.0)
+            self.playback_dur = float(data.get("duration") or track.duration or 0.0)
+            self.playback_pos = position
+            self.is_paused = True
+            self.now_playing = track
+            self._pending_resume = (track, position)
+        self.queue_version += 1
+        self._restoring = False
+
+    def _load_queue_state(self) -> tuple[list[Track], int]:
+        data = load_state(_QUEUE_STATE_FILE)
+        raw = data.get("timeline")
+        cursor = data.get("cursor", -1)
+        if not isinstance(raw, list) or not isinstance(cursor, int):
+            return [], -1
+        tracks: list[Track] = []
+        for item in raw:
+            try:
+                tracks.append(Track(**item))
+            except (TypeError, ValueError):
+                return [], -1  # one bad row → the indexes can't be trusted
+        if not -1 <= cursor < len(tracks):
+            return [], -1
+        return tracks, cursor
+
+    def _save_queue_state(self) -> None:
+        if self._restoring:
             return
         try:
-            track = Track(**raw)
-        except (TypeError, ValueError):
+            save_state(
+                _QUEUE_STATE_FILE,
+                {
+                    "timeline": [dataclasses.asdict(t) for t in self._timeline],
+                    "cursor": self._cursor,
+                },
+            )
+        except Exception:
+            pass
+
+    def watch_queue_version(self, _: int) -> None:
+        # Every timeline/cursor change bumps queue_version (local edits, Connect
+        # mirror rebuilds alike) — persist shortly after the burst settles.
+        if self._restoring or not self.is_running:
             return
-        position = float(data.get("position") or 0.0)
-        duration = float(data.get("duration") or track.duration or 0.0)
-        self._restoring = True
-        self.playback_dur = duration
-        self.playback_pos = position
-        self.is_paused = True
-        self._timeline = [track]
-        self._cursor = 0
-        self.now_playing = track
-        self._restoring = False
-        self._pending_resume = (track, position)
+        if self._queue_save_timer is not None:
+            self._queue_save_timer.stop()  # type: ignore[union-attr]
+        self._queue_save_timer = self.set_timer(_QUEUE_SAVE_DELAY, self._save_queue_state)
 
     @work
     async def _fetch_media_key_art(self, url: str) -> None:
@@ -1130,7 +1244,7 @@ class QobitApp(App[None]):
             tracks_count=0,
             image_url=track.image_url,
         )
-        self.push_screen(AlbumScreen(album, source=self._current_tab_source()))
+        self.push_screen(AlbumScreen(album, source=self._current_tab()[1]))
 
     @work
     async def _open_artist(self, track: Track) -> None:
@@ -1147,17 +1261,18 @@ class QobitApp(App[None]):
         if not artist_id:
             self._flash_status("Artist not available")
             return
-        self.push_screen(ArtistScreen(str(artist_id), source=self._current_tab_source()))
+        tab_id, name = self._current_tab()
+        self.push_screen(ArtistScreen(str(artist_id), source=name, back_tab=tab_id))
 
-    def _current_tab_source(self) -> str:
-        """Breadcrumb / back-target label for a pushed detail screen opened from
-        the context menu. ArtistScreen maps it back to a tab via ``.lower()``, so
-        it must be a real tab label (e.g. "Tracks" → tab id "tracks")."""
+    def _current_tab(self) -> tuple[str, str]:
+        """``(tab id, display name)`` of the active tab — the breadcrumb text and
+        the Escape target for a detail screen opened from the context menu."""
         try:
             active = self.query_one("#nav-tabs", Tabs).active
         except Exception:
-            return "Tracks"
-        return dict(_TABS).get(active, active.capitalize() or "Tracks")
+            active = ""
+        names = dict(_TABS)
+        return (active, names[active]) if active in names else ("tracks", "Tracks")
 
     def action_seek_back(self) -> None:
         if self._ctx is not self._local_ctx:
@@ -1186,6 +1301,16 @@ class QobitApp(App[None]):
     def _start_connect(self) -> None:
         if self._connect is not None:
             return
+        from ..connect import acquire_instance_lock
+        from ..store import _path as store_path
+
+        self._connect_lock = acquire_instance_lock(str(store_path(_CONNECT_LOCK_FILE)))
+        if self._connect_lock is None:
+            self.connect_state = "off"
+            self._flash_status(
+                "Qobuz Connect is already on in another qobit on this machine", secs=6.0
+            )
+            return
         self._connect = ConnectPlayContext(self)
         self.connect_state = "connecting"
         self.run_worker(self._connect.session.run(), group="connect", exclusive=True)
@@ -1196,6 +1321,9 @@ class QobitApp(App[None]):
             return
         ctx.session.stop()
         self.workers.cancel_group(self, "connect")
+        if self._connect_lock is not None:
+            self._connect_lock.close()  # releases the flock
+            self._connect_lock = None
         # Leaving while active keeps the music going locally: the mirrored
         # timeline simply becomes the local one.
         self.connect_state = "off"
@@ -1244,6 +1372,7 @@ class QobitApp(App[None]):
         from ._images import close_client
 
         self._save_player_state()
+        self._save_queue_state()
         self._stop_connect()
         self._media_keys.close()
         self._player.stop()

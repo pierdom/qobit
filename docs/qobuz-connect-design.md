@@ -1,7 +1,8 @@
 # Qobuz Connect in qobit — queue ownership design
 
-Status: **phase 1 implemented** (2026-11-14) — renderer + mirror-only queue,
-opt-in (`connect_enabled`, `qobit --connect-on`). Phases 2–4 still proposals. Builds on the verified spike
+Status: **phases 1–2 implemented** (2026-11-14) — renderer, queue mirror, and
+local queue edits as server commands (applied on echo, one in flight at a time),
+opt-in (`connect_enabled`, `qobit --connect-on`). Phases 3–4 still proposals. Builds on the verified spike
 (`docs/qobuz-connect.md`, `spikes/qobuz_connect/`). Scope: qobit as a Connect
 **renderer** (the Qobuz app picks qobit, qobit plays through mpv). qobit
 controlling *other* devices and LAN discovery are out of scope (phase 4).
@@ -237,4 +238,5 @@ ui/play_context.py    PlayContext protocol, LocalPlayContext, ConnectPlayContext
 - Behaviour when two qobit instances (two machines) are both connected. Device
   uuid is per-host, so they should appear as two devices. Verify.
 - Should `connect_enabled` eventually default to on? Being visible in the apps
-  whenever qobit runs is convenient but also a surprise. Keep opt-in until phase 2 lands.
+  whenever qobit runs is convenient but also a surprise. Kept opt-in after
+  phase 2; revisit once phase 3 (autoplay/radio) lands.

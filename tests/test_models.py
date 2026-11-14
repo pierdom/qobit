@@ -318,3 +318,25 @@ def test_stream_url_detects_preview_sample():
         }
     )
     assert s.sample is True
+
+
+def test_playlist_prefers_300px_covers_over_50px_thumbnails():
+    p = Playlist.from_api(
+        {
+            "id": 1,
+            "name": "x",
+            "owner": {},
+            "tracks_count": 0,
+            "images": ["http://c/a_50.jpg"],
+            "images150": ["http://c/a_150.jpg"],
+            "images300": ["http://c/a_300.jpg"],
+        }
+    )
+    assert p.image_url == "http://c/a_300.jpg"
+
+
+def test_playlist_falls_back_to_150_then_50px():
+    base = {"id": 1, "name": "x", "owner": {}, "tracks_count": 0}
+    p150 = Playlist.from_api({**base, "images": ["a_50"], "images150": ["a_150"]})
+    assert p150.image_url == "a_150"
+    assert Playlist.from_api({**base, "images": ["a_50"]}).image_url == "a_50"
