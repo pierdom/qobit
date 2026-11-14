@@ -60,6 +60,10 @@ class MpvPlayer:
     def pause_toggle(self) -> None:
         self._cmd(["cycle", "pause"])
 
+    def set_paused(self, paused: bool) -> None:
+        """Explicit pause state (Connect commands are absolute, not toggles)."""
+        self._cmd(["set_property", "pause", paused])
+
     def set_volume(self, value: int) -> None:
         """Apply a software volume level (0-100) to the running track and
         remember it for the next play() call."""

@@ -17,6 +17,17 @@ src/qobit/
 ├── __init__.py              version string
 ├── __main__.py              CLI entry point + TUI launcher (qobit with no args)
 ├── config.py                credentials + device config (env → file → prompt)
+├── connect/                 Qobuz Connect renderer — UI-agnostic (no Textual):
+│   ├── __init__.py          device_info(): stable per-host uuid, COMPUTER,
+│   │                        VOLUME_REMOTE_CONTROL_NOT_ALLOWED (bit-perfect)
+│   ├── proto/               protoc output (committed; ruff-excluded) + .proto
+│   ├── wire.py              varint framing, handshake, Payload/Batch (pure)
+│   ├── session.py           ConnectSession: token mint per socket, join,
+│   │                        registration, keepalive, reconnect backoff
+│   ├── queue.py             ServerQueue: read-only mirror of the server queue
+│   │                        (LOADED fast path + QUEUE_STATE snapshots)
+│   └── renderer.py          ConnectRenderer: playback state machine over a
+│                            PlayerPort; reports RNDR_SRVR_STATE_UPDATED
 ├── store.py                 JSON persistence for runtime state (DATA_DIR);
 │                            holds player_state.json (last track + position)
 ├── qobuz/
@@ -37,6 +48,10 @@ src/qobit/
 └── ui/
     ├── app.py               QobitApp — reactive state, transport controls,
     │                        session restore, tab routing, play queue
+    ├── play_context.py      Who may write _timeline/_cursor: LocalPlayContext
+    │                        (pre-Connect logic, moved verbatim) and
+    │                        ConnectPlayContext (Connect-active: mirror +
+    │                        PlayerPort adapter; edits refused in phase 1)
     ├── _images.py           Shared image fetch layer: asyncio.Semaphore(6) caps
     │                        concurrent HTTP fetches; module-level URL→PIL cache
     │                        prevents re-downloading the same image within a session
@@ -103,6 +118,12 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 - TrackScreen detail overlay (composer, performer, related albums)
 - Queue reorder (single-item remove + free skip back/forth via timeline+cursor done)
 - Gapless playback, ReplayGain, CMAF fallback
+- Qobuz Connect: **phase 1 done** (renderer, mirror-only queue). Next: phase 2 —
+  local queue edits while active become `CTRL_SRVR_QUEUE_*` commands applied on
+  echo (fill in the refusing methods of `ConnectPlayContext`); phase 3 autoplay↔radio,
+  shuffle/repeat UI, play reporting; phase 4 qobit as controller + LAN discovery.
+  Protocol: `docs/qobuz-connect.md`; design: `docs/qobuz-connect-design.md`; original
+  throwaway spike: `spikes/qobuz_connect/` (standalone, not imported by `src/`)
 
 ## Known issues / in progress
 
@@ -162,6 +183,24 @@ skip. `_trim_history()` bounds the past to `_HISTORY_MAX`. Queue rows carry a
 `timeline_index` tagged in `_refresh_list` (rendered order == timeline order),
 which `_on_queue_selected` passes to `jump_to`. `jump_to` is `@work` because
 sync action handlers call it.
+
+**Play contexts (Qobuz Connect seam)** — every `_timeline`/`_cursor` *write*
+goes through `QobitApp._ctx` (`ui/play_context.py`): `LocalPlayContext` normally,
+`ConnectPlayContext` while qobit is the **active** Connect renderer. App methods
+(`play_track`, `jump_to`, `queue_next/last`, `remove_from_queue`, `clear_queue/
+history`, `_advance_queue`, `_start_radio`) are thin delegators returning
+whether the edit happened; readers (Queue tab, hero, transport) are untouched.
+Any new timeline mutator must be added to **both** contexts. Rule while active:
+*server owns the queue, renderer owns playback* — queue structure is a mirror
+rebuilt only from server events (LOADED, or an ASK_FOR_QUEUE_STATE snapshot for
+every other edit), while play/pause/seek/jump/natural-end act on mpv at once and
+are reported. Transport actions (`action_pause`, `_seek_to`, seek keys) check
+`self._ctx is not self._local_ctx` to route through the renderer. Two protocol
+facts that each cost a bug in the spike: `SET_STATE.current_track` always means
+reload (queue item ids restart at 0 per queue), and picking a song in an app is
+*only* `QUEUE_TRACKS_LOADED` — the renderer starts `tracks[queue_position]`
+itself. `_play_stream()` returns "ok"/"sample"/"none"/"auth" and never skips;
+skip policy belongs to the caller (`_do_play` locally, the renderer in Connect).
 
 **`_stop_gen` for end-of-track** — `MpvPlayer._stop_gen` increments on every `stop()` call. The poll thread records the gen when `running=True`; on transition to `False`, equal gen = natural end (advance queue), different gen = stop was called (skip). Race-safe because even a post-`stop()` check will see the changed gen.
 
@@ -228,7 +267,7 @@ Kitty graphics protocol only (no iTerm2 IIP, no sixel). `textual_image.widget.TG
 ## Config paths
 
 ```
-~/.config/qobit/config.json            credentials, audio_device, theme, radio_mode, oauth session
+~/.config/qobit/config.json            credentials, audio_device, theme, radio_mode, connect_enabled, oauth session
 ~/.local/share/qobit/mpv.sock          IPC socket (re-created on each play call)
 ~/.local/share/qobit/player_state.json last track + position (restored on launch)
 ~/.local/share/qobit/mixes_cache.json  DailyQ/WeeklyQ tracks, keyed by day/ISO-week
@@ -246,7 +285,8 @@ uv run qobit               # launch TUI
 uv run ruff check .
 uv run ruff format .
 uv run pytest              # unit tests — models, config/store, client auth,
-                            # image cache, app timeline+cursor logic
+                            # image cache, app timeline+cursor logic,
+                            # Qobuz Connect wire/queue/renderer (fake player)
 uv run textual console     # Textual dev console (separate terminal)
 ```
 
