@@ -227,6 +227,12 @@ skip policy belongs to the caller (`_do_play` locally, the renderer in Connect).
 
 **`_render_version` counter** — each view holds `_render_version: int`, incremented before starting a `@work` load. The worker captures the version at start and discards results if it changed by the time it returns — prevents stale workers from overwriting newer results.
 
+**Grid tile size** — the Albums, Artists and Playlists tabs share one image
+height, `artist_detail.GRID_CARD_IMG_H` (5 rows); the CSS heights carry a
+`/* GRID_CARD_IMG_H */` marker. Each card's text column must fit in that many
+rows (album: title 3 + artist + year; playlist: name 2 + owner + meta + date).
+Playlist art uses `images300` (the API's `images` are 50 px thumbnails).
+
 **Filter by hide/show, not remount (image grids)** — `AlbumGrid/ArtistGrid.filter_cards(ids)` toggles `card.display` on already-mounted cards so Kitty images are never re-transmitted. `_visible_cards` skips hidden cards during cursor navigation. Remount is reserved for data load and sort only.
 
 **`Content.assemble` for safe label text** — track rows use `Content.assemble(text, heart_suffix(favorite))` (`ui/_now_playing.py`) rather than Rich markup strings. Titles containing `[`/`]` corrupt markup-parsed labels; `Content` parts are literal, so they can't crash the render. `heart_suffix()` is the one place the `♥` tuple is built — every *TrackRow class across screens/ calls it instead of hand-rolling `(f"  {ICON_FAV}", "$accent")`.

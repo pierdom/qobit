@@ -28,8 +28,11 @@ from .search import ICON_TRACK
 if TYPE_CHECKING:
     from ..app import QobitApp
 
-_CARD_IMG_H = 4
-_CARD_IMG_H_FULL = 6
+_CARD_IMG_H = 4  # album tiles inside an artist page (title + year only)
+# Image height, in rows, shared by the library grids — Albums, Artists and
+# Playlists tabs — so all three tile sizes match. Every card's text column is
+# laid out to fit in this many rows.
+GRID_CARD_IMG_H = 5
 _TILE_MIN_W = 22
 
 
@@ -88,7 +91,7 @@ class AlbumCard(Widget):
         padding: 0;
     }
     AlbumCard.full {
-        height: 6;
+        height: 5;  /* GRID_CARD_IMG_H */
     }
     AlbumCard TGPImage {
         width: 8;
@@ -96,7 +99,7 @@ class AlbumCard(Widget):
         margin-right: 1;
     }
     AlbumCard.full TGPImage {
-        height: 6;
+        height: 5;  /* GRID_CARD_IMG_H */
     }
     AlbumCard .card-info {
         width: 1fr;
@@ -170,7 +173,7 @@ class AlbumCard(Widget):
             yield Label(f"[dim]{year}[/dim]", classes="card-year", markup=True)
 
     def on_mount(self) -> None:
-        img_h = _CARD_IMG_H_FULL if self._show_artist else _CARD_IMG_H
+        img_h = GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H
         _set_art_width(self.query_one(TGPImage), img_h)
         # Art is fetched lazily by the parent grid's sync_visible_art() once
         # this card's region is known — not eagerly here — so a 200-card
@@ -408,12 +411,12 @@ class ArtistCard(Widget):
     DEFAULT_CSS = """
     ArtistCard {
         layout: horizontal;
-        height: 5;
+        height: 5;  /* GRID_CARD_IMG_H */
         padding: 0;
     }
     ArtistCard TGPImage {
         width: 8;
-        height: 5;
+        height: 5;  /* GRID_CARD_IMG_H */
         margin-right: 1;
     }
     ArtistCard .card-info {
@@ -455,7 +458,7 @@ class ArtistCard(Widget):
             yield Label(escape(self._artist.name), classes="card-name", markup=True)
 
     def on_mount(self) -> None:
-        _set_art_width(self.query_one(TGPImage), 5)
+        _set_art_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
         # See AlbumCard.on_mount — art loads lazily via the grid's
         # sync_visible_art(), not eagerly here.
 

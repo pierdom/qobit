@@ -15,7 +15,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist
 from .._images import fetch_image
-from .artist_detail import _GridNav, _set_art_width
+from .artist_detail import GRID_CARD_IMG_H, _GridNav, _set_art_width
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -28,7 +28,7 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
-_CARD_IMG_H = 7
+# Same tile size as the Albums and Artists grids (artist_detail.GRID_CARD_IMG_H).
 _MAX_GRID = 200
 _BATCH = 50
 
@@ -42,12 +42,12 @@ class PlaylistCard(Widget):
     DEFAULT_CSS = """
     PlaylistCard {
         layout: horizontal;
-        height: 7;
+        height: 5;  /* GRID_CARD_IMG_H */
         padding: 0;
     }
     PlaylistCard TGPImage {
-        width: 12;
-        height: 7;
+        width: 8;
+        height: 5;  /* GRID_CARD_IMG_H */
         margin-right: 1;
     }
     PlaylistCard .card-info {
@@ -56,7 +56,7 @@ class PlaylistCard(Widget):
         layout: vertical;
     }
     PlaylistCard .card-name {
-        height: 3;
+        height: 2;  /* name 2 + owner + meta + date = 5 rows */
         width: 1fr;
         text-style: bold;
         overflow: hidden hidden;
@@ -122,7 +122,7 @@ class PlaylistCard(Widget):
             yield Label(f"[dim]{escape(date)}[/dim]", classes="card-date", markup=True)
 
     def on_mount(self) -> None:
-        _set_art_width(self.query_one(TGPImage), _CARD_IMG_H)
+        _set_art_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
         # See AlbumCard.on_mount (artist_detail.py) — art loads lazily via the
         # grid's sync_visible_art(), not eagerly here.
 
