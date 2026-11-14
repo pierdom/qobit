@@ -157,6 +157,11 @@ CYBERDECK_THEME = Theme(
 )
 
 _PLAYER_STATE_FILE = "player_state.json"
+# The whole play context (timeline + cursor), so the Playback tab shows the same
+# queue after a restart. Separate from player_state.json: that one is rewritten
+# every few seconds for the position; this one only when the queue changes.
+_QUEUE_STATE_FILE = "queue_state.json"
+_QUEUE_SAVE_DELAY = 1.0  # debounce — queue_version bumps in bursts
 
 # Most recently-played tracks kept in the session history (oldest dropped first).
 _HISTORY_MAX = 100
@@ -349,8 +354,9 @@ class QobitApp(App[None]):
         # The play context is one ordered timeline plus a cursor at the
         # now-playing track. Everything behind the cursor is "Recently Played",
         # everything ahead is "Up Next". Selecting a queue row just moves the
-        # cursor, so skipping back and forth never drops tracks. Session-only —
-        # not persisted; the past is trimmed to _HISTORY_MAX to bound memory.
+        # cursor, so skipping back and forth never drops tracks. Persisted to
+        # queue_state.json (see _save_queue_state); the past is trimmed to
+        # _HISTORY_MAX to bound memory.
         self._timeline: list[Track] = []
         self._cursor: int = -1
         # A restored-but-not-yet-loaded track: (track, position). Set on launch
@@ -374,6 +380,7 @@ class QobitApp(App[None]):
         # renderer reports it to the apps.
         self._last_stream: StreamUrl | None = None
         self._flash_timer: object | None = None
+        self._queue_save_timer: object | None = None
         self._media_keys = MediaKeys(
             on_play_pause=lambda: self.call_from_thread(self.action_pause),
             on_next=lambda: self.call_from_thread(self._advance_queue),
@@ -387,9 +394,9 @@ class QobitApp(App[None]):
         yield Tabs(
             *[Tab(_tab_label(n, name, False), id=tid) for n, (tid, name) in enumerate(_TABS, 1)],
             id="nav-tabs",
-            active="tracks",
+            active="queue",
         )
-        with ContentSwitcher(initial="view-tracks"):
+        with ContentSwitcher(initial="view-queue"):
             yield PlaylistsView(id="view-playlists")
             yield TracksView(id="view-tracks")
             yield ArtistsView(id="view-artists")
@@ -1041,27 +1048,76 @@ class QobitApp(App[None]):
             pass
 
     def _restore_player_state(self) -> None:
-        """Reload the last track + position into the transport bar (paused,
-        unloaded). The next play/pause press resumes it from that position."""
+        """Reload the last session: the whole queue (timeline + cursor) and the
+        last track + position, shown paused and unloaded. The next play/pause
+        press resumes from that position."""
         data = load_state(_PLAYER_STATE_FILE)
         raw = data.get("track")
-        if not isinstance(raw, dict):
+        track: Track | None = None
+        if isinstance(raw, dict):
+            try:
+                track = Track(**raw)
+            except (TypeError, ValueError):
+                track = None
+        timeline, cursor = self._load_queue_state()
+        if track is not None and not (
+            0 <= cursor < len(timeline) and timeline[cursor].id == track.id
+        ):
+            # The two files disagree (e.g. killed between saves): trust the
+            # last-played track over a stale queue rather than mismatch them.
+            timeline, cursor = [track], 0
+        if not timeline:
+            return
+        self._restoring = True
+        self._timeline, self._cursor = timeline, cursor
+        if track is not None:
+            position = float(data.get("position") or 0.0)
+            self.playback_dur = float(data.get("duration") or track.duration or 0.0)
+            self.playback_pos = position
+            self.is_paused = True
+            self.now_playing = track
+            self._pending_resume = (track, position)
+        self.queue_version += 1
+        self._restoring = False
+
+    def _load_queue_state(self) -> tuple[list[Track], int]:
+        data = load_state(_QUEUE_STATE_FILE)
+        raw = data.get("timeline")
+        cursor = data.get("cursor", -1)
+        if not isinstance(raw, list) or not isinstance(cursor, int):
+            return [], -1
+        tracks: list[Track] = []
+        for item in raw:
+            try:
+                tracks.append(Track(**item))
+            except (TypeError, ValueError):
+                return [], -1  # one bad row → the indexes can't be trusted
+        if not -1 <= cursor < len(tracks):
+            return [], -1
+        return tracks, cursor
+
+    def _save_queue_state(self) -> None:
+        if self._restoring:
             return
         try:
-            track = Track(**raw)
-        except (TypeError, ValueError):
+            save_state(
+                _QUEUE_STATE_FILE,
+                {
+                    "timeline": [dataclasses.asdict(t) for t in self._timeline],
+                    "cursor": self._cursor,
+                },
+            )
+        except Exception:
+            pass
+
+    def watch_queue_version(self, _: int) -> None:
+        # Every timeline/cursor change bumps queue_version (local edits, Connect
+        # mirror rebuilds alike) — persist shortly after the burst settles.
+        if self._restoring or not self.is_running:
             return
-        position = float(data.get("position") or 0.0)
-        duration = float(data.get("duration") or track.duration or 0.0)
-        self._restoring = True
-        self.playback_dur = duration
-        self.playback_pos = position
-        self.is_paused = True
-        self._timeline = [track]
-        self._cursor = 0
-        self.now_playing = track
-        self._restoring = False
-        self._pending_resume = (track, position)
+        if self._queue_save_timer is not None:
+            self._queue_save_timer.stop()  # type: ignore[union-attr]
+        self._queue_save_timer = self.set_timer(_QUEUE_SAVE_DELAY, self._save_queue_state)
 
     @work
     async def _fetch_media_key_art(self, url: str) -> None:
@@ -1273,6 +1329,7 @@ class QobitApp(App[None]):
         from ._images import close_client
 
         self._save_player_state()
+        self._save_queue_state()
         self._stop_connect()
         self._media_keys.close()
         self._player.stop()

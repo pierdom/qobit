@@ -196,9 +196,11 @@ typing, `⌕ query` when the filter is closed but results are still narrowed.
 Press `Escape` again from the filtered view to clear the query and restore all
 items.
 
-### Playback
+### Playback tab (queue)
 
-The Playback tab (`1`) is split in two. On the **left** is a timeline: **Recently
+The Playback tab (`1`) is where qobit opens, showing the same queue you had
+when you last closed it — paused on the last track; Space resumes it from
+where you left off. It is split in two. On the **left** is a timeline: **Recently
 Played** (tracks you've already heard this session, oldest first, `↺`) flows
 into the **now-playing track** (accent-highlighted, with a ▶/⏸ icon) and on into
 **Up Next**. The whole thing is one ordered timeline with a cursor on the
@@ -408,6 +410,7 @@ resampling.
 ~/.config/qobit/config.json            credentials, audio_device, theme, connect_enabled
 ~/.local/share/qobit/mpv.sock          IPC socket (created per playback session)
 ~/.local/share/qobit/player_state.json last track + position (resumed on launch)
+~/.local/share/qobit/queue_state.json  the queue — history, current, up next (restored on launch)
 ~/.local/share/qobit/mixes_cache.json  DailyQ/WeeklyQ tracks, refreshed once per day/week
 ~/.cache/qobit/images/                 cached cover art (safe to delete; honours XDG_CACHE_HOME)
 ```

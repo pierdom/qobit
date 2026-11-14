@@ -30,6 +30,7 @@ src/qobit/
 │                            PlayerPort; reports RNDR_SRVR_STATE_UPDATED
 ├── store.py                 JSON persistence for runtime state (DATA_DIR);
 │                            holds player_state.json (last track + position)
+│                            and queue_state.json (timeline + cursor)
 ├── qobuz/
 │   ├── client.py            QobuzClient (reverse-engineers app_id/secret from
 │   │                        web bundle; email/password + OAuth flows)
@@ -254,6 +255,16 @@ the view `QueueView` / `#view-queue` — renamed in the UI only.
 
 **`_flash_status` vs `status_msg`** — `status_msg` drives the transport bar's main `artist — title` label; setting it for transient notices would erase now-playing info until the next track. `_flash_status` sets it temporarily and auto-clears (~3 s).
 
+**Queue persistence** — the timeline + cursor survive restarts:
+`watch_queue_version` debounces (1 s) a `_save_queue_state()` to
+`queue_state.json` (and `on_unmount` saves once more); `_restore_player_state`
+rebuilds `_timeline`/`_cursor` from it. Position stays in `player_state.json`
+(rewritten every ~5 s while playing) so the queue file is only written when the
+queue changes. If the two disagree (cursor track ≠ last-played track, e.g.
+killed between saves) restore falls back to the single last-played track —
+never a mismatched queue. Any new timeline mutator gets this for free as long
+as it bumps `queue_version` (it must anyway). The app opens on the Playback tab.
+
 **Session restore order** — `QobuzClient.restore_session()` is called in `QobitApp.__init__()`, not `on_mount`, so credentials are available before any child widget worker fires.
 
 **Linux MPRIS2 signal attribute** — pydbus `bus.publish()` raises `AttributeError` for any `<signal>` in the introspection XML that lacks a matching `signal()` attribute on the object. The backend must declare `signal()` for every signal (`Seeked`, `PropertiesChanged`); a missing one silently kills the whole backend since `MediaKeys.__init__` swallows the error.
@@ -284,6 +295,7 @@ Kitty graphics protocol only (no iTerm2 IIP, no sixel). `textual_image.widget.TG
 ~/.config/qobit/config.json            credentials, audio_device, theme, radio_mode, connect_enabled, oauth session
 ~/.local/share/qobit/mpv.sock          IPC socket (re-created on each play call)
 ~/.local/share/qobit/player_state.json last track + position (restored on launch)
+~/.local/share/qobit/queue_state.json  timeline + cursor (restored on launch)
 ~/.local/share/qobit/mixes_cache.json  DailyQ/WeeklyQ tracks, keyed by day/ISO-week
 ~/.cache/qobit/images/                 on-disk cover-art cache (qobit clear-cache)
 ```

@@ -309,3 +309,74 @@ def test_resolve_stream_propagates_auth_expired(app):
     app._client = _FakeClient({"FLAC_24_192": AuthExpiredError("401")})
     with pytest.raises(AuthExpiredError):
         asyncio.run(app._resolve_stream("42"))
+
+
+# ── queue persistence (queue_state.json + player_state.json) ────────────────
+
+
+def _fresh_app(monkeypatch):
+    monkeypatch.setattr(app_module, "MediaKeys", _NoOpMediaKeys)
+    return app_module.QobitApp()
+
+
+def _save_player(app, track: Track, position: float) -> None:
+    app.now_playing = track
+    app.playback_pos = position
+    app.playback_dur = float(track.duration)
+    app._save_player_state()
+
+
+def test_queue_round_trips_across_restart(app, monkeypatch):
+    app._timeline = [_track("a"), _track("b"), _track("c"), _track("d")]
+    app._cursor = 1
+    app._save_queue_state()
+    _save_player(app, app._timeline[1], 42.0)
+
+    restored = _fresh_app(monkeypatch)
+    restored._restore_player_state()
+    assert _ids(restored._timeline) == ["a", "b", "c", "d"]
+    assert restored._cursor == 1
+    assert _ids(restored._history) == ["a"] and _ids(restored._play_queue) == ["c", "d"]
+    assert restored.now_playing.id == "b" and restored.is_paused
+    assert restored._pending_resume == (restored._timeline[1], 42.0)
+
+
+def test_restore_falls_back_to_last_track_when_files_disagree(app, monkeypatch):
+    # Killed between saves: the queue's cursor points at a different track than
+    # the one last played. Don't mix them — keep just the last-played track.
+    app._timeline = [_track("a"), _track("b")]
+    app._cursor = 0
+    app._save_queue_state()
+    _save_player(app, _track("zzz"), 10.0)
+
+    restored = _fresh_app(monkeypatch)
+    restored._restore_player_state()
+    assert _ids(restored._timeline) == ["zzz"] and restored._cursor == 0
+
+
+def test_restore_without_any_saved_state_is_empty(monkeypatch):
+    restored = _fresh_app(monkeypatch)
+    restored._restore_player_state()
+    assert restored._timeline == [] and restored._cursor == -1
+    assert restored.now_playing is None
+
+
+def test_corrupt_queue_file_is_ignored(app, monkeypatch):
+    from qobit import store
+
+    store.save(app_module._QUEUE_STATE_FILE, {"timeline": [{"bogus": 1}], "cursor": 0})
+    _save_player(app, _track("x"), 5.0)
+    restored = _fresh_app(monkeypatch)
+    restored._restore_player_state()
+    assert _ids(restored._timeline) == ["x"]
+
+
+def test_queue_with_nothing_played_yet_restores_without_now_playing(app, monkeypatch):
+    # e.g. a radio station queued before pressing play: cursor -1, no player state.
+    app._timeline = [_track("r1"), _track("r2")]
+    app._cursor = -1
+    app._save_queue_state()
+    restored = _fresh_app(monkeypatch)
+    restored._restore_player_state()
+    assert _ids(restored._timeline) == ["r1", "r2"] and restored._cursor == -1
+    assert restored.now_playing is None
