@@ -399,3 +399,27 @@ def test_same_item_with_position_is_a_seek_not_a_reload():
         )
     )
     assert len(port.loaded) == 1 and port.pos == 0.0
+
+
+def test_report_quality_sends_file_and_device_format():
+    # Without these the iOS app shows "unknown quality".
+    r, _, sent = _make()
+    _activate(r)
+    sent.clear()
+    r.report_quality(format_id=27, sampling_rate_hz=192000, bit_depth=24)
+    file_q = sent[0].rndr_srvr_file_audio_quality_changed
+    dev_q = sent[1].rndr_srvr_device_audio_quality_changed
+    assert sent[0].message_type == qp.MESSAGE_TYPE_RNDR_SRVR_FILE_AUDIO_QUALITY_CHANGED
+    assert (file_q.sampling_rate, file_q.bit_depth, file_q.nb_channels) == (192000, 24, 2)
+    assert file_q.audio_quality == qp.AUDIO_QUALITY_HIRES_LEVEL2
+    assert (dev_q.sampling_rate, dev_q.bit_depth) == (192000, 24)  # bit-perfect: same
+
+
+def test_report_quality_maps_cd_and_is_silent_when_inactive():
+    r, _, sent = _make()
+    r.report_quality(format_id=6, sampling_rate_hz=44100, bit_depth=16)
+    assert sent == []  # not the active renderer
+    _activate(r)
+    sent.clear()
+    r.report_quality(format_id=6, sampling_rate_hz=44100, bit_depth=16)
+    assert sent[0].rndr_srvr_file_audio_quality_changed.audio_quality == qp.AUDIO_QUALITY_CD
