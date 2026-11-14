@@ -60,7 +60,8 @@ src/qobit/
     │   ├── context_menu.py  TrackContextMenu — ModalScreen popup for one track
     │   │                    (Play next / Add to queue / Play radio / Go to
     │   │                    artist / Go to album; + Remove from queue when
-    │   │                    in_queue=True); opened app-wide with `i`
+    │   │                    in_queue=True); opened app-wide with `i`.
+    │   │                    GoToMenu — artist/album of the playing track (`g`)
     │   ├── search.py        SearchView + shared item widgets (TrackItem,
     │   │                    AlbumItem, ArtistItem, PlaylistItem)
     │   ├── album_detail.py  AlbumDetailPanel (shared: art + metadata +
@@ -229,6 +230,12 @@ add per-card `.-selected` rules back.
 **Container-owns-cursor (grids)** — `AlbumGrid`/`ArtistGrid` hold focus; the container tracks `_cursor: int` and toggles `-selected` on child cards. `ScrollableContainer` has `can_focus=True` so Tab targets the container, not its children — children can't hold focus themselves.
 
 **Custom back navigation** — views implement `action_navigate_back() -> bool` (Escape, `priority=True`). Return `True` if the event was consumed (panel pop, filter teardown), `False` to let `QobitApp.action_focus_tabs` fall through. The app checks `hasattr(active_view, "action_navigate_back")` before dispatching.
+
+**Go-to popup (`g`)** — `QobitApp.action_goto_menu` opens `GoToMenu` (a
+`TrackContextMenu` subclass restricted to the artist/album options; `g` closes
+it) for `now_playing`, or the paused track restored from the last session.
+It dispatches through the same `_on_track_menu`, so navigation, breadcrumb and
+Escape target behave exactly like the `i` menu's "Go to …".
 
 **Track context menu resolves via focus** — `i` is a single app-level binding
 (`QobitApp.action_track_menu`). It reads `self.focused`; if it's a `ListView`
