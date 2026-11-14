@@ -88,6 +88,7 @@ class Spike:
         self.app_id, self.user_token = session["app_id"], session["token"]
         self.want_active = activate
         self.drive, self.drove = drive, False
+        self.load_ids: list[int] = []
         self.next_track_id = 0
         # --audio: real playback via qobit's MpvPlayer (same bit-perfect flags
         # and configured device as the TUI). mpv is only started once the
@@ -223,6 +224,12 @@ class Spike:
             else:
                 self.item_id = s.current_track.queue_item_id
                 self.track_id = s.current_track.track_id
+                # A current_track always means "jump to it" — even when the
+                # item id is unchanged: ids restart at 0 on every new queue,
+                # and re-picking the playing song must restart it.
+                if self.player is not None and self.player.running:
+                    self.player.stop()
+                self.mpv_item = -1
                 label, self.duration_ms = await self.track_info(self.track_id)
                 log(f"   LOAD track_id={self.track_id} item={self.item_id}: {label}")
                 self._set_pos(s.current_position if s.HasField("current_position") else 0)
@@ -313,15 +320,24 @@ class Spike:
                             ),
                         )
                     )
+        elif t == qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_TRACKS_LOADED:
+            # New queue from a controller. Bookkeeping only: the server does
+            # not tell the renderer to play here — the controller follows up
+            # with a SET_STATE carrying current_track, which drives playback.
+            ql = m.srvr_ctrl_queue_tracks_loaded
+            self.queue_version.CopyFrom(ql.queue_version)
         elif t == qp.MESSAGE_TYPE_SRVR_CTRL_SESSION_STATE:
             ss = m.srvr_ctrl_session_state
             if ss.HasField("queue_version"):
                 self.queue_version.CopyFrom(ss.queue_version)
         elif t == qp.MESSAGE_TYPE_SRVR_RNDR_SET_STATE:
             await self.on_set_state(m.srvr_rndr_set_state)
-            if self.drive and not self.drove:
+            if not self.drove and (self.drive or self.load_ids):
                 self.drove = True
-                asyncio.create_task(self.drive_self())
+                if self.load_ids:
+                    asyncio.create_task(self.load_queue(self.load_ids))
+                else:
+                    asyncio.create_task(self.drive_self())
         elif t == qp.MESSAGE_TYPE_SRVR_RNDR_SET_ACTIVE:
             log("** ACTIVE =", m.srvr_rndr_set_active.active)
             await self.report()
@@ -345,6 +361,29 @@ class Spike:
                 message_type=qp.MESSAGE_TYPE_CTRL_SRVR_SET_PLAYER_STATE,
                 ctrl_srvr_set_player_state=qp.CtrlSrvrSetPlayerState(**kw),
             )
+        )
+
+    async def load_queue(self, track_ids: list[int]) -> None:
+        """Act as a controller picking a new album/song: replace the queue."""
+        await asyncio.sleep(3)
+        log("   [ctrl] queue_load_tracks", track_ids)
+        await self.send(
+            qp.QConnectMessage(
+                message_type=qp.MESSAGE_TYPE_CTRL_SRVR_QUEUE_LOAD_TRACKS,
+                ctrl_srvr_queue_load_tracks=qp.CtrlSrvrQueueLoadTracks(
+                    queue_version_ref=self.queue_version,
+                    action_uuid=uuid.uuid4().bytes,
+                    track_ids=track_ids,
+                    queue_position=0,
+                    context_uuid=uuid.uuid4().bytes,
+                ),
+            )
+        )
+        # What the official app does next: play item 0 of the new queue.
+        await asyncio.sleep(2)
+        await self.control(
+            playing_state=qp.PLAYING_STATE_PLAYING,
+            current_queue_item=qp.QueueItemRef(queue_version=self.queue_version, id=0),
         )
 
     async def drive_self(self) -> None:
@@ -443,11 +482,14 @@ def main() -> None:
         action="store_true",
         help="real playback via qobit's MpvPlayer (run inside the project)",
     )
+    ap.add_argument("--load", default="", help="comma-separated track ids to load as a new queue")
     ap.add_argument("--seconds", type=float, default=600)
     a = ap.parse_args()
     s = json.loads(CONFIG.read_text())["oauth_session"]
+    spike = Spike(s, a.activate, a.drive, a.audio)
+    spike.load_ids = [int(x) for x in a.load.split(",") if x]
     try:
-        asyncio.run(Spike(s, a.activate, a.drive, a.audio).run(a.seconds))
+        asyncio.run(spike.run(a.seconds))
     except KeyboardInterrupt:
         pass
 

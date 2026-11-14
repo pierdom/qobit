@@ -133,6 +133,20 @@ Fields left out are unchanged. Observed:
 | `current_track.queue_item_id < 0` | stop |
 | `next_track` | preload hint (gapless) |
 
+**Gotchas (both bit the spike):**
+
+- **`current_track` always means "jump to it", even when nothing seems to
+  change.** `queue_item_id`s restart at 0 for every new queue, and proto3 omits
+  the zero value, so `{"track_id": X}` with no item id means item 0. Re-picking
+  the song that's playing also arrives as the same item. Never compare item ids
+  to decide whether to reload. Reload whenever `current_track` is present.
+- **Picking a new song or album in the app** = `CTRL_SRVR_QUEUE_LOAD_TRACKS` →
+  the server broadcasts `SRVR_CTRL_QUEUE_TRACKS_LOADED{queue_version (major
+  bumps), tracks, queue_position}`, which is bookkeeping only and doesn't tell
+  the renderer to play. The app then sends `SET_PLAYER_STATE{PLAYING, item}`,
+  which reaches the renderer as `SET_STATE{current_track: item 0, PLAYING}`.
+  Take the new `queue_version` from `TRACKS_LOADED` so reports echo it.
+
 `track_id` is a normal Qobuz track id, so qobit's `get_track` / `get_file_url`
 apply unchanged.
 
@@ -193,6 +207,7 @@ uv run --no-project --with protobuf --with websockets --with httpx \
     python connect_spike.py                     # register, then pick "qobit (spike)" in the Qobuz app
 #   ... --activate                              # make itself active (takes over the session!)
 #   ... --activate --drive --seconds 30         # self-test: play/seek/skip/pause loop
+#   ... --activate --load 8767428,10137214      # self-test: load a new queue like the app, then play it
 ```
 
 ### With real audio (`--audio`)
