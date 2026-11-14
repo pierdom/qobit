@@ -4,7 +4,8 @@ Status: **spike verified 2026-11-14** (`spikes/qobuz_connect/connect_spike.py`).
 qobit's existing OAuth session is enough to join the user's Connect session as a
 renderer, show up in the official apps' device picker, become active, receive
 the queue, and round-trip play / pause / seek / skip through the Qobuz cloud.
-No audio yet — the spike's player is simulated.
+By default the spike's player is simulated; `--audio` plays through qobit's
+bit-perfect `MpvPlayer`.
 
 > Unofficial. Qobuz ships a Connect SDK only to hardware partners; everything
 > below is reverse-engineered by the community. Schema can change whenever the
@@ -193,6 +194,22 @@ uv run --no-project --with protobuf --with websockets --with httpx \
 #   ... --activate                              # make itself active (takes over the session!)
 #   ... --activate --drive --seconds 30         # self-test: play/seek/skip/pause loop
 ```
+
+### With real audio (`--audio`)
+
+```bash
+cd spikes/qobuz_connect
+uv run --with protobuf --with websockets python connect_spike.py --audio
+```
+
+Runs inside the project so it can import qobit's own `QobuzClient` +
+`MpvPlayer`: same bit-perfect mpv flags and the device saved by
+`qobit devices`/the TUI. The simulated clock stays the source of truth.
+mpv starts only when told to PLAY (a paused handover doesn't blip), seek and
+pause go through IPC, the reported position is read back from mpv `time-pos`,
+and when mpv exits naturally the spike advances to `next_track` itself and
+reports it. Don't run it alongside the qobit TUI: both use the same mpv IPC
+socket.
 
 It reads `~/.config/qobit/config.json` (`oauth_session.app_id/token`), so run
 `qobit auth` first. It doesn't depend on any qobit code.

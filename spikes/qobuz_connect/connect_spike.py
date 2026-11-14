@@ -3,11 +3,15 @@
 Mints a qws token from qobit's saved OAuth session, joins the user's Connect
 session over the cloud websocket, appears in the official apps' device picker,
 logs every message, and obeys SetState commands with a *simulated* player
-(no audio). Throwaway — see docs/qobuz-connect.md. Usage (from this dir):
+(no audio), or with --audio through qobit's own bit-perfect MpvPlayer.
+Throwaway — see docs/qobuz-connect.md. Usage (from this dir):
 
     protoc --proto_path=proto --python_out=pb proto/qcloud.proto proto/qconnect.proto
     uv run --no-project --with protobuf --with websockets --with httpx \
         python connect_spike.py [--activate] [--drive] [--seconds N]
+
+    # with real audio (needs the qobit package, so run inside the project):
+    uv run --with protobuf --with websockets python connect_spike.py --audio
 """
 
 from __future__ import annotations
@@ -80,9 +84,24 @@ def now_ms() -> int:
 
 
 class Spike:
-    def __init__(self, app_id: str, user_token: str, activate: bool, drive: bool) -> None:
-        self.app_id, self.user_token, self.want_active = app_id, user_token, activate
+    def __init__(self, session: dict, activate: bool, drive: bool, audio: bool) -> None:
+        self.app_id, self.user_token = session["app_id"], session["token"]
+        self.want_active = activate
         self.drive, self.drove = drive, False
+        self.next_track_id = 0
+        # --audio: real playback via qobit's MpvPlayer (same bit-perfect flags
+        # and configured device as the TUI). mpv is only started once the
+        # renderer is told to PLAY, so a paused handover never blips audio.
+        self.client = self.player = None
+        self.mpv_item = -1  # queue item mpv is currently playing
+        if audio:
+            from qobit import config
+            from qobit.audio.player import MpvPlayer
+            from qobit.qobuz.client import QobuzClient
+
+            self.client = QobuzClient()
+            self.client.restore_session(self.app_id, self.user_token, session["secrets"])
+            self.player = MpvPlayer(audio_device=config.get_audio_device())
         self.msg_id = 0
         self.batch_id = 0
         self.ws = None
@@ -194,6 +213,8 @@ class Spike:
             self.queue_version.CopyFrom(s.queue_version)
         if s.HasField("next_track"):
             self.next_item_id = s.next_track.queue_item_id
+            self.next_track_id = s.next_track.track_id
+        seeked = False
         if s.HasField("current_track"):
             if s.current_track.queue_item_id < 0:
                 log("   STOP")
@@ -208,10 +229,69 @@ class Spike:
         elif s.HasField("current_position"):
             log(f"   SEEK {s.current_position} ms")
             self._set_pos(s.current_position)
+            seeked = True
         if s.HasField("playing_state"):
             self._set_pos(self.position())
             self.state = s.playing_state
             log("   STATE", qp.PlayingState.Name(s.playing_state))
+        await self.sync_audio(seeked)
+        await self.report()
+
+    # ── real audio (--audio) ──────────────────────────────────────────────────
+    async def stream_url(self, track_id: int) -> str | None:
+        from qobit.qobuz.client import QobuzError
+        from qobit.qobuz.models import StreamUrl
+
+        for q in ("FLAC_24_192", "FLAC_24_96", "FLAC_CD"):
+            try:
+                st = StreamUrl.from_api(await self.client.get_streaming_url(str(track_id), q))
+                log(f"   AUDIO stream {st.quality_badge}")
+                return st.url
+            except QobuzError:
+                continue
+        return None
+
+    async def sync_audio(self, seeked: bool) -> None:
+        """Make mpv match the simulated state (which stays the source of truth)."""
+        p = self.player
+        if p is None:
+            return
+        if self.item_id < 0 or self.state == qp.PLAYING_STATE_STOPPED:
+            if p.running:
+                p.stop()
+            self.mpv_item = -1
+            return
+        if self.state == qp.PLAYING_STATE_PLAYING:
+            if self.mpv_item != self.item_id or not p.running:
+                url = await self.stream_url(self.track_id)
+                if url is None:
+                    log("   AUDIO no stream available")
+                    return
+                p.play(url, start=self.position() / 1000)
+                self.mpv_item = self.item_id
+            else:
+                if seeked:
+                    p.seek_to(self.position() / 1000)
+                p._cmd(["set_property", "pause", False])
+        elif p.running and self.mpv_item == self.item_id:  # paused
+            if seeked:
+                p.seek_to(self.position() / 1000)
+            p._cmd(["set_property", "pause", True])
+
+    async def natural_end(self) -> None:
+        """mpv exited on its own: advance to next_track like a real renderer."""
+        log("   AUDIO track ended")
+        self.mpv_item = -1
+        if self.next_item_id < 0:
+            self.state = qp.PLAYING_STATE_STOPPED
+            self._set_pos(0)
+        else:
+            self.item_id, self.track_id = self.next_item_id, self.next_track_id
+            self.next_item_id, self.next_track_id = -1, 0
+            label, self.duration_ms = await self.track_info(self.track_id)
+            log(f"   NEXT track_id={self.track_id} item={self.item_id}: {label}")
+            self._set_pos(0)
+            await self.sync_audio(False)
         await self.report()
 
     async def handle(self, m: qp.QConnectMessage) -> None:
@@ -283,9 +363,20 @@ class Spike:
         await self.control(playing_state=qp.PLAYING_STATE_PAUSED)
 
     async def ticker(self) -> None:
+        n = 0
         while True:
-            await asyncio.sleep(5)
-            if self.state == qp.PLAYING_STATE_PLAYING:
+            await asyncio.sleep(1)
+            n += 1
+            if self.state != qp.PLAYING_STATE_PLAYING:
+                continue
+            p = self.player
+            if p is not None and self.mpv_item >= 0 and not p.running:
+                await self.natural_end()
+            elif p is not None and self.mpv_item >= 0:
+                tp = p.get_property("time-pos")  # real position beats the clock
+                if isinstance(tp, (int, float)):
+                    self._set_pos(int(tp * 1000))
+            if n % 5 == 0:
                 await self.report()
 
     async def run(self, seconds: float) -> None:
@@ -334,6 +425,8 @@ class Spike:
                             log(f"<< frame type={kind} len={len(body)} {body[:80]!r}")
             finally:
                 tick.cancel()
+                if self.player is not None:
+                    self.player.stop()
         log("done")
 
 
@@ -345,10 +438,18 @@ def main() -> None:
         action="store_true",
         help="also act as controller: play/seek/skip/pause ourselves",
     )
+    ap.add_argument(
+        "--audio",
+        action="store_true",
+        help="real playback via qobit's MpvPlayer (run inside the project)",
+    )
     ap.add_argument("--seconds", type=float, default=600)
     a = ap.parse_args()
     s = json.loads(CONFIG.read_text())["oauth_session"]
-    asyncio.run(Spike(s["app_id"], s["token"], a.activate, a.drive).run(a.seconds))
+    try:
+        asyncio.run(Spike(s, a.activate, a.drive, a.audio).run(a.seconds))
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":
