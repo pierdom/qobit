@@ -234,6 +234,9 @@ class ConnectPlayContext:
             # mpv's duration only arrives with the next poll; the apps' progress
             # bars need it in the very first report.
             app.playback_dur = float(track.duration or 0)
+        if result == "ok" and app._last_stream is not None:
+            st = app._last_stream
+            self.renderer.report_quality(st.format_id, round(st.sampling_rate), st.bit_depth or 16)
         if result == "sample":
             app._flash_status(f"Not streamable (preview only): {track.display_title}")
         return result == "ok"

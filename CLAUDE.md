@@ -201,7 +201,11 @@ the item already held *in the same queue major version* (item ids restart at 0
 per queue, and the server's activation handover can re-send the current item
 after a queue load already started it — reloading then stopped playback);
 picking a song in an app is *only* `QUEUE_TRACKS_LOADED` — the renderer starts
-`tracks[queue_position]` itself. `_play_stream()` returns "ok"/"sample"/"none"/"auth" and never skips;
+`tracks[queue_position]` itself. After each track starts, the renderer sends `RNDR_SRVR_FILE_AUDIO_QUALITY_CHANGED`
++ `DEVICE_AUDIO_QUALITY_CHANGED` (Hz, bit depth, level from format_id 5/6/7/27
+→ MP3/CD/HIRES_L1/L2, qobuz-proxy's proven mapping) from `app._last_stream` —
+identical file/device values since output is bit-perfect; without them the
+apps show "unknown quality". `_play_stream()` returns "ok"/"sample"/"none"/"auth" and never skips;
 skip policy belongs to the caller (`_do_play` locally, the renderer in Connect).
 
 **`_stop_gen` for end-of-track** — `MpvPlayer._stop_gen` increments on every `stop()` call. The poll thread records the gen when running; on transition to not running, equal gen = natural end (advance queue), different gen = stop was called (skip). **Always read both via `MpvPlayer.snapshot()`**: `stop()` bumps the gen and drops `_proc` together under `_state_lock` *before* terminating mpv, so a snapshot is only ever (old gen, running) or (new gen, not running). Reading `running` and `_stop_gen` separately was a real race (stop landing between the reads looked like a natural end and skipped a track) — found when Qobuz Connect reloads made stop-then-play frequent.

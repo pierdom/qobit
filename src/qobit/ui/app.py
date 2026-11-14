@@ -357,6 +357,9 @@ class QobitApp(App[None]):
         # Maps track_id → last successful stream quality so _do_play tries the
         # known-good format first instead of always starting at FLAC_24_192.
         self._track_quality_cache: dict[str, str] = {}
+        # The stream _play_stream last started (format/rate/depth) — the Connect
+        # renderer reports it to the apps.
+        self._last_stream: StreamUrl | None = None
         self._flash_timer: object | None = None
         self._media_keys = MediaKeys(
             on_play_pause=lambda: self.call_from_thread(self.action_pause),
@@ -938,6 +941,7 @@ class QobitApp(App[None]):
         self.now_playing_album = None
         self.now_playing_bio = ""
         self.quality_label = stream.quality_badge
+        self._last_stream = stream
         self.playback_pos = start
         self.playback_dur = 0.0
         self.is_playing = True

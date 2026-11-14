@@ -58,6 +58,16 @@ _RESYNC_ON = {
 }
 
 
+# Qobuz format_id → Connect quality level. Same mapping qobuz-proxy uses with
+# the official apps (5 MP3, 6 CD/16-bit FLAC, 7 hi-res ≤96 kHz, 27 hi-res 192 kHz).
+_FORMAT_LEVEL = {
+    5: qp.AUDIO_QUALITY_MP3,
+    6: qp.AUDIO_QUALITY_CD,
+    7: qp.AUDIO_QUALITY_HIRES_LEVEL1,
+    27: qp.AUDIO_QUALITY_HIRES_LEVEL2,
+}
+
+
 class PlayerPort(Protocol):
     """What the renderer needs from the actual player."""
 
@@ -254,6 +264,33 @@ class ConnectRenderer:
                 message_type=qp.MESSAGE_TYPE_RNDR_SRVR_STATE_UPDATED,
                 rndr_srvr_state_updated=qp.RndrSrvrStateUpdated(state=st),
             )
+        )
+
+    def report_quality(
+        self, format_id: int, sampling_rate_hz: int, bit_depth: int, channels: int = 2
+    ) -> None:
+        """Tell the apps what is playing — without it they show "unknown
+        quality". Sent as both the *file* format and the *device* format: for
+        qobit they're identical by design (bit-perfect: the DAC receives exactly
+        the file's samples)."""
+        if not self.active:
+            return
+        self._send(
+            qp.QConnectMessage(
+                message_type=qp.MESSAGE_TYPE_RNDR_SRVR_FILE_AUDIO_QUALITY_CHANGED,
+                rndr_srvr_file_audio_quality_changed=qp.RndrSrvrFileAudioQualityChanged(
+                    sampling_rate=sampling_rate_hz,
+                    bit_depth=bit_depth,
+                    nb_channels=channels,
+                    audio_quality=_FORMAT_LEVEL.get(format_id, qp.AUDIO_QUALITY_UNKNOWN),
+                ),
+            ),
+            qp.QConnectMessage(
+                message_type=qp.MESSAGE_TYPE_RNDR_SRVR_DEVICE_AUDIO_QUALITY_CHANGED,
+                rndr_srvr_device_audio_quality_changed=qp.RndrSrvrDeviceAudioQualityChanged(
+                    sampling_rate=sampling_rate_hz, bit_depth=bit_depth, nb_channels=channels
+                ),
+            ),
         )
 
     def ask_queue_state(self) -> None:
