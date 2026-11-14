@@ -13,6 +13,10 @@ dependencies = [
     "textual>=0.80",
     "textual-image>=0.7",
     "pillow>=10.0",
+    # Qobuz Connect (connect/): cloud websocket + protobuf messages. The
+    # generated *_pb2.py check the runtime at import, hence the floor.
+    "protobuf>=7.36.1",
+    "websockets>=14.0",
     # OS media controls (audio/media_keys.py). Required per platform rather
     # than extras: `uv sync` strips any extra not named on the command line,
     # and media_keys degrades silently, so keys just stop working.
@@ -32,6 +36,8 @@ dev = ["ruff>=0.4", "textual-dev>=0.80", "pytest>=8.0"]
 
 [tool.ruff]
 line-length = 100
+# protoc output (connect/proto) and the spike's local regen dir.
+extend-exclude = ["src/qobit/connect/proto", "spikes/qobuz_connect/pb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

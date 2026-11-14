@@ -23,12 +23,14 @@ from ..audio.media_keys import MediaKeys
 from ..audio.player import MpvPlayer
 from ..config import (
     get_audio_device,
+    get_connect_enabled,
     get_oauth_session,
     get_radio_mode,
     get_saved_theme,
     get_saved_volume,
     get_software_volume_enabled,
     get_transparent_background,
+    set_connect_enabled,
     set_radio_mode,
     set_saved_theme,
     set_saved_volume,
@@ -39,6 +41,7 @@ from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
+from .play_context import ConnectPlayContext, LocalPlayContext
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
 from .screens.mixes import MixesView
@@ -100,6 +103,12 @@ class QobitCommands(Provider):
                 f"Endless radio: turn {'off' if app.radio_mode else 'on'}",
                 app.action_toggle_radio_mode,
                 "Auto-fill Up Next with Qobuz song-radio suggestions when the queue runs dry",
+            ),
+            (
+                f"Qobuz Connect: turn {'off' if app.connect_state != 'off' else 'on'}",
+                app.action_toggle_connect,
+                "Show qobit in the Qobuz apps' device picker and play what they send "
+                "(bit-perfect, through mpv). While active, the queue is controlled from the app.",
             ),
             (
                 f"Software volume: turn {'off' if app.software_volume_enabled else 'on'}",
@@ -302,10 +311,18 @@ class QobitApp(App[None]):
     # surfaces it when software_volume_enabled and volume != 100.
     software_volume_enabled: reactive[bool] = reactive(False)
     volume: reactive[int] = reactive(100)
+    # Qobuz Connect: "off" | "connecting" | "ready" (visible in the apps) |
+    # "active" (the apps' chosen device — server owns the queue) | "offline".
+    connect_state: reactive[str] = reactive("off")
 
-    def __init__(self) -> None:
+    def __init__(self, connect: bool | None = None) -> None:
+        """``connect`` overrides the saved Qobuz Connect setting for this run
+        (``qobit --connect-on``); None = use the saved setting."""
         super().__init__()
         self.register_theme(CYBERDECK_THEME)
+        self._connect_wanted = get_connect_enabled() if connect is None else connect
+        self._connect: ConnectPlayContext | None = None
+        self._local_ctx = LocalPlayContext(self)
         self._client = QobuzClient()
         # Software volume is loaded here too (not just into the `volume` /
         # `software_volume_enabled` reactives in on_mount) so the very first
@@ -386,6 +403,9 @@ class QobitApp(App[None]):
         self.software_volume_enabled = _sw_vol_on = get_software_volume_enabled()
         self.volume = get_saved_volume() if _sw_vol_on else 100
         self._restore_player_state()
+        if self._connect_wanted:
+            self._start_connect()
+        self.set_interval(5.0, self._connect_tick)
         self._warm_favorite_ids()
         self._prune_image_cache()
 
@@ -518,7 +538,15 @@ class QobitApp(App[None]):
     # ── seek from mouse click on bar ─────────────────────────────────────────
 
     def on_transport_bar_seek_to(self, event: TransportBar.SeekTo) -> None:
-        self._player.seek_to(event.position)
+        self._seek_to(event.position)
+
+    def _seek_to(self, position: float) -> None:
+        """Absolute seek. Through the renderer while Connect-active so the apps'
+        progress bars follow."""
+        if self._ctx is not self._local_ctx:
+            self.run_worker(self._connect.renderer.seek(position))  # type: ignore[union-attr]
+        else:
+            self._player.seek_to(position)
 
     # ── player poll (thread — IPC blocks) ────────────────────────────────────
 
@@ -581,87 +609,52 @@ class QobitApp(App[None]):
     async def play_track(
         self, track: Track, queue: list[Track] | None = None, start: float = 0.0
     ) -> None:
-        self._pending_resume = None
-        # Resume-in-place: a bare replay of the current track (e.g. session
-        # restore) shouldn't spawn a duplicate context entry.
-        if queue is None and self._cursor >= 0 and self._timeline[self._cursor].id == track.id:
-            await self._do_play(track, start=start)
-            return
-        # Launch a new context: keep the past (history + the interrupted track),
-        # then splice in the new track and its queue. The old Up Next is dropped
-        # — this is a deliberate new selection, not a skip within the queue.
-        past = self._timeline[: self._cursor + 1] if self._cursor >= 0 else []
-        self._timeline = [*past, track, *(queue or [])]
-        self._cursor = len(past)
-        self._trim_history()
-        self.queue_version += 1
-        await self._do_play(track, start=start)
+        if self._ctx is self._local_ctx:
+            self._pending_resume = None
+        await self._ctx.load(track, queue, start)
 
     @work
     async def jump_to(self, index: int) -> None:
         """Move the cursor to any position on the timeline and play it. This is
         how the Queue view skips back and forth without dropping tracks."""
-        if not 0 <= index < len(self._timeline):
-            return
-        self._cursor = index
-        self.queue_version += 1
-        await self._do_play(self._timeline[index])
+        await self._ctx.jump_to(index)
 
-    def clear_queue(self) -> None:
-        if self._play_queue:
-            del self._timeline[self._cursor + 1 :]
-            self.queue_version += 1
+    # Timeline mutators delegate to the active play context (ui/play_context.py):
+    # local by default; while qobit is the active Qobuz Connect renderer the
+    # server owns the queue and these are refused (phase 1) — they return False.
 
-    def clear_history(self) -> None:
-        if self._history:
-            del self._timeline[: self._cursor]
-            self._cursor = 0
-            self.queue_version += 1
+    def clear_queue(self) -> bool:
+        return self._ctx.clear_queue()
 
-    def queue_next(self, track: Track) -> None:
+    def clear_history(self) -> bool:
+        return self._ctx.clear_history()
+
+    def queue_next(self, track: Track) -> bool:
         """Insert a track just after the now-playing one so it plays next."""
-        self._timeline.insert(self._cursor + 1, track)
-        self.queue_version += 1
+        return self._ctx.queue_next(track)
 
-    def queue_last(self, track: Track) -> None:
+    def queue_last(self, track: Track) -> bool:
         """Append a track to the tail of Up Next."""
-        self._timeline.append(track)
-        self.queue_version += 1
+        return self._ctx.queue_last(track)
 
     def remove_from_queue(self, track: Track) -> bool:
         """Drop a track from Up Next (positions ahead of the cursor). Matches by
         identity first so the exact queued instance is removed even if the same
         track sits at several positions; falls back to the first id match ahead
         of the cursor. Returns whether it removed."""
-        for i in range(self._cursor + 1, len(self._timeline)):
-            if self._timeline[i] is track:
-                del self._timeline[i]
-                self.queue_version += 1
-                return True
-        for i in range(self._cursor + 1, len(self._timeline)):
-            if self._timeline[i].id == track.id:
-                del self._timeline[i]
-                self.queue_version += 1
-                return True
-        return False
+        return self._ctx.remove(track)
+
+    @property
+    def _ctx(self) -> LocalPlayContext | ConnectPlayContext:
+        """Who owns the timeline right now."""
+        if self._connect is not None and self._connect.active:
+            return self._connect
+        return self._local_ctx
 
     @work
     async def _advance_queue(self) -> None:
         async with self._advance_lock:
-            at_end = self._cursor + 1 >= len(self._timeline)
-            if at_end and self.radio_mode and self.now_playing is not None:
-                # Timeline ran out under endless radio: refill from suggestions
-                # seeded by the just-finished track (still now_playing here).
-                suggestions = await self._fetch_radio(self.now_playing)
-                if suggestions:
-                    self._timeline.extend(suggestions)
-                    at_end = False
-            if at_end:
-                return
-            self._cursor += 1
-            self._trim_history()
-            self.queue_version += 1
-            await self._do_play(self._timeline[self._cursor])
+            await self._ctx.advance()
 
     # ── song radio (dynamic/suggest) ─────────────────────────────────────────
 
@@ -695,14 +688,8 @@ class QobitApp(App[None]):
             self._flash_status("No radio suggestions available")
             return
         # Replace Up Next with the fresh station, keeping the current track.
-        if self._cursor >= 0:
-            del self._timeline[self._cursor + 1 :]
-            self._timeline.extend(suggestions)
-        else:
-            self._timeline = list(suggestions)
-            self._cursor = -1
-        self.queue_version += 1
-        self._flash_status(f"Radio: {len(suggestions)} tracks queued")
+        if self._ctx.replace_upcoming(suggestions):
+            self._flash_status(f"Radio: {len(suggestions)} tracks queued")
 
     def action_toggle_radio_mode(self) -> None:
         self.radio_mode = not self.radio_mode
@@ -907,28 +894,36 @@ class QobitApp(App[None]):
         return None
 
     async def _do_play(self, track: Track, start: float = 0.0) -> None:
-        self.status_msg = f"Loading {track.display_title}…"
-        try:
-            stream = await self._resolve_stream(str(track.id))
-        except AuthExpiredError:
-            self.status_msg = "Session expired — run: qobit auth"
-            return
-
-        if stream is None:
-            self.status_msg = "No stream available"
-            return
-
-        if stream.sample:
+        """Local-context playback: start ``track``; on a preview, skip forward."""
+        result = await self._play_stream(track, start)
+        if result == "sample":
             # Never play a preview: it's a 30 s MP3, not the FLAC. Treat the track
             # as unavailable — skip forward like the official apps do, or stop
             # if nothing is queued after it.
-            self.status_msg = ""
             self._flash_status(f"Not streamable (preview only): {track.display_title}")
             if self._cursor + 1 < len(self._timeline) or self.radio_mode:
                 self._advance_queue()
             elif self._player.running:
                 self._player.stop()
-            return
+
+    async def _play_stream(self, track: Track, start: float = 0.0) -> str:
+        """Resolve and start ``track`` in mpv. Returns "ok", "sample" (preview
+        only — nothing started), "none" (no stream) or "auth" (session expired).
+        Shared by both play contexts; skipping policy is the caller's."""
+        self.status_msg = f"Loading {track.display_title}…"
+        try:
+            stream = await self._resolve_stream(str(track.id))
+        except AuthExpiredError:
+            self.status_msg = "Session expired — run: qobit auth"
+            return "auth"
+
+        if stream is None:
+            self.status_msg = "No stream available"
+            return "none"
+
+        if stream.sample:
+            self.status_msg = ""
+            return "sample"
 
         # History is derived from the cursor position, not pushed here: the
         # caller (advance/previous/jump/play_track) has already placed the
@@ -946,6 +941,7 @@ class QobitApp(App[None]):
         self.is_paused = False
         self.status_msg = ""
         self._fetch_now_playing_album(track)
+        return "ok"
 
     @work
     async def _fetch_now_playing_album(self, track: Track) -> None:
@@ -1053,6 +1049,9 @@ class QobitApp(App[None]):
     # ── actions ──────────────────────────────────────────────────────────────
 
     def action_pause(self) -> None:
+        if self._ctx is not self._local_ctx:
+            self.run_worker(self._connect.renderer.toggle_pause())  # type: ignore[union-attr]
+            return
         if self._player.running:
             self._player.pause_toggle()
         elif self._pending_resume is not None:
@@ -1066,7 +1065,7 @@ class QobitApp(App[None]):
         if (
             self._player.running and self.playback_pos > _PREV_RESTART_THRESHOLD
         ) or self._cursor <= 0:
-            self._player.seek_to(0.0)
+            self._seek_to(0.0)
             return
         self.jump_to(self._cursor - 1)
 
@@ -1097,11 +1096,11 @@ class QobitApp(App[None]):
             if self.remove_from_queue(track):
                 self._flash_status(f"Removed from queue: {track.display_title}")
         elif action == "play_next":
-            self.queue_next(track)
-            self._flash_status(f"Playing next: {track.display_title}")
+            if self.queue_next(track):
+                self._flash_status(f"Playing next: {track.display_title}")
         elif action == "add_queue":
-            self.queue_last(track)
-            self._flash_status(f"Added to queue: {track.display_title}")
+            if self.queue_last(track):
+                self._flash_status(f"Added to queue: {track.display_title}")
         elif action == "radio":
             self.play_track(track)
             self._start_radio(track)
@@ -1154,10 +1153,52 @@ class QobitApp(App[None]):
         return dict(_TABS).get(active, active.capitalize() or "Tracks")
 
     def action_seek_back(self) -> None:
-        self._player.seek(-10.0)
+        if self._ctx is not self._local_ctx:
+            self._seek_to(max(0.0, self.playback_pos - 10.0))
+        else:
+            self._player.seek(-10.0)
 
     def action_seek_fwd(self) -> None:
-        self._player.seek(10.0)
+        if self._ctx is not self._local_ctx:
+            self._seek_to(self.playback_pos + 10.0)
+        else:
+            self._player.seek(10.0)
+
+    # ── Qobuz Connect (connect/, ui/play_context.py) ─────────────────────────
+
+    def action_toggle_connect(self) -> None:
+        on = self.connect_state == "off"
+        set_connect_enabled(on)
+        if on:
+            self._start_connect()
+            self._flash_status("Qobuz Connect on — pick this device in the Qobuz app")
+        else:
+            self._stop_connect()
+            self._flash_status("Qobuz Connect off")
+
+    def _start_connect(self) -> None:
+        if self._connect is not None:
+            return
+        self._connect = ConnectPlayContext(self)
+        self.connect_state = "connecting"
+        self.run_worker(self._connect.session.run(), group="connect", exclusive=True)
+
+    def _stop_connect(self) -> None:
+        ctx, self._connect = self._connect, None
+        if ctx is None:
+            return
+        ctx.session.stop()
+        self.workers.cancel_group(self, "connect")
+        # Leaving while active keeps the music going locally: the mirrored
+        # timeline simply becomes the local one.
+        self.connect_state = "off"
+
+    def _connect_tick(self) -> None:
+        """Periodic state report while playing: controllers extrapolate the
+        position from the last report, so keep it fresh."""
+        ctx = self._connect
+        if ctx is not None and ctx.active and self.is_playing and not self.is_paused:
+            ctx.renderer.report()
 
     def action_focus_search(self) -> None:
         self.query_one(Tabs).active = "search"
@@ -1196,6 +1237,7 @@ class QobitApp(App[None]):
         from ._images import close_client
 
         self._save_player_state()
+        self._stop_connect()
         self._media_keys.close()
         self._player.stop()
         await self._client.close()

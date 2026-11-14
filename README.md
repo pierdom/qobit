@@ -254,6 +254,35 @@ within that window reuses the cached tracks instead of regenerating.
 Needs some listening history or favourites to seed from — on a brand-new
 account both mixes show "Play some tracks first to seed the mix".
 
+### Qobuz Connect
+
+qobit can appear in the official Qobuz apps' device picker (phone, tablet,
+desktop) like a hi-fi streamer: pick it there and the app becomes the remote,
+while qobit plays the music **bit-perfect through mpv** on this machine's DAC.
+
+Off by default. Turn it on from the command palette (`Ctrl+P` → *Qobuz
+Connect*, saved) or for a single run with `qobit --connect-on`. The transport
+bar shows `[ ⇄ CONNECT ]` when qobit is visible in the apps and
+`[ ⇄ CONNECT · ACTIVE ]` once an app picked it.
+
+While active:
+
+- Play, pause, seek, skip and picking songs, albums or playlists all work
+  from the app; the Queue tab mirrors the app's queue.
+- Space, `[` / `]`, previous/next, media keys and selecting a Queue row still
+  work in qobit and show up in the app.
+- Editing the queue *from qobit* (play from the library, play next, add,
+  remove, clear, radio) isn't supported yet: qobit shows "Queue is controlled
+  by Qobuz Connect". Do it from the app.
+- The app's volume slider has no effect, on purpose: software volume would
+  change the bits the DAC receives.
+
+When another device takes over (or you turn Connect off), qobit stops and keeps
+the queue as its own, paused, so Space carries on locally.
+
+Unofficial: Qobuz only supports Connect for licensed hardware; qobit speaks the
+community-documented protocol. Protocol notes: `docs/qobuz-connect.md`.
+
 ### Search
 
 | Key | Action |
@@ -272,6 +301,7 @@ qobit auth                                       # authenticate / refresh sessio
 qobit devices                                    # list output devices
 qobit set-device                                 # pick and save output device
 qobit clear-cache                                # delete cached cover art from disk
+qobit --connect-on                               # TUI with Qobuz Connect on (this run only)
 ```
 
 ## Audio device setup
@@ -372,7 +402,7 @@ resampling.
 ## Config paths
 
 ```
-~/.config/qobit/config.json            credentials, audio_device, theme
+~/.config/qobit/config.json            credentials, audio_device, theme, connect_enabled
 ~/.local/share/qobit/mpv.sock          IPC socket (created per playback session)
 ~/.local/share/qobit/player_state.json last track + position (resumed on launch)
 ~/.local/share/qobit/mixes_cache.json  DailyQ/WeeklyQ tracks, refreshed once per day/week

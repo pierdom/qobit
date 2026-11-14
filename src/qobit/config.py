@@ -93,6 +93,20 @@ def set_radio_mode(value: bool) -> None:
     save(cfg)
 
 
+def get_connect_enabled() -> bool:
+    """Qobuz Connect renderer (qobit shows up in the Qobuz apps' device
+    picker). Off by default: being visible on the account whenever qobit runs
+    is a surprise unless asked for. ``qobit --connect-on`` enables it for one
+    run without saving."""
+    return bool(load().get("connect_enabled", False))
+
+
+def set_connect_enabled(value: bool) -> None:
+    cfg = load()
+    cfg["connect_enabled"] = value
+    save(cfg)
+
+
 def get_software_volume_enabled() -> bool:
     """Off by default: qobit's whole purpose is the DAC receiving exactly the
     bits from the file, and software volume is DSP — it scales every sample

@@ -170,6 +170,7 @@ class TransportBar(Widget):
         self.watch(app, "status_msg", self._on_status_msg, init=True)
         self.watch(app, "quality_label", self._on_quality, init=True)
         self.watch(app, "radio_mode", self._on_radio_mode, init=True)
+        self.watch(app, "connect_state", self._on_radio_mode, init=True)
         self.watch(app, "volume", self._on_volume, init=True)
         self.watch(app, "software_volume_enabled", self._on_volume, init=True)
 
@@ -177,11 +178,22 @@ class TransportBar(Widget):
         # Bracket-readout style — the one piece of chrome that's always on
         # screen reads like a console status line, not a sentence.
         app: QobitApp = self.app  # type: ignore[assignment]
-        radio = "  ·  [ ◈ RADIO ]" if app.radio_mode else ""
-        if not app.now_playing:
-            return "[ ◈ RADIO ]" if app.radio_mode else ""
-        status = "[ ⏸ PAUSED ]" if app.is_paused else "[ ▶ PLAYING ]"
-        return status + radio
+        tags = []
+        # While Connect-active the queue is the server's, so qobit's own radio
+        # refill is dormant — don't advertise it.
+        if app.radio_mode and app.connect_state != "active":
+            tags.append("[ ◈ RADIO ]")
+        connect = {
+            "active": "[ ⇄ CONNECT · ACTIVE ]",
+            "ready": "[ ⇄ CONNECT ]",
+            "connecting": "[ ⇄ CONNECT … ]",
+            "offline": "[ ⇄ CONNECT · OFFLINE ]",
+        }.get(app.connect_state)
+        if connect:
+            tags.append(connect)
+        if app.now_playing:
+            tags.insert(0, "[ ⏸ PAUSED ]" if app.is_paused else "[ ▶ PLAYING ]")
+        return "  ·  ".join(tags)
 
     def _on_radio_mode(self, _: bool) -> None:
         self.border_title = self._status()

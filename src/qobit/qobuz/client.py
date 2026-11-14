@@ -409,6 +409,22 @@ class QobuzClient:
 
         raise last_error or QobuzError("No valid app_secret found for streaming")
 
+    async def create_connect_token(self) -> tuple[str, str]:
+        """Mint a Qobuz Connect socket token: ``(endpoint, jwt)``. One token
+        per socket — the cloud evicts a second socket using the same one."""
+        if not self._app_id or not self.user_auth_token:
+            raise QobuzError("Not authenticated — run: qobit auth")
+        r = await self._http.post(
+            API_BASE + "qws/createToken",
+            data={"jwt": "jwt_qws"},
+            headers={"X-App-Id": self._app_id, "X-User-Auth-Token": self.user_auth_token},
+        )
+        self._raise_for_status(r)
+        tok = (r.json() or {}).get("jwt_qws") or {}
+        if not tok.get("jwt") or not tok.get("endpoint"):
+            raise QobuzError("Connect token missing from qws/createToken response")
+        return tok["endpoint"], tok["jwt"]
+
     # --- user library ---
 
     async def add_favorite_track(self, track_id: str) -> dict:

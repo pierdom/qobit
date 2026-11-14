@@ -1,6 +1,7 @@
 # Qobuz Connect in qobit — queue ownership design
 
-Status: **proposal**, 2026-11-14. Builds on the verified spike
+Status: **phase 1 implemented** (2026-11-14) — renderer + mirror-only queue,
+opt-in (`connect_enabled`, `qobit --connect-on`). Phases 2–4 still proposals. Builds on the verified spike
 (`docs/qobuz-connect.md`, `spikes/qobuz_connect/`). Scope: qobit as a Connect
 **renderer** (the Qobuz app picks qobit, qobit plays through mpv). qobit
 controlling *other* devices and LAN discovery are out of scope (phase 4).

@@ -244,6 +244,12 @@ def main() -> None:
         description="Bit-perfect Qobuz client",
     )
     parser.add_argument("--version", action="version", version=f"qobit {__version__}")
+    parser.add_argument(
+        "--connect-on",
+        action="store_true",
+        help="Enable Qobuz Connect for this run (qobit appears in the Qobuz apps' "
+        "device picker). Not saved — toggle it from the command palette to persist.",
+    )
     sub = parser.add_subparsers(dest="command")
 
     p_play = sub.add_parser("play", help="Search and play a track")
@@ -277,7 +283,7 @@ def main() -> None:
     else:
         from .ui.app import QobitApp
 
-        QobitApp().run()
+        QobitApp(connect=True if args.connect_on else None).run()
         sys.exit(0)
 
 
