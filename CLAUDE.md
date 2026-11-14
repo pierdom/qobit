@@ -209,7 +209,7 @@ Escape with `No Tab with id …`.
 
 ## Qobuz API layer
 
-`client.py` reverse-engineers `app_id` and signing secrets from the web player bundle on login; cached in config. Streaming URLs expire ~10 min — re-fetch on track start. Quality fallback: FLAC_24_192 → FLAC_24_96 → FLAC_CD.
+`client.py` reverse-engineers `app_id` and signing secrets from the web player bundle on login; cached in config. Streaming URLs expire ~10 min — re-fetch on track start. Quality fallback: FLAC_24_192 → FLAC_24_96 → FLAC_CD, walked by `QobitApp._resolve_stream`. **Previews:** for tracks the account can't stream, `getFileUrl` returns `"sample": true` (30 s MP3, `TrackRestrictedByPurchaseCredentials`) at *every* quality, so a fallback never escapes it. `StreamUrl.sample` flags it, `_resolve_stream` stops at the first one (never cached), and `_do_play` refuses to play it — flashes and skips forward (or stops if nothing is queued). Never play a sample: it's lossy and breaks the bit-perfect guarantee.
 
 `get_artist_detail` (`artist/get`) and `get_artist_top_tracks` (`artist/page`) fire concurrently. `Track.from_api` handles both `performer.name` (string) and `artist.name.display` (nested dict) formats. `get_artist` is a third, lighter `artist/get` call (`albums_limit` instead of `limit`, no cache) used only by `_fetch_now_playing_bio` to pull a radio-seed track's artist bio.
 

@@ -13,6 +13,8 @@ something a unit test should do as a side effect.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 import qobit.ui.app as app_module
@@ -248,3 +250,62 @@ def test_clear_history_noop_when_already_at_head(app):
     before = app.queue_version
     app.clear_history()
     assert app.queue_version == before
+
+
+# ── _resolve_stream (quality fallback + preview detection) ──────────────────
+
+
+class _FakeClient:
+    """Answers get_streaming_url from a per-quality script; records calls."""
+
+    def __init__(self, script: dict):
+        self.script = script
+        self.calls: list[str] = []
+
+    async def get_streaming_url(self, track_id: str, quality: str) -> dict:
+        self.calls.append(quality)
+        answer = self.script[quality]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+_FLAC = {"url": "u", "format_id": 7, "sampling_rate": 96, "bit_depth": 24}
+_PREVIEW = {"url": "p", "format_id": 5, "sample": True, "sampling_rate": 44.1}
+
+
+def test_resolve_stream_returns_first_working_quality_and_caches_it(app):
+    from qobit.qobuz.client import QobuzError
+
+    app._client = _FakeClient({"FLAC_24_192": QobuzError("nope"), "FLAC_24_96": _FLAC})
+    stream = asyncio.run(app._resolve_stream("42"))
+    assert stream is not None and not stream.sample
+    assert app._client.calls == ["FLAC_24_192", "FLAC_24_96"]
+    assert app._track_quality_cache["42"] == "FLAC_24_96"
+
+
+def test_resolve_stream_stops_at_a_preview_and_does_not_cache_it(app):
+    # Qobuz returns the same preview at every quality — no point walking on.
+    app._client = _FakeClient(
+        {"FLAC_24_192": _PREVIEW, "FLAC_24_96": _PREVIEW, "FLAC_CD": _PREVIEW}
+    )
+    stream = asyncio.run(app._resolve_stream("42"))
+    assert stream is not None and stream.sample
+    assert app._client.calls == ["FLAC_24_192"]
+    assert "42" not in app._track_quality_cache
+
+
+def test_resolve_stream_none_when_every_quality_fails(app):
+    from qobit.qobuz.client import QobuzError
+
+    err = QobuzError("nope")
+    app._client = _FakeClient({"FLAC_24_192": err, "FLAC_24_96": err, "FLAC_CD": err})
+    assert asyncio.run(app._resolve_stream("42")) is None
+
+
+def test_resolve_stream_propagates_auth_expired(app):
+    from qobit.qobuz.client import AuthExpiredError
+
+    app._client = _FakeClient({"FLAC_24_192": AuthExpiredError("401")})
+    with pytest.raises(AuthExpiredError):
+        asyncio.run(app._resolve_stream("42"))
