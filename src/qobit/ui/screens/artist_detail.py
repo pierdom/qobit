@@ -693,10 +693,13 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
     }
     """
 
-    def __init__(self, artist_id: str, source: str = "Search") -> None:
+    def __init__(self, artist_id: str, source: str = "Search", back_tab: str = "search") -> None:
+        """``source`` is the breadcrumb text; ``back_tab`` the tab *id* Escape
+        returns to (never derived from the display name)."""
         super().__init__()
         self._artist_id = artist_id
         self._source = source
+        self._back_tab = back_tab
         self._album_view_active = False
 
     def compose(self) -> ComposeResult:
@@ -725,7 +728,7 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
             self._show_artist_view()
         else:
             app: QobitApp = self.app  # type: ignore[assignment]
-            app.action_switch_tab(self._source.lower())
+            app.action_switch_tab(self._back_tab)
             app.pop_screen()
 
     def _open_album(self, album: Album) -> None:

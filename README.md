@@ -16,8 +16,8 @@ requirement.
 |---|---|---|
 | ![Tracks tab — favourite tracks list](screenshots/tracks_page.png) | ![Artists tab — favourite artists grid](screenshots/artists_page.png) | ![Artist view — bio, top tracks, album grid](screenshots/artist_view.png) |
 | Tracks | Artists | Artist detail |
-| ![Albums tab — favourite albums grid](screenshots/albums_page.png) | ![Album view — tracklist and artist bio](screenshots/album_view.png) | ![Queue tab — timeline and Now Playing panel](screenshots/queue_page.png) |
-| Albums | Album detail | Queue |
+| ![Albums tab — favourite albums grid](screenshots/albums_page.png) | ![Album view — tracklist and artist bio](screenshots/album_view.png) | ![Playback tab — timeline and Now Playing panel](screenshots/queue_page.png) |
+| Albums | Album detail | Playback |
 
 ## Why this exists
 
@@ -139,16 +139,19 @@ qobit
 
 | Key | Action |
 |-----|--------|
-| `1` | Tracks tab |
-| `2` | Artists tab |
-| `3` | Albums tab |
-| `4` | Playlists tab |
-| `5` | Mixes tab |
-| `6` | Search tab |
-| `7` | Queue tab |
+| `1` | Playback tab (now playing + queue) |
+| `2` | Tracks tab |
+| `3` | Artists tab |
+| `4` | Albums tab |
+| `5` | Playlists tab |
+| `6` | Mixes tab |
+| `7` | Search tab |
+
+The top bar shows each tab's key, e.g. `[1] Playback`; on terminals narrower
+than 90 columns the labels shorten to `1 Playback`.
 | `Escape` | Go back / clear filter / focus tab bar |
 | `↑` `↓` `←` `→` | Move cursor in grids and lists |
-| `PageUp` `PageDown` | Jump the selection one page in long lists and grids (Tracks, Queue, Artists, Albums) |
+| `PageUp` `PageDown` | Jump the selection one page in long lists and grids (Tracks, Playback, Artists, Albums) |
 | `Home` `End` | Jump the selection to the first / last item |
 | `f` | Favourite / unfavourite the highlighted track (in any track list) |
 | `i` | Open the context menu for the highlighted track (Play next / Add to queue / Play radio / Go to artist / Go to album; plus Remove from queue on Up Next rows) |
@@ -173,7 +176,7 @@ On launch, qobit restores the last track you were playing into the transport
 bar at the position you left off, paused. Press `Space` (or click the transport
 bar) to resume from there.
 
-Tracks already in your favourites show a `♥` in the Queue, album, and artist
+Tracks already in your favourites show a `♥` in the Playback queue, album, and artist
 track lists (the Tracks tab is omitted — everything there is a favourite).
 Press `f` on the highlighted track to favourite or unfavourite it: the `♥`
 appears/disappears. Favouriting a track anywhere adds it to the Tracks tab;
@@ -193,9 +196,9 @@ typing, `⌕ query` when the filter is closed but results are still narrowed.
 Press `Escape` again from the filtered view to clear the query and restore all
 items.
 
-### Queue
+### Playback
 
-The Queue tab is split in two. On the **left** is a timeline: **Recently
+The Playback tab (`1`) is split in two. On the **left** is a timeline: **Recently
 Played** (tracks you've already heard this session, oldest first, `↺`) flows
 into the **now-playing track** (accent-highlighted, with a ▶/⏸ icon) and on into
 **Up Next**. The whole thing is one ordered timeline with a cursor on the
@@ -203,7 +206,7 @@ now-playing track, so `PageUp` walks back into history and `PageDown` down the
 queue. **Selecting any track just moves the cursor there — nothing is dropped.**
 Skip forward past a few tracks and they stay put under Recently Played; jump
 back to one and the tracks in between return to Up Next and play through again.
-This makes the Queue a place to explore a radio station back and forth, not just
+This makes the Playback tab a place to explore a radio station back and forth, not just
 a play-through list. Launching an album or playlist from the library still
 replaces Up Next; your session's Recently Played survives across those switches.
 
@@ -239,7 +242,7 @@ setting persists across launches.
 
 ### Mixes
 
-The Mixes tab (`5`) generates a personal **DailyQ** and **WeeklyQ** — the same
+The Mixes tab (`6`) generates a personal **DailyQ** and **WeeklyQ** — the same
 Qobuz recommendation engine as song radio, seeded from your recent listening
 history plus favourites instead of a single track. Each is cached for its
 period (a calendar day for DailyQ, an ISO week for WeeklyQ): reopening the tab
@@ -268,8 +271,8 @@ bar shows `[ ⇄ CONNECT ]` when qobit is visible in the apps and
 While active:
 
 - Play, pause, seek, skip and picking songs, albums or playlists all work
-  from the app; the Queue tab mirrors the app's queue.
-- Space, `[` / `]`, previous/next, media keys and selecting a Queue row still
+  from the app; the Playback tab mirrors the app's queue.
+- Space, `[` / `]`, previous/next, media keys and selecting a Playback row still
   work in qobit and show up in the app.
 - Editing the queue *from qobit* (play from the library, play next, add,
   remove, clear, radio) isn't supported yet: qobit shows "Queue is controlled

@@ -84,7 +84,7 @@ src/qobit/
     │   │                    (history + favourites seeds → get_dynamic_suggestions)
     │   │                    and cached a day/ISO-week at a time in
     │   │                    mixes_cache.json keyed by _cache_key(kind)
-    │   └── queue.py         QueueView — responsive two-pane: left TrackListView
+    │   └── queue.py         QueueView (the "Playback" tab, key 1) — responsive two-pane: left TrackListView
     │                        timeline (Recently Played HistoryTrackRow →
     │                        NowPlayingListRow (accent, live ▶/⏸) → Up Next
     │                        QueueTrackRow, full-width SectionHeader dividers with
@@ -237,10 +237,18 @@ _open_album). "Remove from queue" is offered only when the highlighted row is a
 `QueueTrackRow`, and removes by identity so the exact queued instance goes. "Go to
 album" builds a lean `Album` from the track (panel re-fetches the rest); "Go to
 artist" needs a `get_track` round-trip since `Track` carries no `artist_id`.
-Both push their detail screen with `source=_current_tab_source()` (the active
-tab's label), **not** a free-form string: `ArtistScreen.action_navigate_back`
-maps `source.lower()` back to a tab id, so a bogus source (e.g. "Back") crashes
-Escape with `No Tab with id …`.
+Both push their detail screen with the active tab from `_current_tab()` →
+`(tab id, display name)`: the name is the breadcrumb (`source=`), the id is
+`ArtistScreen`'s Escape target (`back_tab=`). Never derive a tab id from a
+display name — names aren't ids (the Playback tab's id is `queue`), and a bad
+id crashes Escape with `No Tab with id …`.
+
+**Top bar** — `_TABS` (app.py) is the single source of truth: `(id, name)` in
+left-to-right order. Labels (`[N] Name`) and the `1`–`7` bindings are generated
+from it, so reordering is a one-line change. Below `_TABBAR_FULL_WIDTH` (90
+cols, computed from the labels) `_fit_tab_labels` switches to compact `N Name`
+so the last tab isn't clipped. The Playback tab keeps the internal id `queue`,
+the view `QueueView` / `#view-queue` — renamed in the UI only.
 
 **Queue version pattern** — `queue_version: reactive[int]` on `QobitApp` is bumped whenever `_timeline`/`_cursor` changes. Widgets watch this to re-render. Combined with a local `_render_version` they guard against stale workers.
 
