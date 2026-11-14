@@ -2,11 +2,11 @@
 OS media control integration.
 
 macOS  — MPRemoteCommandCenter + MPNowPlayingInfoCenter
-         requires: pyobjc-framework-MediaPlayer  (pip install pyobjc-framework-MediaPlayer)
+         requires: pyobjc-framework-MediaPlayer (a default dependency on darwin)
 
 Linux  — MPRIS2 over D-Bus
-         requires: pydbus + python3-gi system package
-         (pip install pydbus  &&  sudo apt install python3-gi / dnf install python3-gobject)
+         requires: pydbus + PyGObject (default dependencies on linux; PyGObject
+         builds from source — see README "Linux system packages" for headers)
 
 Both backends degrade silently when the required packages are not installed.
 """

@@ -55,6 +55,49 @@ is already entitled to. Use at your own risk and within Qobuz's terms of service
 - A terminal that supports the [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/):
   kitty, Ghostty, or iTerm2 3.5+
 
+### Linux system packages
+
+On Linux, OS media controls (MPRIS: desktop now-playing widget, media keys,
+`playerctl`) use `pydbus` + `PyGObject`. PyGObject and its `pycairo` dependency
+ship no prebuilt Linux wheels, so `uv sync` / `uv tool install` compiles them
+and needs a C toolchain plus the GLib/cairo development headers. Install these
+**before** installing qobit:
+
+**Debian / Ubuntu / Mint / Pop!_OS**
+
+```bash
+sudo apt install mpv build-essential pkg-config python3-dev \
+    libcairo2-dev libgirepository-2.0-dev
+```
+
+**Fedora / RHEL / CentOS Stream / Nobara**
+
+```bash
+sudo dnf install mpv gcc pkgconf-pkg-config python3-devel \
+    cairo-devel cairo-gobject-devel glib2-devel gobject-introspection-devel
+```
+
+**Arch / Manjaro / EndeavourOS / CachyOS**
+
+```bash
+sudo pacman -S --needed mpv base-devel pkgconf python cairo gobject-introspection
+```
+
+PyGObject ≥ 3.52 builds against `girepository-2.0`, which ships with
+**GLib ≥ 2.80** — Ubuntu 24.04+, Debian 13+, Fedora 40+, or current Arch. On
+older releases (Ubuntu 22.04, Debian 12) the build fails because
+`libgirepository-2.0-dev` doesn't exist there.
+
+If these are missing, the install fails while building `pycairo` or
+`pygobject`. Install the packages above and re-run `uv sync`. Playback itself
+only needs `mpv`.
+
+To check that MPRIS works, start playing something in qobit, then run:
+
+```bash
+playerctl -p qobit metadata    # should print title / artist / album / artUrl
+```
+
 ## Installation
 
 ```bash
