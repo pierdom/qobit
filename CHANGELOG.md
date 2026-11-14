@@ -7,6 +7,16 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.1.1] — 2026-11-14
+
+### Fixed
+
+- Tracks the account can't stream are no longer played as 30-second MP3
+  previews. Qobuz returns the preview at every quality, so the fallback chain
+  used to accept it silently, breaking the bit-perfect FLAC guarantee. The TUI
+  now shows "Not streamable (preview only)" and skips to the next track;
+  `qobit play` exits with an error.
+
 ## [0.1.0] — 2026-11-14
 
 Baseline release, tagged retroactively: everything built before qobit had
@@ -27,4 +37,5 @@ releases (development phases 1–9).
 - Session restore (last track + position).
 - CLI: `play`, `auth`, `devices`, `set-device`, `clear-cache`.
 
+[0.1.1]: https://github.com/pierdom/qobit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/pierdom/qobit/releases/tag/v0.1.0
