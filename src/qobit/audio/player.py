@@ -23,6 +23,10 @@ class MpvPlayer:
         self._sock = _SOCK_PATH
         # incremented on every stop(); lets _poll_player distinguish natural end from forced stop
         self._stop_gen: int = 0
+        # Guards _stop_gen + _proc together so snapshot() can never observe a
+        # half-done stop() (new gen while the old process still looks alive) —
+        # that mix made the poll thread mistake a stop for a natural end.
+        self._state_lock = threading.Lock()
         # One IPC connection reused for the life of the mpv process, instead of
         # reconnecting per call — _poll_player alone was opening/closing a fresh
         # socket 6x/second. Guarded by a lock since the poll thread and the main
@@ -44,18 +48,29 @@ class MpvPlayer:
         if start > 0:
             cmd.append(f"--start={start:.3f}")
         cmd.append(url)
-        self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        with self._state_lock:
+            self._proc = proc
 
     def stop(self) -> None:
-        self._stop_gen += 1
-        if self._proc and self._proc.poll() is None:
-            self._proc.terminate()
+        # Bump the generation and drop the handle atomically, *then* terminate:
+        # from this point snapshot() reports (new gen, not running).
+        with self._state_lock:
+            self._stop_gen += 1
+            proc, self._proc = self._proc, None
+        if proc and proc.poll() is None:
+            proc.terminate()
             try:
-                self._proc.wait(timeout=3)
+                proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
-                self._proc.kill()
-        self._proc = None
+                proc.kill()
         self._close_conn()
+
+    def snapshot(self) -> tuple[int, bool]:
+        """``(stop_gen, running)`` read atomically — what end-of-track detection
+        must use instead of reading the two separately."""
+        with self._state_lock:
+            return self._stop_gen, self._proc is not None and self._proc.poll() is None
 
     def pause_toggle(self) -> None:
         self._cmd(["cycle", "pause"])

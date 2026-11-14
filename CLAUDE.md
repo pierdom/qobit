@@ -195,14 +195,16 @@ Any new timeline mutator must be added to **both** contexts. Rule while active:
 rebuilt only from server events (LOADED, or an ASK_FOR_QUEUE_STATE snapshot for
 every other edit), while play/pause/seek/jump/natural-end act on mpv at once and
 are reported. Transport actions (`action_pause`, `_seek_to`, seek keys) check
-`self._ctx is not self._local_ctx` to route through the renderer. Two protocol
-facts that each cost a bug in the spike: `SET_STATE.current_track` always means
-reload (queue item ids restart at 0 per queue), and picking a song in an app is
-*only* `QUEUE_TRACKS_LOADED` — the renderer starts `tracks[queue_position]`
-itself. `_play_stream()` returns "ok"/"sample"/"none"/"auth" and never skips;
+`self._ctx is not self._local_ctx` to route through the renderer. Protocol
+facts that each cost a bug: `SET_STATE.current_track` reloads unless it names
+the item already held *in the same queue major version* (item ids restart at 0
+per queue, and the server's activation handover can re-send the current item
+after a queue load already started it — reloading then stopped playback);
+picking a song in an app is *only* `QUEUE_TRACKS_LOADED` — the renderer starts
+`tracks[queue_position]` itself. `_play_stream()` returns "ok"/"sample"/"none"/"auth" and never skips;
 skip policy belongs to the caller (`_do_play` locally, the renderer in Connect).
 
-**`_stop_gen` for end-of-track** — `MpvPlayer._stop_gen` increments on every `stop()` call. The poll thread records the gen when `running=True`; on transition to `False`, equal gen = natural end (advance queue), different gen = stop was called (skip). Race-safe because even a post-`stop()` check will see the changed gen.
+**`_stop_gen` for end-of-track** — `MpvPlayer._stop_gen` increments on every `stop()` call. The poll thread records the gen when running; on transition to not running, equal gen = natural end (advance queue), different gen = stop was called (skip). **Always read both via `MpvPlayer.snapshot()`**: `stop()` bumps the gen and drops `_proc` together under `_state_lock` *before* terminating mpv, so a snapshot is only ever (old gen, running) or (new gen, not running). Reading `running` and `_stop_gen` separately was a real race (stop landing between the reads looked like a natural end and skipped a track) — found when Qobuz Connect reloads made stop-then-play frequent.
 
 **Async image-worker guard** — every `@work` art fetcher does `if img is not None and self.is_mounted:` then `try: self.query_one(TGPImage).image = img / except NoMatches: pass`. Workers resume after an `await` that may outlive the widget (teardown, sort/reload remount); without the guard Textual raises `NoMatches`. Must replicate in any new art-fetch worker.
 

@@ -346,3 +346,56 @@ def test_seek_command_reports_the_target_not_the_stale_polled_position():
     sent.clear()
     asyncio.run(r.handle(_set_state(current_position=60000)))
     assert _reports(sent)[-1].current_position.value == 60000
+
+
+def test_delayed_activation_handover_does_not_reload_the_item_already_playing():
+    # Live trace (qobuz-mcp controller): SET_ACTIVE, the controller's queue load
+    # starts item 0, *then* the server's handover SET_STATE{PAUSED, item 0, same
+    # queue version} arrives. It must not restart the track — only apply state.
+    r, port, _ = _make()
+    _activate(r)
+    asyncio.run(r.handle(_msg(srvr_ctrl_queue_tracks_loaded=_loaded([500, 501], major=30))))
+    assert port.loaded == [(500, 0.0, True)]
+    asyncio.run(
+        r.handle(
+            _set_state(
+                playing_state=PAUSED,
+                queue_version=qp.QueueVersion(major=30, minor=1),
+                current_track=_ref(0, 500),
+            )
+        )
+    )
+    assert port.loaded == [(500, 0.0, True)]  # no reload
+    assert port.running and port.paused and r.state == PAUSED
+
+
+def test_same_item_id_in_a_newer_queue_still_reloads():
+    r, port, _ = _make()
+    _activate(r)
+    asyncio.run(r.handle(_msg(srvr_ctrl_queue_tracks_loaded=_loaded([500], major=30))))
+    asyncio.run(
+        r.handle(
+            _set_state(
+                playing_state=PLAYING,
+                queue_version=qp.QueueVersion(major=31, minor=1),
+                current_track=_ref(0, 500),
+            )
+        )
+    )
+    assert [t for t, _, _ in port.loaded] == [500, 500]
+
+
+def test_same_item_with_position_is_a_seek_not_a_reload():
+    r, port, _ = _make()
+    _activate(r)
+    asyncio.run(r.handle(_msg(srvr_ctrl_queue_tracks_loaded=_loaded([500], major=30))))
+    asyncio.run(
+        r.handle(
+            _set_state(
+                queue_version=qp.QueueVersion(major=30, minor=1),
+                current_track=_ref(0, 500),
+                current_position=0,
+            )
+        )
+    )
+    assert len(port.loaded) == 1 and port.pos == 0.0
