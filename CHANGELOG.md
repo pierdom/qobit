@@ -7,6 +7,15 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.2.1] — 2026-11-14
+
+### Fixed
+
+- A track could be skipped right after a stop-and-restart (e.g. changing
+  track): stopping mpv could be mistaken for the track ending naturally.
+- Qobuz Connect: when an app (or the qobuz-mcp AI remote) moved playback to
+  qobit and started music in one go, the track could restart and pause itself.
+
 ## [0.2.0] — 2026-11-14
 
 ### Added
@@ -63,6 +72,7 @@ releases (development phases 1–9).
 - Session restore (last track + position).
 - CLI: `play`, `auth`, `devices`, `set-device`, `clear-cache`.
 
+[0.2.1]: https://github.com/pierdom/qobit/releases/tag/v0.2.1
 [0.2.0]: https://github.com/pierdom/qobit/releases/tag/v0.2.0
 [0.1.1]: https://github.com/pierdom/qobit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/pierdom/qobit/releases/tag/v0.1.0
