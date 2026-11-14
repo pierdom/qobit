@@ -7,6 +7,32 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.2.0] — 2026-11-14
+
+### Added
+
+- **Qobuz Connect** (phase 1, opt-in). qobit appears in the official Qobuz
+  apps' device picker; pick it there and the app becomes the remote while
+  qobit plays bit-perfect through mpv. Enable from the command palette (saved)
+  or for one run with `qobit --connect-on`. The transport bar shows
+  `[ ⇄ CONNECT ]` / `[ ⇄ CONNECT · ACTIVE ]`.
+  - Play, pause, seek, skip and picking songs/albums/playlists from the app;
+    the Queue tab mirrors the app's queue, including edits made in the app.
+  - Local control keeps working while active (space, seek, previous/next,
+    media keys, selecting a Queue row) and is reflected in the app.
+  - Queue *edits* from qobit while active are not supported yet (phase 2) —
+    qobit says so instead.
+  - The app's volume control is ignored on purpose (bit-perfect).
+  - When another device takes over, qobit keeps the queue as its own, paused.
+  - Unofficial: speaks the community-documented protocol
+    (`docs/qobuz-connect.md`).
+
+### Changed
+
+- Queue/timeline writes go through a play-context layer
+  (`ui/play_context.py`); local behaviour is unchanged.
+- New dependencies: `protobuf`, `websockets`.
+
 ## [0.1.1] — 2026-11-14
 
 ### Fixed
@@ -37,5 +63,6 @@ releases (development phases 1–9).
 - Session restore (last track + position).
 - CLI: `play`, `auth`, `devices`, `set-device`, `clear-cache`.
 
+[0.2.0]: https://github.com/pierdom/qobit/releases/tag/v0.2.0
 [0.1.1]: https://github.com/pierdom/qobit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/pierdom/qobit/releases/tag/v0.1.0
