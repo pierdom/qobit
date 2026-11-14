@@ -89,6 +89,8 @@ class Spike:
         self.want_active = activate
         self.drive, self.drove = drive, False
         self.load_ids: list[int] = []
+        self.queue: list[tuple[int, int]] = []  # (queue_item_id, track_id)
+        self.active = False
         self.next_track_id = 0
         # --audio: real playback via qobit's MpvPlayer (same bit-perfect flags
         # and configured device as the TUI). mpv is only started once the
@@ -244,6 +246,33 @@ class Spike:
         await self.sync_audio(seeked)
         await self.report()
 
+    async def on_queue_loaded(self, ql: qp.SrvrCtrlQueueTracksLoaded) -> None:
+        self.queue_version.CopyFrom(ql.queue_version)
+        self.queue = [(t.queue_item_id, t.track_id) for t in ql.tracks]
+        pos = ql.queue_position
+        shuffle = ql.shuffle_mode if ql.HasField("shuffle_mode") else None
+        log(f"   QUEUE loaded: {len(self.queue)} tracks, queue_position={pos}, shuffle={shuffle}")
+        if not self.active or not (0 <= pos < len(self.queue)):
+            return
+        if self.player is not None and self.player.running:
+            self.player.stop()
+        self.mpv_item = -1
+        self.item_id, self.track_id = self.queue[pos]
+        self._set_next_from_queue()
+        label, self.duration_ms = await self.track_info(self.track_id)
+        log(f"   LOAD track_id={self.track_id} item={self.item_id}: {label}")
+        self._set_pos(0)
+        self.state = qp.PLAYING_STATE_PLAYING
+        await self.sync_audio(False)
+        await self.report()
+
+    def _set_next_from_queue(self) -> None:
+        ids = [i for i, _ in self.queue]
+        if self.item_id in ids and ids.index(self.item_id) + 1 < len(ids):
+            self.next_item_id, self.next_track_id = self.queue[ids.index(self.item_id) + 1]
+        else:
+            self.next_item_id, self.next_track_id = -1, 0
+
     # ── real audio (--audio) ──────────────────────────────────────────────────
     async def stream_url(self, track_id: int) -> str | None:
         from qobit.qobuz.client import QobuzError
@@ -294,7 +323,7 @@ class Spike:
             self._set_pos(0)
         else:
             self.item_id, self.track_id = self.next_item_id, self.next_track_id
-            self.next_item_id, self.next_track_id = -1, 0
+            self._set_next_from_queue()
             label, self.duration_ms = await self.track_info(self.track_id)
             log(f"   NEXT track_id={self.track_id} item={self.item_id}: {label}")
             self._set_pos(0)
@@ -305,7 +334,7 @@ class Spike:
         name = qp.MessageType.Name(m.message_type)
         body = MessageToDict(m, preserving_proto_field_name=True)
         body.pop("message_type", None)
-        log("<<", name, json.dumps(body)[:400])
+        log("<<", name, json.dumps(body)[:700])
         t = m.message_type
         if t == qp.MESSAGE_TYPE_SRVR_CTRL_ADD_RENDERER:
             if m.srvr_ctrl_add_renderer.device_info.device_uuid == DEVICE_UUID.bytes:
@@ -321,11 +350,11 @@ class Spike:
                         )
                     )
         elif t == qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_TRACKS_LOADED:
-            # New queue from a controller. Bookkeeping only: the server does
-            # not tell the renderer to play here — the controller follows up
-            # with a SET_STATE carrying current_track, which drives playback.
-            ql = m.srvr_ctrl_queue_tracks_loaded
-            self.queue_version.CopyFrom(ql.queue_version)
+            # New queue from a controller (= the user picked a song/album).
+            # Verified against the real iOS app: NO SET_STATE follows — the
+            # active renderer must itself jump to tracks[queue_position] and
+            # start playing.
+            await self.on_queue_loaded(m.srvr_ctrl_queue_tracks_loaded)
         elif t == qp.MESSAGE_TYPE_SRVR_CTRL_SESSION_STATE:
             ss = m.srvr_ctrl_session_state
             if ss.HasField("queue_version"):
@@ -339,7 +368,8 @@ class Spike:
                 else:
                     asyncio.create_task(self.drive_self())
         elif t == qp.MESSAGE_TYPE_SRVR_RNDR_SET_ACTIVE:
-            log("** ACTIVE =", m.srvr_rndr_set_active.active)
+            self.active = m.srvr_rndr_set_active.active
+            log("** ACTIVE =", self.active)
             await self.report()
         elif t == qp.MESSAGE_TYPE_SRVR_RNDR_SET_MAX_AUDIO_QUALITY:
             q = m.srvr_rndr_set_max_audio_quality.max_audio_quality
@@ -379,12 +409,7 @@ class Spike:
                 ),
             )
         )
-        # What the official app does next: play item 0 of the new queue.
-        await asyncio.sleep(2)
-        await self.control(
-            playing_state=qp.PLAYING_STATE_PLAYING,
-            current_queue_item=qp.QueueItemRef(queue_version=self.queue_version, id=0),
-        )
+        # The real app sends nothing after this — the renderer starts itself.
 
     async def drive_self(self) -> None:
         """Act as our own controller: play, seek, skip, pause — 6 s apart."""
@@ -470,6 +495,12 @@ class Spike:
 
 
 def main() -> None:
+    import signal
+
+    def _term(*_: object) -> None:
+        raise KeyboardInterrupt  # so run()'s finally stops mpv on kill, too
+
+    signal.signal(signal.SIGTERM, _term)
     ap = argparse.ArgumentParser()
     ap.add_argument("--activate", action="store_true", help="make this device active on join")
     ap.add_argument(

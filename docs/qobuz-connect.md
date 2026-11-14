@@ -140,12 +140,15 @@ Fields left out are unchanged. Observed:
   the zero value, so `{"track_id": X}` with no item id means item 0. Re-picking
   the song that's playing also arrives as the same item. Never compare item ids
   to decide whether to reload. Reload whenever `current_track` is present.
-- **Picking a new song or album in the app** = `CTRL_SRVR_QUEUE_LOAD_TRACKS` →
-  the server broadcasts `SRVR_CTRL_QUEUE_TRACKS_LOADED{queue_version (major
-  bumps), tracks, queue_position}`, which is bookkeeping only and doesn't tell
-  the renderer to play. The app then sends `SET_PLAYER_STATE{PLAYING, item}`,
-  which reaches the renderer as `SET_STATE{current_track: item 0, PLAYING}`.
-  Take the new `queue_version` from `TRACKS_LOADED` so reports echo it.
+- **Picking a new song or album in the app sends no play command.** The
+  app sends `CTRL_SRVR_QUEUE_LOAD_TRACKS`, and the server broadcasts
+  `SRVR_CTRL_QUEUE_TRACKS_LOADED{queue_version (major bumps), tracks:
+  [{queue_item_id, track_id}], queue_position, shuffle_mode?}`. That's all.
+  Verified against the real iOS app: no `SET_STATE` follows. The **active
+  renderer must itself** jump to `tracks[queue_position]`, start playing, and
+  report. Subsequent play/pause arrive as bare `SET_STATE{playing_state}`, so if
+  you ignore the load you end up resuming the *old* track. Keep the track list:
+  it's also how you know what comes next when `SET_STATE` didn't say.
 
 `track_id` is a normal Qobuz track id, so qobit's `get_track` / `get_file_url`
 apply unchanged.
@@ -207,7 +210,7 @@ uv run --no-project --with protobuf --with websockets --with httpx \
     python connect_spike.py                     # register, then pick "qobit (spike)" in the Qobuz app
 #   ... --activate                              # make itself active (takes over the session!)
 #   ... --activate --drive --seconds 30         # self-test: play/seek/skip/pause loop
-#   ... --activate --load 8767428,10137214      # self-test: load a new queue like the app, then play it
+#   ... --activate --load 8767428,10137214      # self-test: load a new queue exactly like the app
 ```
 
 ### With real audio (`--audio`)
