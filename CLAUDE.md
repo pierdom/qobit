@@ -290,6 +290,13 @@ uv run pytest              # unit tests — models, config/store, client auth,
 uv run textual console     # Textual dev console (separate terminal)
 ```
 
+**Releasing** — semver tags `vX.Y.Z` with a GitHub release per tag (first
+three cut 2026-11-14: v0.1.0 baseline, v0.1.1, v0.2.0). The version lives only in
+`pyproject.toml` (`__version__` reads installed metadata). To release: bump it,
+add a `CHANGELOG.md` entry, `uv lock`, commit `chore(release): X.Y.Z`, annotated
+tag, push main + tag, `gh release create vX.Y.Z --notes-file <that entry>`.
+Feature merges → minor bump; fix-only merges → patch bump.
+
 Tests live in `tests/`; `conftest.py`'s autouse fixture redirects `config.py`/
 `store.py`/`_images.py`'s real paths (under `~/.config` and `~/.local/share`)
 to a tmp dir for every test — never add a test that touches those modules'
