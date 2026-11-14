@@ -201,6 +201,22 @@ says whether retrying is welcome. The web player backs off with delays of
 (`--drive` makes the spike act as its own controller on the same socket, so the
 loop can be tested without a phone.)
 
+## Verified end-to-end against the iOS app (2026-11-14, `--audio`)
+
+| Action in the app | What arrived | Spike behaviour |
+|---|---|---|
+| Pick "qobit (spike)" | `SET_ACTIVE` + `SET_STATE{current_track, PAUSED}` | loads handed-over track, mpv not started |
+| Play / pause | bare `SET_STATE{playing_state}` | mpv start / IPC pause |
+| Pick a song (search, album, or tap in queue) | `QUEUE_TRACKS_LOADED{queue_position}` only | jumps to `tracks[pos]` and plays |
+| Next / previous | `SET_STATE{current_track, next_track}` | reloads |
+| Seek | `SET_STATE{current_position}` | mpv `seek absolute` |
+| Track ends | nothing (renderer's job) | advances to next queue item, reports |
+
+Seen but ignored: `SRVR_CTRL_VOLUME_CHANGED/_MUTED` and the
+`*_AUDIO_QUALITY_CHANGED` broadcasts. One track resolved to a 30 s MP3 preview
+(`fmt=5&range=20-30` in the URL) without the spike noticing. The real
+implementation must detect previews and skip them.
+
 ## Running the spike
 
 ```bash
