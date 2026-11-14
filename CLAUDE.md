@@ -52,7 +52,7 @@ src/qobit/
     ├── play_context.py      Who may write _timeline/_cursor: LocalPlayContext
     │                        (pre-Connect logic, moved verbatim) and
     │                        ConnectPlayContext (Connect-active: mirror +
-    │                        PlayerPort adapter; edits refused in phase 1)
+    │                        PlayerPort adapter; edits → server commands)
     ├── _images.py           Shared image fetch layer: asyncio.Semaphore(6) caps
     │                        concurrent HTTP fetches; module-level URL→PIL cache
     │                        prevents re-downloading the same image within a session
@@ -119,10 +119,10 @@ Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
 - TrackScreen detail overlay (composer, performer, related albums)
 - Queue reorder (single-item remove + free skip back/forth via timeline+cursor done)
 - Gapless playback, ReplayGain, CMAF fallback
-- Qobuz Connect: **phase 1 done** (renderer, mirror-only queue). Next: phase 2 —
-  local queue edits while active become `CTRL_SRVR_QUEUE_*` commands applied on
-  echo (fill in the refusing methods of `ConnectPlayContext`); phase 3 autoplay↔radio,
-  shuffle/repeat UI, play reporting; phase 4 qobit as controller + LAN discovery.
+- Qobuz Connect: **phases 1–2 done** (renderer; queue mirror; local queue edits as
+  server commands). Next: phase 3 — autoplay↔radio (incl. editing autoplay rows,
+  endless-radio refill while active), shuffle/repeat UI, play reporting; phase 4
+  qobit as controller + LAN discovery.
   Protocol: `docs/qobuz-connect.md`; design: `docs/qobuz-connect-design.md`; original
   throwaway spike: `spikes/qobuz_connect/` (standalone, not imported by `src/`)
 
@@ -187,7 +187,19 @@ sync action handlers call it.
 
 **Play contexts (Qobuz Connect seam)** — every `_timeline`/`_cursor` *write*
 goes through `QobitApp._ctx` (`ui/play_context.py`): `LocalPlayContext` normally,
-`ConnectPlayContext` while qobit is the **active** Connect renderer. App methods
+`ConnectPlayContext` while qobit is the **active** Connect renderer (phase 2:
+its mutators send `CTRL_SRVR_QUEUE_*` commands — load/insert/add/remove — and
+return at once; the timeline changes only when the server echoes, through the
+same resync path as an edit from the phone. Commands go out **one at a time**:
+each carries the queue version it was based on, so the next waits for its
+predecessor's echo (matched by `action_uuid`, 10 s timeout); an echo's version is
+noted *before* the next is built, and the next is sent only *after* the echo
+message is fully applied — a LOADED echo must update the queue model before an
+edit queued behind it (menu "Play radio" = load + replace) picks its targets.
+`queue_replace_upcoming` therefore resolves its item ids at send time. A
+QUEUE_ERROR drops pending commands and re-syncs. Mirror rows are distinct
+`Track` objects (`dataclasses.replace`) so identity-based remove works for a
+song queued twice; autoplay rows are read-only for now). App methods
 (`play_track`, `jump_to`, `queue_next/last`, `remove_from_queue`, `clear_queue/
 history`, `_advance_queue`, `_start_radio`) are thin delegators returning
 whether the edit happened; readers (Queue tab, hero, transport) are untouched.

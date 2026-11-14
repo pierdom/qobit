@@ -9,20 +9,21 @@ context object, so a second owner can exist without touching the readers:
 - ``ConnectPlayContext`` — while qobit is the **active Qobuz Connect
   renderer**, the server owns the queue: the timeline is a mirror rebuilt from
   server queue events, and playback is driven by ``connect.ConnectRenderer``.
-  Phase 1 is mirror-only, so local queue *edits* are refused with a notice; in
-  phase 2 those methods become ``CTRL_SRVR_QUEUE_*`` commands (see
-  docs/qobuz-connect-design.md). Every timeline mutator must exist on both
-  contexts — that's what keeps phase 2 a drop-in.
+  Local queue *edits* become ``CTRL_SRVR_QUEUE_*`` commands (phase 2): they
+  return at once, and the timeline changes when the server echoes them — the
+  same path an edit from the phone takes. Every timeline mutator must exist on
+  both contexts.
 """
 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from typing import TYPE_CHECKING
 
 from ..connect import device_info
 from ..connect.queue import ServerQueue
-from ..connect.renderer import ConnectRenderer
+from ..connect.renderer import PLAYING, ConnectRenderer
 from ..connect.session import ConnectSession
 from ..qobuz.client import QobuzError
 from ..qobuz.models import Track
@@ -135,7 +136,7 @@ class LocalPlayContext:
         return True
 
 
-_REFUSED = "Queue is controlled by Qobuz Connect — edit it from the Qobuz app"
+_AUTOPLAY_READONLY = "Autoplay suggestions can't be edited from qobit yet"
 
 
 class ConnectPlayContext:
@@ -154,8 +155,10 @@ class ConnectPlayContext:
             on_status=self._on_status,
         )
         self.renderer = ConnectRenderer(self, self.session.send)
-        # Aligned 1:1 with app._timeline while active: queue_item_id per row.
+        # Aligned 1:1 with app._timeline while active: queue_item_id per row,
+        # and whether the row is a server autoplay suggestion (read-only).
         self._item_ids: list[int] = []
+        self._autoplay_rows: list[bool] = []
         self._tracks: dict[int, Track] = {}
         self._fetch_sem = asyncio.Semaphore(8)
         self._mirror_gen = 0
@@ -175,14 +178,35 @@ class ConnectPlayContext:
             self.active_changed(False)
         self.app.connect_state = "active" if self.renderer.active else status
 
-    # ── PlayContext (used while active) ───────────────────────────────────────
+    # ── PlayContext (used while active): edits → server commands ─────────────
+    #
+    # Each returns at once; the timeline updates when the server echoes the
+    # change. Index math uses the mirror (app._timeline/_cursor == server play
+    # order), mapped to queue_item_ids through _item_ids.
 
-    def _refuse(self) -> bool:
-        self.app._flash_status(_REFUSED)
-        return False
+    @staticmethod
+    def _ids(tracks: list[Track]) -> list[int]:
+        return [int(t.id) for t in tracks]
+
+    def _upcoming(self, include_autoplay: bool = False) -> list[int]:
+        cur = self.app._cursor
+        return [
+            iid
+            for i, (iid, auto) in enumerate(zip(self._item_ids, self._autoplay_rows))
+            if i > cur and (include_autoplay or not auto)
+        ]
 
     async def load(self, track: Track, queue: list[Track] | None, start: float) -> None:
-        self._refuse()  # phase 2: CTRL_SRVR_QUEUE_LOAD_TRACKS
+        app = self.app
+        cur = app._cursor
+        if queue is None and 0 <= cur < len(app._timeline) and app._timeline[cur].id == track.id:
+            # Re-selecting the current track (e.g. resume): just play it.
+            if self.renderer.state != PLAYING:
+                await self.renderer.toggle_pause()
+            return
+        # A new selection replaces the server queue (as in the official apps);
+        # the LOADED echo starts it on this renderer.
+        self.renderer.queue_load(self._ids([track, *(queue or [])]), 0)
 
     async def jump_to(self, index: int) -> None:
         if 0 <= index < len(self._item_ids):
@@ -192,22 +216,44 @@ class ConnectPlayContext:
         await self.renderer.track_ended()
 
     def clear_queue(self) -> bool:
-        return self._refuse()  # phase 2: QUEUE_REMOVE_TRACKS(upcoming)
+        ids = self._upcoming()
+        self.renderer.queue_remove(ids)
+        return bool(ids)
 
     def clear_history(self) -> bool:
-        return self._refuse()  # phase 2: QUEUE_REMOVE_TRACKS(past)
+        ids = self._item_ids[: max(self.app._cursor, 0)]
+        self.renderer.queue_remove(ids)
+        return bool(ids)
 
     def queue_next(self, track: Track) -> bool:
-        return self._refuse()  # phase 2: QUEUE_INSERT_TRACKS(after current)
+        current = self.renderer.item_id
+        self.renderer.queue_insert(self._ids([track]), current if current >= 0 else None)
+        return True
 
     def queue_last(self, track: Track) -> bool:
-        return self._refuse()  # phase 2: QUEUE_ADD_TRACKS
+        self.renderer.queue_add(self._ids([track]))
+        return True
 
     def remove(self, track: Track) -> bool:
-        return self._refuse()  # phase 2: QUEUE_REMOVE_TRACKS([item_id])
+        """Remove an Up Next row. Mirror rows are distinct objects (see
+        queue_changed), so identity finds the exact row even for duplicates."""
+        app = self.app
+        ahead = range(app._cursor + 1, len(app._timeline))
+        idx = next((i for i in ahead if app._timeline[i] is track), None)
+        if idx is None:
+            idx = next((i for i in ahead if app._timeline[i].id == track.id), None)
+        if idx is None or idx >= len(self._item_ids):
+            return False
+        if self._autoplay_rows[idx]:
+            app._flash_status(_AUTOPLAY_READONLY)
+            return False
+        self.renderer.queue_remove([self._item_ids[idx]])
+        return True
 
     def replace_upcoming(self, tracks: list[Track]) -> bool:
-        return self._refuse()  # phase 2/3: autoplay or QUEUE_ADD_TRACKS
+        """Song radio (R): swap Up Next for ``tracks``, current track untouched."""
+        self.renderer.queue_replace_upcoming(self._ids(tracks))
+        return True
 
     # ── PlayerPort (driven by ConnectRenderer) ────────────────────────────────
 
@@ -284,14 +330,21 @@ class ConnectPlayContext:
         tracks = await asyncio.gather(*(self._track(it.track_id) for it in order))
         if gen != self._mirror_gen or not self.renderer.active:
             return
-        rows = [(it.item_id, t) for it, t in zip(order, tracks) if t is not None]
-        self._item_ids = [i for i, _ in rows]
+        rows = [(it, t) for it, t in zip(order, tracks) if t is not None]
+        self._item_ids = [it.item_id for it, _ in rows]
+        self._autoplay_rows = [it.autoplay for it, _ in rows]
         app = self.app
-        app._timeline = [t for _, t in rows]
+        # One object per *row*: the hydration cache shares a Track per track id,
+        # and "remove this row" matches by identity (the same song can be queued
+        # twice).
+        app._timeline = [dataclasses.replace(t) for _, t in rows]
         app._cursor = (
             self._item_ids.index(current_item_id) if current_item_id in self._item_ids else -1
         )
         app.queue_version += 1
+
+    def queue_error(self, message: str) -> None:
+        self.app._flash_status(f"Qobuz Connect refused the queue change: {message}")
 
     def active_changed(self, active: bool) -> None:
         app = self.app
@@ -307,4 +360,5 @@ class ConnectPlayContext:
             app.is_playing = False
             app.is_paused = True
         self._item_ids = []
+        self._autoplay_rows = []
         app._flash_status("Qobuz Connect: playback moved to another device")

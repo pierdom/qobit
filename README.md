@@ -276,9 +276,11 @@ While active:
   from the app; the Playback tab mirrors the app's queue.
 - Space, `[` / `]`, previous/next, media keys and selecting a Playback row still
   work in qobit and show up in the app.
-- Editing the queue *from qobit* (play from the library, play next, add,
-  remove, clear, radio) isn't supported yet: qobit shows "Queue is controlled
-  by Qobuz Connect". Do it from the app.
+- Editing the queue from qobit works too — play from the library, play next,
+  add to queue, remove, clear, song radio (`R`). The change goes to Qobuz and
+  shows up in qobit and in the app together, usually within a second.
+- Autoplay suggestions the app adds after your queue can't be removed from
+  qobit yet.
 - The app's volume slider has no effect, on purpose: software volume would
   change the bits the DAC receives.
 

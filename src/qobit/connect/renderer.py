@@ -26,7 +26,9 @@ tests) and sends through a ``send`` callable.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
+from collections import deque
 from collections.abc import Callable
 from typing import Protocol
 
@@ -68,6 +70,22 @@ _FORMAT_LEVEL = {
 }
 
 
+# Server echoes of queue commands carry the command's action_uuid; the next
+# queued command may only go out once its predecessor is echoed (each command
+# is stamped with the queue version it was based on).
+_ECHOES = {
+    qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_TRACKS_LOADED: "srvr_ctrl_queue_tracks_loaded",
+    qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_TRACKS_INSERTED: "srvr_ctrl_queue_tracks_inserted",
+    qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_TRACKS_ADDED: "srvr_ctrl_queue_tracks_added",
+    qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_TRACKS_REMOVED: "srvr_ctrl_queue_tracks_removed",
+    qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_TRACKS_REORDERED: "srvr_ctrl_queue_tracks_reordered",
+    qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_CLEARED: "srvr_ctrl_queue_cleared",
+    qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_ERROR_MESSAGE: "srvr_ctrl_queue_error_message",
+}
+# An unanswered command stops blocking the line after this long.
+_ECHO_TIMEOUT_S = 10.0
+
+
 class PlayerPort(Protocol):
     """What the renderer needs from the actual player."""
 
@@ -85,6 +103,8 @@ class PlayerPort(Protocol):
     def duration_s(self) -> float: ...
     async def queue_changed(self, queue: ServerQueue, current_item_id: int) -> None: ...
     def active_changed(self, active: bool) -> None: ...
+    def queue_error(self, message: str) -> None:
+        """The server refused a queue command (the mirror is re-synced)."""
 
 
 class ConnectRenderer:
@@ -106,11 +126,26 @@ class ConnectRenderer:
         # Item ids restart at 0 per queue, so (item, track) alone can't tell
         # "the item we already have" from "item 0 of a brand-new queue".
         self._item_major = -1
+        # Phase 2: local queue edits as CTRL_SRVR_QUEUE_* commands, one in
+        # flight at a time (see _ECHOES). Each entry builds its message with
+        # the queue version current *when it is sent*, not when it was queued.
+        # A builder may return None ("nothing to do any more") and is skipped.
+        self._pending: deque[Callable[[bytes], qp.QConnectMessage | None]] = deque()
+        self._in_flight: tuple[bytes, float] | None = None
 
     # ── server → renderer ─────────────────────────────────────────────────────
 
     async def handle(self, m: qp.QConnectMessage) -> None:
         t = m.message_type
+        released = self._on_echo(t, getattr(m, _ECHOES[t])) if t in _ECHOES else False
+        await self._handle(m, t)
+        # Send the next queued command only *after* this message is applied — a
+        # LOADED echo must update the queue model before an edit queued behind
+        # it (e.g. "Play radio" = load + replace) picks its target items.
+        if released:
+            self._dispatch()
+
+    async def _handle(self, m: qp.QConnectMessage, t: int) -> None:
         if t == qp.MESSAGE_TYPE_SRVR_RNDR_SET_ACTIVE:
             await self._set_active(m.srvr_rndr_set_active.active)
         elif t == qp.MESSAGE_TYPE_SRVR_CTRL_SESSION_STATE:
@@ -292,6 +327,138 @@ class ConnectRenderer:
                 ),
             ),
         )
+
+    # ── local queue edits → server commands (phase 2) ────────────────────────
+    #
+    # Nothing here touches the mirror: the server's echo triggers the usual
+    # resync (QUEUE_STATE snapshot, or LOADED's own fast path), so the queue a
+    # user sees is always the one every other app sees too.
+
+    def queue_load(self, track_ids: list[int], start_index: int = 0) -> None:
+        """Replace the queue; the echo (LOADED) makes this renderer start
+        ``track_ids[start_index]`` — the same path as picking music in an app."""
+        self._enqueue(
+            lambda action: qp.QConnectMessage(
+                message_type=qp.MESSAGE_TYPE_CTRL_SRVR_QUEUE_LOAD_TRACKS,
+                ctrl_srvr_queue_load_tracks=qp.CtrlSrvrQueueLoadTracks(
+                    queue_version_ref=self.queue.version,
+                    action_uuid=action,
+                    track_ids=track_ids,
+                    queue_position=start_index,
+                    context_uuid=uuid.uuid4().bytes,
+                ),
+            )
+        )
+
+    def queue_insert(self, track_ids: list[int], after_item_id: int | None) -> None:
+        """Insert after ``after_item_id`` (None = at the front)."""
+
+        def build(action: bytes) -> qp.QConnectMessage:
+            cmd = qp.CtrlSrvrQueueInsertTracks(
+                queue_version_ref=self.queue.version,
+                action_uuid=action,
+                track_ids=track_ids,
+                context_uuid=uuid.uuid4().bytes,
+            )
+            if after_item_id is not None and after_item_id >= 0:
+                cmd.insert_after = after_item_id
+            return qp.QConnectMessage(
+                message_type=qp.MESSAGE_TYPE_CTRL_SRVR_QUEUE_INSERT_TRACKS,
+                ctrl_srvr_queue_insert_tracks=cmd,
+            )
+
+        self._enqueue(build)
+
+    def queue_add(self, track_ids: list[int]) -> None:
+        self._enqueue(
+            lambda action: qp.QConnectMessage(
+                message_type=qp.MESSAGE_TYPE_CTRL_SRVR_QUEUE_ADD_TRACKS,
+                ctrl_srvr_queue_add_tracks=qp.CtrlSrvrQueueAddTracks(
+                    queue_version_ref=self.queue.version,
+                    action_uuid=action,
+                    track_ids=track_ids,
+                    context_uuid=uuid.uuid4().bytes,
+                ),
+            )
+        )
+
+    def queue_remove(self, item_ids: list[int]) -> None:
+        if not item_ids:
+            return
+        self._enqueue(
+            lambda action: qp.QConnectMessage(
+                message_type=qp.MESSAGE_TYPE_CTRL_SRVR_QUEUE_REMOVE_TRACKS,
+                ctrl_srvr_queue_remove_tracks=qp.CtrlSrvrQueueRemoveTracks(
+                    queue_version_ref=self.queue.version,
+                    action_uuid=action,
+                    queue_item_ids=item_ids,
+                ),
+            )
+        )
+
+    def queue_replace_upcoming(self, track_ids: list[int]) -> None:
+        """Swap everything after the current item for ``track_ids`` (song
+        radio). Which items to remove is decided *when the command is sent*,
+        from this renderer's queue model — an edit queued right behind a load
+        (menu "Play radio" = load + replace) must target the new queue, not the
+        one on screen when it was requested."""
+
+        def remove_upcoming(action: bytes) -> qp.QConnectMessage | None:
+            order = self.queue.play_order()
+            ids = [it.item_id for it in order]
+            cur = ids.index(self.item_id) if self.item_id in ids else -1
+            upcoming = [it.item_id for it in order[cur + 1 :] if not it.autoplay]
+            if not upcoming:
+                return None
+            return qp.QConnectMessage(
+                message_type=qp.MESSAGE_TYPE_CTRL_SRVR_QUEUE_REMOVE_TRACKS,
+                ctrl_srvr_queue_remove_tracks=qp.CtrlSrvrQueueRemoveTracks(
+                    queue_version_ref=self.queue.version,
+                    action_uuid=action,
+                    queue_item_ids=upcoming,
+                ),
+            )
+
+        self._enqueue(remove_upcoming)
+        self.queue_add(track_ids)
+
+    def _enqueue(self, build: Callable[[bytes], qp.QConnectMessage | None]) -> None:
+        self._pending.append(build)
+        self._dispatch()
+
+    def _dispatch(self) -> None:
+        if self._in_flight is not None:
+            if time.monotonic() - self._in_flight[1] < _ECHO_TIMEOUT_S:
+                return
+            log.warning("connect: queue command unanswered, moving on")
+            self._in_flight = None
+        while self._pending:
+            action = uuid.uuid4().bytes
+            message = self._pending.popleft()(action)
+            if message is None:
+                continue  # nothing left to do for this one
+            self._in_flight = (action, time.monotonic())
+            self._send(message)
+            return
+
+    def _on_echo(self, t: int, body) -> bool:  # noqa: ANN001 — any echo message
+        """Bookkeeping for a queue echo. Returns True when it answered our
+        in-flight command and the next one may go (the caller sends it once the
+        message is fully applied)."""
+        # Every echo carries the queue version it produced; take it before the
+        # next command goes out, or that command is stamped stale and refused.
+        if body.HasField("queue_version"):
+            self.queue.note_version(body.queue_version)
+        if self._in_flight is None or bytes(body.action_uuid) != self._in_flight[0]:
+            return False  # another controller's change (or late echo) — resync handles it
+        self._in_flight = None
+        if t == qp.MESSAGE_TYPE_SRVR_CTRL_QUEUE_ERROR_MESSAGE:
+            # Like the official apps: drop what was waiting, re-ask the state.
+            self._pending.clear()
+            self.port.queue_error(body.error.message or body.error.code or "queue error")
+            self.ask_queue_state()
+            return False
+        return True
 
     def ask_queue_state(self) -> None:
         self._send(

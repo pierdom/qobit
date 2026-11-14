@@ -662,7 +662,8 @@ class QobitApp(App[None]):
 
     # Timeline mutators delegate to the active play context (ui/play_context.py):
     # local by default; while qobit is the active Qobuz Connect renderer the
-    # server owns the queue and these are refused (phase 1) — they return False.
+    # server owns the queue and these send it commands (the timeline updates on
+    # the server's echo). They return whether an edit was made/sent.
 
     def clear_queue(self) -> bool:
         return self._ctx.clear_queue()

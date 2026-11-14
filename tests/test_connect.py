@@ -423,3 +423,170 @@ def test_report_quality_maps_cd_and_is_silent_when_inactive():
     sent.clear()
     r.report_quality(format_id=6, sampling_rate_hz=44100, bit_depth=16)
     assert sent[0].rndr_srvr_file_audio_quality_changed.audio_quality == qp.AUDIO_QUALITY_CD
+
+
+# ── phase 2: local queue edits → serialized server commands ─────────────────
+
+
+def _cmds(sent) -> list[str]:
+    return [
+        qp.MessageType.Name(m.message_type).removeprefix("MESSAGE_TYPE_CTRL_SRVR_")
+        for m in sent
+        if qp.MessageType.Name(m.message_type).startswith("MESSAGE_TYPE_CTRL_SRVR_QUEUE")
+    ]
+
+
+def _echo(kind: str, action: bytes, **kw) -> qp.QConnectMessage:
+    field = f"srvr_ctrl_{kind}"
+    cls = {
+        "queue_tracks_added": qp.SrvrCtrlQueueTracksAdded,
+        "queue_tracks_inserted": qp.SrvrCtrlQueueTracksInserted,
+        "queue_tracks_removed": qp.SrvrCtrlQueueTracksRemoved,
+        "queue_error_message": qp.SrvrCtrlQueueErrorMessage,
+    }[kind]
+    return _msg(**{field: cls(action_uuid=action, **kw)})
+
+
+_CMD_FIELDS = (
+    "ctrl_srvr_queue_add_tracks",
+    "ctrl_srvr_queue_insert_tracks",
+    "ctrl_srvr_queue_remove_tracks",
+    "ctrl_srvr_queue_load_tracks",
+)
+
+
+def _last_cmd(sent):
+    """The last queue command sent (echoes also trigger state requests, so
+    sent[-1] is not necessarily a command)."""
+    for m in reversed(sent):
+        for f in _CMD_FIELDS:
+            if m.HasField(f):
+                return getattr(m, f)
+    raise AssertionError("no queue command sent")
+
+
+def _last_action(sent) -> bytes:
+    for m in reversed(sent):
+        for f in (
+            "ctrl_srvr_queue_add_tracks",
+            "ctrl_srvr_queue_insert_tracks",
+            "ctrl_srvr_queue_remove_tracks",
+            "ctrl_srvr_queue_load_tracks",
+        ):
+            if m.HasField(f):
+                return bytes(getattr(m, f).action_uuid)
+    raise AssertionError("no queue command sent")
+
+
+class QueueErrPort(FakePort):
+    def __init__(self):
+        super().__init__()
+        self.errors: list[str] = []
+
+    def queue_error(self, message):
+        self.errors.append(message)
+
+
+def test_queue_commands_go_out_one_at_a_time_released_by_their_echo():
+    r, _, sent = _make()
+    _activate(r)
+    sent.clear()
+    r.queue_add([1])
+    r.queue_add([2])
+    assert _cmds(sent) == ["QUEUE_ADD_TRACKS"]  # second waits for the first's echo
+    # Another controller's echo must not release the line.
+    asyncio.run(r.handle(_echo("queue_tracks_added", b"someone-else")))
+    assert _cmds(sent) == ["QUEUE_ADD_TRACKS"]
+    asyncio.run(r.handle(_echo("queue_tracks_added", _last_action(sent))))
+    assert _cmds(sent) == ["QUEUE_ADD_TRACKS", "QUEUE_ADD_TRACKS"]
+    assert list(_last_cmd(sent).track_ids) == [2]
+
+
+def test_commands_are_stamped_with_the_version_current_when_sent():
+    r, _, sent = _make()
+    _activate(r)
+    r.queue_add([1])
+    r.queue_add([2])
+    # The first echo arrives with a bumped version; the second command must use it.
+    asyncio.run(
+        r.handle(
+            _echo(
+                "queue_tracks_added",
+                _last_action(sent),
+                queue_version=qp.QueueVersion(major=7, minor=3),
+            )
+        )
+    )
+    ref = _last_cmd(sent).queue_version_ref
+    assert (ref.major, ref.minor) == (7, 3)
+
+
+def test_queue_error_drops_pending_and_resyncs():
+    sent: list[qp.QConnectMessage] = []
+    port = QueueErrPort()
+    r = ConnectRenderer(port, lambda *ms: sent.extend(ms))
+    _activate(r)
+    r.queue_add([1])
+    r.queue_add([2])
+    in_flight = r._in_flight[0]
+    sent.clear()
+    err = qp.Error(code="409", message="version mismatch")
+    asyncio.run(r.handle(_echo("queue_error_message", in_flight, error=err)))
+    assert port.errors == ["version mismatch"]
+    assert _cmds(sent) == []  # the pending ADD of [2] was dropped
+    assert any(m.message_type == qp.MESSAGE_TYPE_CTRL_SRVR_ASK_FOR_QUEUE_STATE for m in sent)
+
+
+def test_insert_after_current_item_and_at_front():
+    r, _, sent = _make()
+    _activate(r)
+    r.queue_insert([9], after_item_id=3)
+    cmd = _last_cmd(sent)
+    assert cmd.HasField("insert_after") and cmd.insert_after == 3
+    asyncio.run(r.handle(_echo("queue_tracks_inserted", _last_action(sent))))
+    r.queue_insert([9], after_item_id=None)
+    assert not _last_cmd(sent).HasField("insert_after")
+
+
+def test_own_load_echo_starts_playback_like_an_app_pick():
+    r, port, sent = _make()
+    _activate(r)
+    r.queue_load([700, 701])
+    action = _last_action(sent)
+    loaded = _loaded([700, 701], major=9)
+    loaded.action_uuid = action
+    asyncio.run(r.handle(_msg(srvr_ctrl_queue_tracks_loaded=loaded)))
+    assert port.loaded[-1] == (700, 0.0, True) and r.state == PLAYING
+    assert r._in_flight is None  # the echo released the line
+
+
+def test_radio_replace_targets_the_queue_current_at_send_time():
+    # Menu "Play radio" = load + replace, back to back. The replace must remove
+    # the *new* queue's upcoming items, which only exist after the load echo.
+    r, port, sent = _make()
+    _activate(r)
+    # Old queue: 5 items (upcoming 1..4). New: 3 items (upcoming 1, 2). Different
+    # on purpose — equal lengths would hide a remove computed on the old queue.
+    asyncio.run(r.handle(_msg(srvr_ctrl_queue_tracks_loaded=_loaded([1, 2, 3, 4, 5], major=5))))
+    sent.clear()
+    r.queue_load([800, 801, 802])  # new selection: item 0 = 800, upcoming 1, 2
+    r.queue_replace_upcoming([900, 901])
+    assert _cmds(sent) == ["QUEUE_LOAD_TRACKS"]
+    loaded = _loaded([800, 801, 802], major=6)
+    loaded.action_uuid = _last_action(sent)
+    asyncio.run(r.handle(_msg(srvr_ctrl_queue_tracks_loaded=loaded)))
+    assert _cmds(sent) == ["QUEUE_LOAD_TRACKS", "QUEUE_REMOVE_TRACKS"]
+    assert list(_last_cmd(sent).queue_item_ids) == [1, 2]
+    assert _last_cmd(sent).queue_version_ref.major == 6
+    asyncio.run(r.handle(_echo("queue_tracks_removed", _last_action(sent))))
+    assert _cmds(sent)[-1] == "QUEUE_ADD_TRACKS"
+    assert list(_last_cmd(sent).track_ids) == [900, 901]
+
+
+def test_radio_replace_with_nothing_upcoming_skips_the_remove():
+    r, _, sent = _make()
+    _activate(r)
+    asyncio.run(r.handle(_msg(srvr_ctrl_queue_tracks_loaded=_loaded([1], major=5))))
+    sent.clear()
+    r.queue_replace_upcoming([900])
+    assert _cmds(sent) == ["QUEUE_ADD_TRACKS"]
