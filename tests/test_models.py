@@ -297,3 +297,24 @@ def test_stream_url_quality_formats_non_integer_khz_with_one_decimal():
 def test_stream_url_defaults_bit_depth_to_16_when_missing():
     s = StreamUrl.from_api({"url": "u", "sampling_rate": 44.1})
     assert s.quality_label == "16/44.1"
+
+
+def test_stream_url_sample_flag_defaults_false():
+    assert StreamUrl.from_api({"url": "u", "sampling_rate": 44.1}).sample is False
+
+
+def test_stream_url_detects_preview_sample():
+    # Shape of a real getFileUrl answer for a track the account can't stream.
+    s = StreamUrl.from_api(
+        {
+            "url": "u",
+            "format_id": 5,
+            "mime_type": "audio/mpeg",
+            "sample": True,
+            "duration": 30,
+            "sampling_rate": 44.1,
+            "bit_depth": 16,
+            "restrictions": [{"code": "TrackRestrictedByPurchaseCredentials"}],
+        }
+    )
+    assert s.sample is True
