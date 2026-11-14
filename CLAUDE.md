@@ -110,7 +110,10 @@ src/qobit/
                              self-wires to QobitApp reactives on mount
 ```
 
-Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls).
+Phases 1–9 complete (CLI, TUI shell, library tabs, queue, OS media controls),
+plus Qobuz Connect phases 1–2 (renderer, queue mirror, queue edits from qobit).
+User docs: README (overview) → `docs/usage.md` (keys, tabs) and `docs/audio.md`
+(bit-perfect setup); keep feature detail there, not in the README.
 
 ## Roadmap
 
@@ -362,7 +365,8 @@ manually via `textual console` / a tmux-driven smoke run instead.
 
 ## Phases
 
-1–9 complete. Remaining:
+1–9 complete, plus Qobuz Connect phases 1–2 (see Roadmap for Connect phases
+3–4). Remaining:
 
 10. UI overhaul: Search, AlbumScreen, PlaylistScreen, PlaylistsView
 11. Context menus + TrackScreen detail overlay

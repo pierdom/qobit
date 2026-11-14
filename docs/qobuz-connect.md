@@ -1,5 +1,13 @@
 # Qobuz Connect — how it works and how qobit can speak it
 
+> **Implemented.** This is the protocol reference, written while reverse-
+> engineering it with a throwaway spike. The real implementation lives in
+> `src/qobit/connect/` (shipped in qobit 0.2–0.3: renderer, queue mirror and
+> queue edits from qobit); how it's put together is in
+> [qobuz-connect-design.md](qobuz-connect-design.md). The "Not covered by the
+> spike" and "Integration notes" sections below are kept as the original
+> analysis — most of them are now done.
+
 Status: **spike verified 2026-11-14** (`spikes/qobuz_connect/connect_spike.py`).
 qobit's existing OAuth session is enough to join the user's Connect session as a
 renderer, show up in the official apps' device picker, become active, receive

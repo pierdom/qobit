@@ -35,7 +35,7 @@ past, current and upcoming items, plus a current item. That's exactly
 | `queue_version` (UI refresh counter) | `queue_version{major, minor}` (server-authoritative) |
 | `jump_to(i)` | play `tracks[i]` and report it |
 
-So the Queue tab, `NowPlayingHero`, `TransportBar` and everything downstream of
+So the Playback tab (the Queue view), `NowPlayingHero`, `TransportBar` and everything downstream of
 `_timeline`/`_cursor`/`queue_version` can stay **unchanged**. Only *who writes*
 the timeline changes.
 
@@ -119,7 +119,7 @@ widget learns about Connect.
 Server events carry only `track_id`s. `ConnectPlayContext` keeps a
 `track_id → Track` cache and fetches misses concurrently via
 `client.get_track` (bounded like `_images`' semaphore). The mirror is
-published only once every row is hydrated, so the Queue tab never shows half a
+published only once every row is hydrated, so the Playback tab never shows half a
 queue. Results are discarded if the queue `major` version moved while fetching:
 the same pattern as `_render_version`. Open question: is there a batch track
 endpoint? A 30-track album load is 30 calls today. Measure before optimising.
@@ -220,7 +220,7 @@ ui/play_context.py    PlayContext protocol, LocalPlayContext, ConnectPlayContext
 ## Phasing
 
 1. **Renderer, mirror only.** `connect/` package, `PlayContext` extraction (no
-   behaviour change), CONNECT-ACTIVE lifecycle, mirrored Queue tab, local
+   behaviour change), CONNECT-ACTIVE lifecycle, mirrored Playback tab, local
    transport keys acting on mpv and reporting. Local queue *mutations* while
    active are disabled with a flash ("Queue is controlled by Qobuz Connect").
    Opt-in setting `connect_enabled` (default off). Preview detection.

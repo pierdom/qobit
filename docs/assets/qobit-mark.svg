@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="qobit">
+  <!-- qobit mark: a "q" whose bowl holds a level meter, in the cyberdeck theme's amber -->
+  <rect width="96" height="96" rx="22" fill="#F9BD2F"/>
+  <circle cx="42" cy="42" r="19" fill="none" stroke="#1C1B19" stroke-width="9"/>
+  <rect x="56.5" y="40" width="9" height="40" rx="4.5" fill="#1C1B19"/>
+  <rect x="33" y="38" width="4" height="8" rx="2" fill="#1C1B19"/>
+  <rect x="40" y="33" width="4" height="18" rx="2" fill="#1C1B19"/>
+  <rect x="47" y="36" width="4" height="12" rx="2" fill="#1C1B19"/>
+</svg>
