@@ -292,10 +292,13 @@ _open_album). "Remove from queue" is offered only when the highlighted row is a
 `QueueTrackRow`, and removes by identity so the exact queued instance goes. "Go to
 album" builds a lean `Album` from the track (panel re-fetches the rest); "Go to
 artist" needs a `get_track` round-trip since `Track` carries no `artist_id`.
-Both push their detail screen with the active tab from `_current_tab()` →
-`(tab id, display name)`: the name is the breadcrumb (`source=`), the id is
-`ArtistScreen`'s Escape target (`back_tab=`). Never derive a tab id from a
-display name. Names aren't ids (the Playback tab's id is `queue`), and a bad
+Both push their detail screen with `_origin()` → `(tab id, breadcrumb text)`.
+The id is the main screen's active tab (`screen_stack[0]`: pushed pages have no
+tab bar, and querying the top screen silently fell back to "Tracks"); it's
+`ArtistScreen`'s Escape target (`back_tab=`). The text (`source=`) names the
+page underneath via a `page_title` property: `AlbumScreen`/`ArtistScreen`, or
+the tab's view when an album/artist is open inline (`AlbumsView`,
+`ArtistsView`), else the tab name. Never derive a tab id from a display name. Names aren't ids (the Playback tab's id is `queue`), and a bad
 id crashes Escape with `No Tab with id …`.
 
 **One Connect device per machine**: the device uuid is derived from the

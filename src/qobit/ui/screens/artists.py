@@ -155,6 +155,14 @@ class ArtistsView(Widget):
         """The open artist (detail or one of their albums), for the ``i`` menu."""
         return self._current_artist if self._view != "grid" else None
 
+    @property
+    def page_title(self) -> str | None:
+        """Breadcrumb text for a page opened from this tab (``None``: the tab name)."""
+        if self._view == "album":
+            album = self.query_one("#album-panel", AlbumDetailPanel).album
+            return album.title if album else None
+        return self.page_artist.name if self.page_artist else None
+
     def on_show(self) -> None:
         if not self._loaded:
             self._loaded = True

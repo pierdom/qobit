@@ -105,6 +105,14 @@ class AlbumsView(Widget):
         grid.border_title = "Favourite Albums"
         self._update_subtitle()
 
+    @property
+    def page_title(self) -> str | None:
+        """Breadcrumb text for a page opened from this tab (``None``: the tab name)."""
+        if not self._album_view_active:
+            return None
+        album = self.query_one("#album-panel", AlbumDetailPanel).album
+        return album.title if album else None
+
     def on_show(self) -> None:
         if not self._loaded:
             self._loaded = True

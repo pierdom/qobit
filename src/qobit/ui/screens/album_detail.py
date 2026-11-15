@@ -285,6 +285,11 @@ class AlbumScreen(Screen):
         self._album = album
         self._source = source
 
+    @property
+    def page_title(self) -> str:
+        """Breadcrumb text for a page opened from this one."""
+        return self._album.title
+
     def compose(self) -> ComposeResult:
         # Lazy import avoids a circular dependency: artist_detail imports
         # AlbumDetailPanel from this module at the top level.

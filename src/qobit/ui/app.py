@@ -13,6 +13,7 @@ from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import Hit, Hits, Provider
+from textual.css.query import NoMatches
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
@@ -1398,7 +1399,7 @@ class QobitApp(App[None]):
             tracks_count=0,
             image_url=track.image_url,
         )
-        self.push_screen(AlbumScreen(album, source=self._current_tab()[1]))
+        self.push_screen(AlbumScreen(album, source=self._origin()[1]))
 
     @work
     async def _open_artist(self, track: Track) -> None:
@@ -1415,18 +1416,27 @@ class QobitApp(App[None]):
         if not artist_id:
             self._flash_status("Artist not available")
             return
-        tab_id, name = self._current_tab()
+        tab_id, name = self._origin()
         self.push_screen(ArtistScreen(str(artist_id), source=name, back_tab=tab_id))
 
-    def _current_tab(self) -> tuple[str, str]:
-        """``(tab id, display name)`` of the active tab — the breadcrumb text and
-        the Escape target for a detail screen opened from the context menu."""
-        try:
-            active = self.query_one("#nav-tabs", Tabs).active
-        except Exception:
-            active = ""
+    def _origin(self) -> tuple[str, str]:
+        """Where a page opened from the ``i``/``g`` menu comes from: ``(tab id,
+        breadcrumb text)``. The id is the active tab of the main screen (the
+        artist page's Escape target; pushed pages have no tab bar of their own).
+        The text names the page underneath: an album or artist page, the album
+        or artist open inside a tab, or else the tab itself."""
         names = dict(_TABS)
-        return (active, names[active]) if active in names else ("tracks", "Tracks")
+        base = self.screen_stack[0]
+        try:
+            tab = base.query_one("#nav-tabs", Tabs).active
+        except NoMatches:
+            tab = ""
+        tab = tab if tab in names else "tracks"
+        title = getattr(self.screen, "page_title", None)
+        if title is None and self.screen is base:
+            with contextlib.suppress(NoMatches):
+                title = getattr(base.query_one(f"#view-{tab}"), "page_title", None)
+        return tab, title or names[tab]
 
     def action_seek_back(self) -> None:
         if self._ctx is not self._local_ctx:

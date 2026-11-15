@@ -708,6 +708,16 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
         """The artist this page is about: what the ``i`` menu's follow acts on."""
         return self.query_one(ArtistHeader).artist
 
+    @property
+    def page_title(self) -> str | None:
+        """Breadcrumb text for a page opened from this one: the album open
+        here, else the artist."""
+        if self._album_view_active:
+            album = self.query_one("#album-panel", AlbumDetailPanel).album
+            return album.title if album else None
+        artist = self.page_artist
+        return artist.name if artist else None
+
     def action_navigate_back(self) -> None:
         if self._album_view_active:
             self._show_artist_view()
