@@ -298,7 +298,7 @@ class AlbumsView(Widget):
             artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
         except Exception:
             return
-        if not self.is_mounted:
+        if not self.is_attached:
             return
         with contextlib.suppress(Exception):
             self.query_one(ArtistHeader).populate(artist)

@@ -125,7 +125,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         try:
             playlist = Playlist.from_api(await app._client.get_playlist(self._playlist_id))
         except Exception as e:
-            if self.is_mounted:
+            if self.is_attached:
                 try:
                     self.query_one("#playlist-panel").border_title = "Error"
                     self.query_one(".detail-title", Label).update(f"[red]{escape(str(e))}[/red]")
@@ -133,7 +133,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
                     pass
             return
 
-        if not self.is_mounted:
+        if not self.is_attached:
             return
 
         try:
@@ -162,7 +162,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             return
 
         fav_ids = await app.ensure_favorite_ids()
-        if not self.is_mounted:
+        if not self.is_attached:
             return
 
         try:
@@ -176,7 +176,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         except NoMatches:
             return
 
-        if self.is_mounted:
+        if self.is_attached:
             with contextlib.suppress(NoMatches):
                 self.call_after_refresh(self.query_one(".detail-tracklist", ListView).focus)
 

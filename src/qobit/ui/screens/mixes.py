@@ -237,7 +237,7 @@ class MixesView(NowPlayingViewMixin, Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         tracks = await app.generate_mix()
 
-        if version != self._render_version or not self.is_mounted:
+        if version != self._render_version or not self.is_attached:
             return
 
         if not tracks:
@@ -265,7 +265,7 @@ class MixesView(NowPlayingViewMixin, Widget):
     async def _mount_tracks(
         self, tl: TrackListView, tracks: list[Track], kind: str, version: int
     ) -> None:
-        if version != self._render_version or not self.is_mounted:
+        if version != self._render_version or not self.is_attached:
             return
         name = "DailyQ" if kind == "daily" else "WeeklyQ"
         refreshed = "today" if kind == "daily" else "this week"
@@ -276,7 +276,7 @@ class MixesView(NowPlayingViewMixin, Widget):
         with contextlib.suppress(Exception):
             fav_ids = await self.app.ensure_favorite_ids()  # type: ignore[attr-defined]
 
-        if version != self._render_version or not self.is_mounted:
+        if version != self._render_version or not self.is_attached:
             return
 
         rows = [MixTrackRow(t, i, favorite=t.id in fav_ids) for i, t in enumerate(tracks, 1)]
@@ -286,7 +286,7 @@ class MixesView(NowPlayingViewMixin, Widget):
         except Exception:
             return
 
-        if self.is_mounted:
+        if self.is_attached:
             self.call_after_refresh(tl.focus)
 
     # ── track play ───────────────────────────────────────────────────────────

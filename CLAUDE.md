@@ -212,7 +212,18 @@ skip policy belongs to the caller (`_do_play` locally, the renderer in Connect).
 
 **`_stop_gen` for end-of-track**: `MpvPlayer._stop_gen` increments on every `stop()` call. The poll thread records the gen when running; on transition to not running, equal gen = natural end (advance queue), different gen = stop was called (skip). **Always read both via `MpvPlayer.snapshot()`**: `stop()` bumps the gen and drops `_proc` together under `_state_lock` *before* terminating mpv, so a snapshot is only ever (old gen, running) or (new gen, not running). Reading `running` and `_stop_gen` separately was a real race (stop landing between the reads looked like a natural end and skipped a track). It showed up once Qobuz Connect reloads made stop-then-play frequent.
 
-**Async image-worker guard**: every `@work` art fetcher does `if img is not None and self.is_attached:` then `try: self.query_one(TGPImage).image = img / except NoMatches: pass`. Workers resume after an `await` that may outlive the widget (teardown, sort/reload remount). Use `is_attached` (still in the DOM), **not** `is_mounted`: Textual sets `is_mounted` only after the whole mount sequence, and a fetch started during mount that hits the image cache returns before that, so an `is_mounted` guard silently dropped the art. That's why a screen opened while a track was playing (e.g. the `g` album page) showed no transport-bar art until the next track. Must replicate in any new art-fetch worker.
+**Worker guard: `is_attached`, never `is_mounted`**: every `@work` that
+updates widgets after an `await` checks `self.is_attached` (still in the DOM),
+and art fetchers then do `try: self.query_one(TGPImage).image = img / except
+NoMatches: pass`. Workers resume after an `await` that may outlive the widget
+(teardown, sort/reload remount). Textual sets `is_mounted` only after the whole
+mount sequence, and a worker started in `on_mount` whose fetch hits a cache
+(the client caches albums and artist details; images are cached too) can finish
+before that, so an `is_mounted` guard silently drops the result. Headless runs
+rarely show it; a real Kitty terminal, where mounting image widgets waits on
+the terminal, does: the `g`/`i` album and artist pages lost their artist header
+and album grid whenever the artist was already cached. To reproduce headless,
+make the screen's `on_mount` await briefly. Must replicate in any new worker.
 
 **`_render_version` counter**: each view holds `_render_version: int`, incremented before starting a `@work` load. The worker captures the version at start and discards results if it changed by the time it returns, so stale workers can't overwrite newer results.
 

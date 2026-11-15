@@ -183,12 +183,12 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         try:
             full = Album.from_api(await app._client.get_album(album.id))
         except Exception:
-            if self.is_mounted:
+            if self.is_attached:
                 with contextlib.suppress(NoMatches):
                     self._set_optional(".detail-desc", "[dim]Failed to load album details.[/dim]")
             return
 
-        if not self.is_mounted or self.album is None or self.album.id != full.id:
+        if not self.is_attached or self.album is None or self.album.id != full.id:
             return
         self.album = full
 
@@ -230,7 +230,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
 
         fav_ids = await app.ensure_favorite_ids()
 
-        if not self.is_mounted:
+        if not self.is_attached:
             return
 
         try:
@@ -334,7 +334,7 @@ class AlbumScreen(Screen):
             artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
         except QobuzError:
             return
-        if self.is_mounted:
+        if self.is_attached:
             with contextlib.suppress(NoMatches):
                 self.query_one(ArtistHeader).populate(artist)
 

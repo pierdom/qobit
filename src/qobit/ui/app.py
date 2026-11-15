@@ -606,7 +606,13 @@ class QobitApp(App[None]):
 
     @work
     async def _warm_favorite_ids(self) -> None:
+        """Load the favourites caches up front: track hearts, and the album and
+        artist state the `i` menu labels its toggles with (it would otherwise
+        wait on the first fetch before opening)."""
         await self.ensure_favorite_ids()
+        with contextlib.suppress(QobuzError):
+            await self.ensure_favorite_albums()
+            await self.ensure_favorite_artists()
 
     # ── favourite albums and followed artists ────────────────────────────────
 
@@ -1370,15 +1376,23 @@ class QobitApp(App[None]):
         verb = "Added to" if on else "Removed from"
         self._flash_status(f"{verb} favourites: {track.display_title}")
 
-    def _open_album(self, track: Track) -> None:
+    @work
+    async def _open_album(self, track: Track) -> None:
         from .screens.album_detail import AlbumScreen
 
-        if not track.album_id:
+        album_id, title = track.album_id, track.album
+        if not album_id:
+            # Tracks saved before album ids were backfilled (an older queue)
+            # don't carry one: look it up.
+            with contextlib.suppress(QobuzError):
+                info = (await self._client.get_track(str(track.id))).get("album") or {}
+                album_id, title = str(info.get("id") or ""), info.get("title") or title
+        if not album_id:
             self._flash_status("No album for this track")
             return
         album = Album(
-            id=track.album_id,
-            title=track.album,
+            id=album_id,
+            title=title,
             artist=track.artist,
             year=None,
             tracks_count=0,

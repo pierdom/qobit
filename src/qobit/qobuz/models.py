@@ -132,14 +132,16 @@ class Album:
         tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
         image = data.get("image", {})
         img_url = image.get("large") or image.get("small") or None
-        # Track items nested under an album carry no album image of their own,
-        # so Track.from_api leaves image_url unset. Backfill from the album so
-        # the now-playing art (transport bar, OS media controls) works when a
-        # track is played straight from the album view or its play queue.
-        if img_url:
-            for t in tracks:
-                if not t.image_url:
-                    t.image_url = img_url
+        # Track items nested under an album carry no album of their own, so
+        # Track.from_api leaves image_url, album and album_id unset. Backfill
+        # them from the album: the now-playing art (transport bar, OS media
+        # controls) and "Go to album" need them when a track is played
+        # straight from the album view or its play queue.
+        album_id = str(data["id"])
+        for t in tracks:
+            t.image_url = t.image_url or img_url
+            t.album = t.album or data.get("title", "")
+            t.album_id = t.album_id or album_id
         release = data.get("release_date_original", "") or ""
         year = int(release[:4]) if len(release) >= 4 and release[:4].isdigit() else None
         awards = [
@@ -149,7 +151,7 @@ class Album:
         ]
         artist_data = data.get("artist", {})
         return cls(
-            id=str(data["id"]),
+            id=album_id,
             title=data.get("title", ""),
             artist=artist_data.get("name", ""),
             artist_id=str(artist_data["id"]) if artist_data.get("id") else None,

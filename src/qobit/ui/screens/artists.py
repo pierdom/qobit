@@ -374,7 +374,7 @@ class ArtistsView(Widget):
             artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
         except Exception:
             return
-        if not self.is_mounted:
+        if not self.is_attached:
             return
         try:
             self.query_one(ArtistHeader).populate(artist)
@@ -392,10 +392,10 @@ class ArtistsView(Widget):
             items = await app._client.get_artist_top_tracks(artist_id)
         except Exception:
             return
-        if not items or not self.is_mounted:
+        if not items or not self.is_attached:
             return
         fav_ids = await app.ensure_favorite_ids()
-        if not self.is_mounted:
+        if not self.is_attached:
             return
         try:
             lv = self.query_one("#top-tracks", ListView)

@@ -305,7 +305,7 @@ class NowPlayingHero(Widget):
         if not t:
             return
         ids = await app.ensure_favorite_ids()
-        if self.is_mounted and app.now_playing is t:
+        if self.is_attached and app.now_playing is t:
             self._favorite = str(t.id) in ids
             self._render_meta()
 
@@ -327,7 +327,7 @@ class NowPlayingHero(Widget):
         if not t:
             return
         self._favorite = await app.toggle_favorite(t)
-        if self.is_mounted:
+        if self.is_attached:
             self._render_meta()
 
     @work
