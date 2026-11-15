@@ -108,8 +108,6 @@ class QobuzError(Exception):
 class AuthExpiredError(QobuzError):
     """Raised when the Qobuz session token is no longer valid (HTTP 401)."""
 
-    pass
-
 
 class QobuzClient:
     def __init__(
@@ -507,55 +505,4 @@ class QobuzClient:
             playlist_id=playlist_id,
             extra="tracks",
             limit=500,
-        )
-
-    # --- playlist write ---
-
-    async def create_playlist(
-        self,
-        name: str,
-        description: str = "",
-        is_public: bool = False,
-        track_ids: list[str] | None = None,
-    ) -> dict:
-        result = await self._post(
-            "playlist/create",
-            name=name,
-            description=description,
-            is_public="true" if is_public else "false",
-        )
-        if track_ids:
-            await self.add_tracks_to_playlist(str(result["id"]), track_ids)
-        return result
-
-    async def update_playlist(
-        self,
-        playlist_id: str,
-        name: str | None = None,
-        description: str | None = None,
-        is_public: bool | None = None,
-    ) -> dict:
-        data: dict[str, Any] = {"playlist_id": playlist_id}
-        if name is not None:
-            data["name"] = name
-        if description is not None:
-            data["description"] = description
-        if is_public is not None:
-            data["is_public"] = "true" if is_public else "false"
-        return await self._post("playlist/update", **data)
-
-    async def add_tracks_to_playlist(self, playlist_id: str, track_ids: list[str]) -> dict:
-        return await self._post(
-            "playlist/addTracks",
-            playlist_id=playlist_id,
-            track_ids=",".join(str(t) for t in track_ids),
-        )
-
-    async def remove_tracks_from_playlist(
-        self, playlist_id: str, playlist_track_ids: list[str]
-    ) -> dict:
-        return await self._post(
-            "playlist/deleteTracks",
-            playlist_id=playlist_id,
-            playlist_track_ids=",".join(str(t) for t in playlist_track_ids),
         )

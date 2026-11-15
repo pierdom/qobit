@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.console import Group
@@ -259,7 +260,5 @@ class TransportBar(Widget):
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
         if img is not None and self.is_attached:
-            try:
+            with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
-            except NoMatches:
-                pass

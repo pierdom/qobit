@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 from datetime import date
 from typing import TYPE_CHECKING, Literal
@@ -70,10 +71,8 @@ class MixCard(Widget):
         yield Label("", classes="mix-status")
 
     def update_status(self, track_count: int) -> None:
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one(".mix-status", Label).update(f"{track_count} tracks")
-        except NoMatches:
-            pass
 
     def on_click(self) -> None:
         self.post_message(MixCard.Selected(self._kind))
@@ -236,7 +235,7 @@ class MixesView(NowPlayingViewMixin, Widget):
             return
 
         app: QobitApp = self.app  # type: ignore[assignment]
-        tracks = await app.generate_mix(kind)
+        tracks = await app.generate_mix()
 
         if version != self._render_version or not self.is_mounted:
             return
@@ -274,10 +273,8 @@ class MixesView(NowPlayingViewMixin, Widget):
         tl.border_subtitle = f"refreshed {refreshed}"
 
         fav_ids: set[str] = set()
-        try:
+        with contextlib.suppress(Exception):
             fav_ids = await self.app.ensure_favorite_ids()  # type: ignore[attr-defined]
-        except Exception:
-            pass
 
         if version != self._render_version or not self.is_mounted:
             return

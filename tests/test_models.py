@@ -283,20 +283,19 @@ def test_stream_url_from_api_converts_khz_to_hz():
     assert s.sampling_rate == 192000.0
 
 
-def test_stream_url_quality_label_and_badge():
+def test_stream_url_quality_badge():
     s = StreamUrl.from_api({"url": "u", "sampling_rate": 192, "bit_depth": 24})
-    assert s.quality_label == "24/192"
     assert s.quality_badge == "[ 24-BIT · 192 kHz ]"
 
 
 def test_stream_url_quality_formats_non_integer_khz_with_one_decimal():
     s = StreamUrl.from_api({"url": "u", "sampling_rate": 44.1, "bit_depth": 16})
-    assert s.quality_label == "16/44.1"
+    assert s.quality_badge == "[ 16-BIT · 44.1 kHz ]"
 
 
 def test_stream_url_defaults_bit_depth_to_16_when_missing():
     s = StreamUrl.from_api({"url": "u", "sampling_rate": 44.1})
-    assert s.quality_label == "16/44.1"
+    assert s.quality_badge == "[ 16-BIT · 44.1 kHz ]"
 
 
 def test_stream_url_sample_flag_defaults_false():

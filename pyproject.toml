@@ -5,14 +5,30 @@ build-backend = "hatchling.build"
 [project]
 name = "qobit"
 version = "0.4.0"
-description = "Bit-perfect Qobuz TUI client"
+description = "A bit-perfect Qobuz client with a terminal UI"
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Piero Fiadino" }]
+keywords = ["qobuz", "hi-res", "flac", "bit-perfect", "tui", "textual", "mpv", "music-player"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Players",
+]
 dependencies = [
-    "httpx>=0.27",
-    "textual>=0.80",
-    "textual-image>=0.7",
-    "pillow>=10.0",
+    "httpx>=0.28",
+    "textual>=8.2",
+    "textual-image>=0.12",
+    "pillow>=11.0",
     # Qobuz Connect (connect/): cloud websocket + protobuf messages. The
     # generated *_pb2.py check the runtime at import, hence the floor.
     "protobuf>=7.36.1",
@@ -25,6 +41,12 @@ dependencies = [
     "PyGObject>=3.50; sys_platform == 'linux'",
 ]
 
+[project.urls]
+Homepage = "https://github.com/pierdom/qobit"
+Repository = "https://github.com/pierdom/qobit"
+Issues = "https://github.com/pierdom/qobit/issues"
+Changelog = "https://github.com/pierdom/qobit/blob/main/CHANGELOG.md"
+
 [project.scripts]
 qobit = "qobit.__main__:main"
 
@@ -32,15 +54,28 @@ qobit = "qobit.__main__:main"
 packages = ["src/qobit"]
 
 [dependency-groups]
-dev = ["ruff>=0.4", "textual-dev>=0.80", "pytest>=8.0"]
+dev = ["ruff>=0.4", "textual-dev>=1.7", "pytest>=8.0"]
 
 [tool.ruff]
 line-length = 100
-# protoc output (connect/proto) and the spike's local regen dir.
-extend-exclude = ["src/qobit/connect/proto", "spikes/qobuz_connect/pb"]
+# Generated protobuf code, and spikes/: a frozen, throwaway experiment kept as
+# the record of how the Qobuz Connect protocol was worked out.
+extend-exclude = ["src/qobit/connect/proto", "spikes"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = [
+    "E", "F", "I",  # pycodestyle, pyflakes, isort
+    "B",            # likely bugs
+    "UP",           # modern syntax
+    "SIM",          # simplifications
+    "RET",          # consistent returns
+    "PIE", "C4",    # small idioms
+    "RUF",          # ruff-specific
+]
+ignore = [
+    "RUF012",                      # Textual's BINDINGS/CSS class attributes are lists by design
+    "RUF001", "RUF002", "RUF003",  # intentional glyphs (♥ ▶ ⏸ · —) in strings and comments
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

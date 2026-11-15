@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -169,10 +170,8 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
         if img is not None and self.is_attached:
-            try:
+            with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
-            except NoMatches:
-                pass
 
     @work
     async def _fetch_full_album(self, album: Album) -> None:
@@ -181,10 +180,8 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
             full = Album.from_api(await app._client.get_album(album.id))
         except Exception:
             if self.is_mounted:
-                try:
+                with contextlib.suppress(NoMatches):
                     self._set_optional(".detail-desc", "[dim]Failed to load album details.[/dim]")
-                except NoMatches:
-                    pass
             return
 
         if not self.is_mounted:
@@ -333,10 +330,8 @@ class AlbumScreen(Screen):
         except QobuzError:
             return
         if self.is_mounted:
-            try:
+            with contextlib.suppress(NoMatches):
                 self.query_one(ArtistHeader).populate(artist)
-            except NoMatches:
-                pass
 
     @on(events.Click, "#breadcrumb")
     def _on_breadcrumb_click(self) -> None:

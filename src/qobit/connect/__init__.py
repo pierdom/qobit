@@ -23,7 +23,7 @@ def acquire_instance_lock(path: str) -> IO[str] | None:
     (derived from the hostname): when either leaves, the server drops the
     device for both — verified live — so only one may join. flock is released
     by the OS if the holder dies, so a crash can't leave a stale lock."""
-    fh = open(path, "w")  # noqa: SIM115 — held open for the session's lifetime
+    fh = open(path, "w")  # noqa: SIM115 — held open: the open file *is* the lock
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:

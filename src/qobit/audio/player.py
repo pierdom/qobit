@@ -1,3 +1,4 @@
+import contextlib
 import json
 import platform
 import socket
@@ -146,10 +147,8 @@ class MpvPlayer:
 
     def _close_conn_locked(self) -> None:
         if self._conn is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._conn.close()
-            except Exception:
-                pass
             self._conn = None
         self._recv_buf = b""
 

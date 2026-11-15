@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.widgets import Label, ListView
@@ -45,10 +47,8 @@ class NowPlayingRowMixin:
         self._refresh_primary()
 
     def _refresh_primary(self) -> None:
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one(".row-title", Label).update(self._primary())  # type: ignore[attr-defined]
-        except NoMatches:
-            pass
 
 
 class NowPlayingViewMixin:
@@ -78,10 +78,8 @@ class NowPlayingViewMixin:
         # O(1): clear the previously-playing row via stored reference.
         prev = self._np_playing_row
         if prev is not None:
-            try:
+            with contextlib.suppress(Exception):
                 prev.set_playing(False)  # type: ignore[attr-defined]
-            except Exception:
-                pass
             self._np_playing_row = None
 
         if now_id is None:

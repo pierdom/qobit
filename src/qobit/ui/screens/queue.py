@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.text import Text
@@ -330,10 +331,8 @@ class NowPlayingHero(Widget):
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
         if img is not None and self.is_attached:
-            try:
+            with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
-            except NoMatches:
-                pass
 
 
 class QueueView(Widget):
@@ -397,10 +396,8 @@ class QueueView(Widget):
 
     def _on_paused_changed(self, paused: bool) -> None:
         # Flip the now-playing row's ▶/⏸ icon in place (no list re-render).
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one(NowPlayingListRow).set_paused(paused)
-        except NoMatches:
-            pass
 
     def action_clear_queue(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]

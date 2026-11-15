@@ -1,7 +1,7 @@
 """Play contexts — who is allowed to change ``QobitApp``'s timeline.
 
 ``QobitApp._timeline`` + ``_cursor`` is the one play context every widget
-reads (Queue tab, NowPlayingHero, TransportBar). *Writing* it goes through a
+reads (Playback tab, NowPlayingHero, TransportBar). *Writing* it goes through a
 context object, so a second owner can exist without touching the readers:
 
 - ``LocalPlayContext`` — qobit owns the queue (the behaviour that predates
@@ -167,7 +167,7 @@ class ConnectPlayContext:
     def active(self) -> bool:
         return self.renderer.active
 
-    async def _on_message(self, m) -> None:  # noqa: ANN001 — QConnectMessage
+    async def _on_message(self, m) -> None:
         await self.renderer.handle(m)
 
     def _on_status(self, status: str) -> None:
@@ -192,7 +192,7 @@ class ConnectPlayContext:
         cur = self.app._cursor
         return [
             iid
-            for i, (iid, auto) in enumerate(zip(self._item_ids, self._autoplay_rows))
+            for i, (iid, auto) in enumerate(zip(self._item_ids, self._autoplay_rows, strict=True))
             if i > cur and (include_autoplay or not auto)
         ]
 
@@ -322,7 +322,7 @@ class ConnectPlayContext:
 
     async def queue_changed(self, queue: ServerQueue, current_item_id: int) -> None:
         """Rebuild the mirror (app._timeline/_cursor) from the server queue.
-        Hydrates track ids to Tracks first so the Queue tab never shows half a
+        Hydrates track ids to Tracks first so the Playback tab never shows half a
         queue; a newer rebuild started meanwhile wins (generation guard)."""
         self._mirror_gen += 1
         gen = self._mirror_gen
@@ -330,7 +330,7 @@ class ConnectPlayContext:
         tracks = await asyncio.gather(*(self._track(it.track_id) for it in order))
         if gen != self._mirror_gen or not self.renderer.active:
             return
-        rows = [(it, t) for it, t in zip(order, tracks) if t is not None]
+        rows = [(it, t) for it, t in zip(order, tracks, strict=True) if t is not None]
         self._item_ids = [it.item_id for it, _ in rows]
         self._autoplay_rows = [it.autoplay for it, _ in rows]
         app = self.app

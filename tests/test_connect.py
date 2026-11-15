@@ -305,7 +305,7 @@ def test_structural_queue_events_trigger_a_snapshot_request():
 
 
 def test_volume_commands_are_ignored_for_bit_perfect():
-    r, port, sent = _make()
+    r, _, sent = _make()
     _activate(r)
     sent.clear()
     asyncio.run(r.handle(_msg(srvr_rndr_set_volume=qp.SrvrRndrSetVolume(volume=10))))
@@ -324,7 +324,7 @@ def test_losing_active_stops_audio_and_stops_reporting():
 
 
 def test_local_toggle_pause_and_seek_report_to_the_server():
-    r, port, sent = _make()
+    r, _, sent = _make()
     _activate(r)
     asyncio.run(r.handle(_set_state(playing_state=PLAYING, current_track=_ref(0, 111))))
     sent.clear()
@@ -563,7 +563,7 @@ def test_own_load_echo_starts_playback_like_an_app_pick():
 def test_radio_replace_targets_the_queue_current_at_send_time():
     # Menu "Play radio" = load + replace, back to back. The replace must remove
     # the *new* queue's upcoming items, which only exist after the load echo.
-    r, port, sent = _make()
+    r, _, sent = _make()
     _activate(r)
     # Old queue: 5 items (upcoming 1..4). New: 3 items (upcoming 1, 2). Different
     # on purpose — equal lengths would hide a remove computed on the old queue.

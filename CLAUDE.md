@@ -331,7 +331,7 @@ as it bumps `queue_version` (it must anyway). The app opens on the Playback tab.
 
 **Song radio** (`get_dynamic_suggestions`): `POST dynamic/suggest`, JSON body sent as `text/plain;charset=UTF-8` (same quirk as OAuth `user/login`). Body fields: `limit`, `listened_tracks_ids` (int ids), `track_to_analysed` (`[{track_id, artist_id, label_id, genre_id}]`). Response: `{"tracks": {"items": [...]}}`. Reverse-engineered from HAR; not in official docs.
 
-`generate_mix(kind)` (`QobitApp`) is the same `dynamic/suggest` call reused for DailyQ/WeeklyQ: seeds up to 50 tracks from recent history + favourites, enriches a spread of up to 12 with `track_to_analysed` metadata, and `mixes.py` caches the result in `mixes_cache.json` keyed by day (`daily`) or ISO year-week (`weekly`) so reopening the tab within the same period doesn't regenerate.
+`generate_mix()` (`QobitApp`) is the same `dynamic/suggest` call reused for DailyQ/WeeklyQ: seeds up to 50 tracks from recent history + favourites, enriches a spread of up to 12 with `track_to_analysed` metadata, and `mixes.py` caches the result in `mixes_cache.json` keyed by day (`daily`) or ISO year-week (`weekly`) so reopening the tab within the same period doesn't regenerate.
 
 ## Image protocol
 
@@ -356,7 +356,7 @@ uv run qobit auth          # authenticate once
 uv run qobit devices       # check audio device list
 uv run qobit play "test"   # smoke test CLI playback
 uv run qobit               # launch TUI
-uv run ruff check .
+uv run ruff check .        # rules in pyproject.toml; spikes/ and proto/ excluded
 uv run ruff format .
 uv run pytest              # unit tests — models, config/store, client auth,
                             # image cache, app timeline+cursor logic,

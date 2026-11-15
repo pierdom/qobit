@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from textual import events, on, work
@@ -290,10 +291,8 @@ class AlbumsView(Widget):
             return
         if not self.is_mounted:
             return
-        try:
+        with contextlib.suppress(Exception):
             self.query_one(ArtistHeader).populate(artist)
-        except Exception:
-            pass
 
     # ── navigation ───────────────────────────────────────────────────────────
 

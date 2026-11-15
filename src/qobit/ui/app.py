@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import time
 from functools import lru_cache
@@ -56,7 +57,7 @@ class _TransparentANSIToTruecolor(_ANSIToTruecolor):
     """ANSIToTruecolor that preserves ansi_default backgrounds so the
     terminal's own background (transparency/blur) shows through."""
 
-    @lru_cache(1024)
+    @lru_cache(1024)  # noqa: B019 — as in Textual's ANSIToTruecolor; lives as long as the app
     def truecolor_style(self, style: _RichStyle, background: _RichColor) -> _RichStyle:
         terminal_theme = self._terminal_theme
         changed = False
@@ -496,10 +497,9 @@ class QobitApp(App[None]):
             return
         self._tabs_compact = compact
         for n, (tid, name) in enumerate(_TABS, 1):
-            try:
+            # Not composed yet on the first resize; on_mount runs this again.
+            with contextlib.suppress(Exception):
                 self.query_one(f"#{tid}", Tab).label = _tab_label(n, name, compact)
-            except Exception:
-                pass  # not composed yet; on_mount runs this again
 
     def action_switch_tab(self, tab_id: str) -> None:
         self.query_one("#nav-tabs", Tabs).active = tab_id
@@ -539,10 +539,8 @@ class QobitApp(App[None]):
         self._hl_item = event.item
 
     def _focus_search_input(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.query_one("#search-input").focus()
-        except Exception:
-            pass
 
     # ── favourite tracks (heart glyph in track lists) ─────────────────────────
 
@@ -595,10 +593,8 @@ class QobitApp(App[None]):
         except Exception:
             self.status_msg = "Couldn't update favourite"
             return tid in ids
-        try:
+        with contextlib.suppress(Exception):
             self.query_one(TracksView).favorite_changed(tid, new_state)
-        except Exception:
-            pass
         # Refresh the Queue so hearts on history/now-playing/up-next rows update.
         self.queue_version += 1
         return new_state
@@ -691,7 +687,7 @@ class QobitApp(App[None]):
     @work
     async def jump_to(self, index: int) -> None:
         """Move the cursor to any position on the timeline and play it. This is
-        how the Queue view skips back and forth without dropping tracks."""
+        how the Playback tab skips back and forth without dropping tracks."""
         await self._ctx.jump_to(index)
 
     # Timeline mutators delegate to the active play context (ui/play_context.py):
@@ -882,18 +878,18 @@ class QobitApp(App[None]):
             out.append(track)
         return out
 
-    async def generate_mix(self, kind: str) -> list[Track]:
-        """Generate a DailyQ / WeeklyQ from history + favourites via dynamic/suggest.
+    async def generate_mix(self) -> list[Track]:
+        """Generate a mix from history + favourites via dynamic/suggest. DailyQ
+        and WeeklyQ use the same recipe; MixesView only caches them for a day
+        and a week respectively.
 
         Seeds up to 50 tracks from recent history (most-recent-first) topped up
         with favourites.  A spread of up to 12 seeds is enriched with
         artist/label/genre metadata for the `track_to_analysed` payload.  Returns
         an empty list when there are no seeds or the API fails."""
         fav_tracks: list[Track] = []
-        try:
+        with contextlib.suppress(Exception):
             fav_tracks = await self.ensure_favorite_tracks()
-        except Exception:
-            pass
 
         seen: set[str] = set()
         seeds: list[Track] = []
@@ -1070,7 +1066,7 @@ class QobitApp(App[None]):
         track = self.now_playing
         if track is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             save_state(
                 _PLAYER_STATE_FILE,
                 {
@@ -1079,8 +1075,6 @@ class QobitApp(App[None]):
                     "duration": float(self.playback_dur),
                 },
             )
-        except Exception:
-            pass
 
     def _restore_player_state(self) -> None:
         """Reload the last session: the whole queue (timeline + cursor) and the
@@ -1134,7 +1128,7 @@ class QobitApp(App[None]):
     def _save_queue_state(self) -> None:
         if self._restoring:
             return
-        try:
+        with contextlib.suppress(Exception):
             save_state(
                 _QUEUE_STATE_FILE,
                 {
@@ -1142,8 +1136,6 @@ class QobitApp(App[None]):
                     "cursor": self._cursor,
                 },
             )
-        except Exception:
-            pass
 
     def watch_queue_version(self, _: int) -> None:
         # Every timeline/cursor change bumps queue_version (local edits, Connect
@@ -1351,12 +1343,10 @@ class QobitApp(App[None]):
         if ctx is not None and ctx.active and self.is_playing and not self.is_paused:
             ctx.renderer.report()
 
-    def action_focus_search(self) -> None:
-        self.query_one(Tabs).active = "search"
-
     def _refresh_truecolor_filter(self, theme: object) -> None:
         if not getattr(self, "_transparent", False) or self.native_ansi_color:
-            return super()._refresh_truecolor_filter(theme)  # type: ignore[misc]
+            super()._refresh_truecolor_filter(theme)  # type: ignore[misc]
+            return
         for index, flt in enumerate(self._filters):
             if isinstance(flt, _ANSIToTruecolor):
                 self._filters[index] = _TransparentANSIToTruecolor(theme, enabled=True)

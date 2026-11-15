@@ -14,10 +14,8 @@ def _khz_str(khz: float) -> str:
 class StreamUrl:
     url: str
     format_id: int
-    mime_type: str
-    sampling_rate: float
+    sampling_rate: float  # Hz
     bit_depth: int | None
-    file_size: int | None = None
     # True when Qobuz answered with a ~30 s MP3 preview instead of the real file
     # (e.g. restriction TrackRestrictedByPurchaseCredentials). It's returned at
     # *every* requested quality, so a quality fallback never escapes it — and
@@ -29,17 +27,10 @@ class StreamUrl:
         return cls(
             url=data["url"],
             format_id=data.get("format_id", 6),
-            mime_type=data.get("mime_type", "audio/flac"),
             sampling_rate=float(data.get("sampling_rate", 44.1)) * 1000,
             bit_depth=data.get("bit_depth"),
-            file_size=data.get("file_size"),
             sample=bool(data.get("sample", False)),
         )
-
-    @property
-    def quality_label(self) -> str:
-        bd = self.bit_depth or 16
-        return f"{bd}/{_khz_str(self.sampling_rate / 1000)}"
 
     @property
     def quality_badge(self) -> str:

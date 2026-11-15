@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -176,19 +177,15 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             return
 
         if self.is_mounted:
-            try:
+            with contextlib.suppress(NoMatches):
                 self.call_after_refresh(self.query_one(".detail-tracklist", ListView).focus)
-            except NoMatches:
-                pass
 
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
         if img is not None and self.is_attached:
-            try:
+            with contextlib.suppress(NoMatches):
                 self.query_one(".detail-art", TGPImage).image = img
-            except NoMatches:
-                pass
 
     @on(ListView.Selected, ".detail-tracklist")
     def _on_selected(self, event: ListView.Selected) -> None:
