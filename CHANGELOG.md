@@ -18,6 +18,7 @@ release from this entry.
 - Similar artists on the artist page: in the Albums & EPs panel (`t` or a
   click on the panel title switches), and as a short list beside the bio from
   128 columns. `♥` marks artists you follow.
+- The `i` and `g` menus wrap around: up on the first option goes to the last.
 
 ### Fixed
 

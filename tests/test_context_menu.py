@@ -38,3 +38,29 @@ def test_album_and_artist_options():
     assert album_option(False) == ("favorite_album", "♡", "Add album to favourites")
     assert artist_option(True) == ("follow_artist", "♥", "Unfollow artist")
     assert artist_option(False) == ("follow_artist", "♡", "Follow artist")
+
+
+def test_menu_options_wrap_around():
+    """Up on the first option goes to the last; down on the last to the first."""
+    import asyncio
+
+    from textual.app import App
+
+    from qobit.ui.screens.context_menu import ContextMenu
+
+    options = track_options(favorite=False)
+
+    async def run():
+        app = App()
+        async with app.run_test() as pilot:
+            app.push_screen(ContextMenu("Title", "Artist", options))
+            await pilot.pause()
+            lv = app.screen.query_one("#menu-options")
+            assert lv.index == 0
+            await pilot.press("up")
+            last = lv.index
+            await pilot.press("down")
+            return last, lv.index
+
+    last, first = asyncio.run(run())
+    assert (last, first) == (len(options) - 1, 0)
