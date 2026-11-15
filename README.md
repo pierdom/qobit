@@ -104,6 +104,7 @@ qobit --connect-on          # start with Qobuz Connect enabled for this run
 | Qobuz Connect protocol notes | [docs/qobuz-connect.md](docs/qobuz-connect.md) |
 | Qobuz Connect implementation | [docs/qobuz-connect-design.md](docs/qobuz-connect-design.md) |
 | Changes | [CHANGELOG.md](CHANGELOG.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Notes for working on the code | [CLAUDE.md](CLAUDE.md) |
 
 ## Development
