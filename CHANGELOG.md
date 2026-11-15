@@ -16,9 +16,9 @@ release from this entry.
 
 ### Changed
 
-- Documentation rewritten: a compact README (Qobuz Connect now front and
-  centre) with the detail moved to `docs/usage.md` (every key, each tab) and
-  `docs/audio.md` (bit-perfect setup, quality, verification). New logo.
+- Documentation rewritten: a shorter README, with the detail moved to
+  `docs/usage.md` (every key, each tab) and `docs/audio.md` (bit-perfect setup,
+  quality, verification). New logo.
 
 ### Fixed
 
