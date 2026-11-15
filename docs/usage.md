@@ -72,8 +72,9 @@ current track and what you've recently heard. **Endless radio** (`Ctrl+P` →
 persists.
 
 **Mixes** (`6`) builds a personal **DailyQ** (`d`) and **WeeklyQ** (`w`) from
-your listening history and favourites, cached for a day and a week. A brand-new
-account needs some listening first.
+your listening history and favourites, cached for a day and a week. You can also
+pick a card with `Tab` or `←` `→` and open it with `Enter`; `↓` moves to its
+tracks. A brand-new account needs some listening first.
 
 ## Search (`7`)
 

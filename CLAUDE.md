@@ -83,7 +83,8 @@ src/qobit/
     │   │                    (Date Added/Artist/Title/Album), full pagination,
     │   │                    lazy load, in-border live filter (/)
     │   ├── playlists.py     PlaylistsView — user playlists library tab
-    │   ├── mixes.py         MixesView — DailyQ/WeeklyQ: two MixCards (d/w) +
+    │   ├── mixes.py         MixesView — DailyQ/WeeklyQ: two focusable MixCards
+    │   │                    (d/w, or Tab/←→ + Enter) +
     │   │                    a track list; generated via QobitApp.generate_mix()
     │   │                    (history + favourites seeds → get_dynamic_suggestions)
     │   │                    and cached a day/ISO-week at a time in
@@ -104,7 +105,8 @@ src/qobit/
         ├── lists.py         PagedListView — ListView subclass binding PageUp/
         │                    PageDown/Home/End to move the highlighted selection
         │                    (scrolling to follow it) rather than scrolling past
-        │                    a stationary cursor. Used by Tracks + Queue lists.
+        │                    a stationary cursor; set_rows() mounts long lists
+        │                    lazily (see "Lazy mounting"). Used by Tracks + Queue.
         └── transport.py     TransportBar — album art + label + album +
                              progress bar; clicking title/album row toggles
                              pause, clicking progress row seeks; _TransportContent
@@ -256,11 +258,27 @@ is one shared style for all three: cards carry the `grid-card` class and labels
 `card-primary` / `card-secondary`; the rules live once in `QobitApp.CSS`. Never
 add per-card `.-selected` rules back.
 
-**Filter by hide/show, not remount (image grids)**: `AlbumGrid/ArtistGrid.filter_cards(ids)` toggles `card.display` on already-mounted cards so Kitty images are never re-transmitted. `_visible_cards` skips hidden cards during cursor navigation. Remount is reserved for data load and sort only.
+**Filter by hide/show, not remount (image grids)**: `AlbumGrid/ArtistGrid.filter_cards(ids)` toggles `card.display` on already-mounted cards so Kitty images are never re-transmitted. `_visible_cards` skips hidden cards during cursor navigation. Remount is reserved for data load and sort only. A filter first mounts any cards still in the lazy backlog, so matches that weren't drawn yet are found.
+
+**Lazy mounting (no caps)**: mounting gets slower the more a container already
+holds (track rows ~0.3 s per 200, ~4.5 s for 2000; grid cards ~0.6 s for 200,
+~6 s for 1000). Long lists and the library grids therefore mount a first page
+and keep the rest as a backlog: `PagedListView.set_rows` (200 rows) and
+`_GridNav.set_cards` (60 cards) mount the next page when the cursor, or the
+scroll position, gets near the end; End mounts everything and jumps to the real
+last item. Code that needs the whole list reads `PagedListView.rows` (mounted +
+backlog), e.g. the Tracks tab's play queue and unfavourite removal. There used
+to be a hard 200-item cap here, which hid most of a large library; don't
+reintroduce one.
+
+**Tab activation, not `on_show`**: `QobitApp._on_tab_activated` calls the
+view's `activate()` (first load + focus). Views used `on_show`, but after End on
+a long Tracks list Textual stopped sending Show to the next tab, which then
+never loaded. New tab views implement `activate()`.
 
 **`Content.assemble` for safe label text**: track rows use `Content.assemble(text, heart_suffix(favorite))` (`ui/_now_playing.py`) rather than Rich markup strings. Titles containing `[`/`]` corrupt markup-parsed labels; `Content` parts are literal, so they can't crash the render. `heart_suffix()` is the one place the `♥` tuple is built; every *TrackRow class across screens/ calls it instead of hand-rolling `(f"  {ICON_FAV}", "$accent")`.
 
-**Favourites single source of truth**: `QobitApp.ensure_favorite_tracks()` fetches exactly once (double-checked `_fav_lock`). `ensure_favorite_ids()` derives the id set from it. `toggle_favorite` updates both caches and surgically patches `TracksView` so no tab ever re-fetches.
+**Favourites single source of truth**: `QobitApp.ensure_favorite_tracks()` fetches exactly once (double-checked `_fav_lock`). `ensure_favorite_ids()` derives the id set from it. `toggle_favorite` updates both caches and surgically patches `TracksView` so no tab ever re-fetches. Favourite albums and followed artists work the same way (`ensure_favorite_albums/artists`, each with its own lock so the three lists load in parallel at startup; the Albums and Artists tabs read them).
 
 **TransportBar / NowPlayingHero self-wiring**: `on_mount` calls `self.watch(app, "reactive", callback, init=True)` for each `QobitApp` reactive. Any instance placed anywhere in the widget tree is automatically live with no `sync_*` calls from screens. Textual allows one label per border edge (`border_title` top-left, `border_subtitle` bottom-right).
 

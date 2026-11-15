@@ -411,6 +411,8 @@ class QobitApp(App[None]):
         # Albums and Artists tabs and the `i` menu, kept in sync by the toggles.
         self._fav_albums: list[Album] | None = None
         self._fav_artists: list[Artist] | None = None
+        self._fav_albums_lock = asyncio.Lock()  # one lock per list: they load in parallel
+        self._fav_artists_lock = asyncio.Lock()
         # Prevents two concurrent _advance_queue calls from both seeing an empty
         # queue and both fetching radio + starting playback.
         self._advance_lock = asyncio.Lock()
@@ -493,6 +495,12 @@ class QobitApp(App[None]):
         self.query_one(ContentSwitcher).current = f"view-{event.tab.id}"
         if event.tab.id == "search":
             self._focus_search_input()
+        # Tell the view directly rather than relying on its Show event: after
+        # End on a long list Textual sometimes never sent Show to the next tab,
+        # which then never loaded.
+        view = self.query_one(f"#view-{event.tab.id}")
+        if hasattr(view, "activate"):
+            self.call_after_refresh(view.activate)
 
     def on_resize(self, event: events.Resize) -> None:
         self._fit_tab_labels(event.size.width)
@@ -610,16 +618,18 @@ class QobitApp(App[None]):
         """Load the favourites caches up front: track hearts, and the album and
         artist state the `i` menu labels its toggles with (it would otherwise
         wait on the first fetch before opening)."""
-        await self.ensure_favorite_ids()
-        with contextlib.suppress(QobuzError):
-            await self.ensure_favorite_albums()
-            await self.ensure_favorite_artists()
+        await asyncio.gather(
+            self.ensure_favorite_ids(),
+            self.ensure_favorite_albums(),
+            self.ensure_favorite_artists(),
+            return_exceptions=True,  # a failed list is fetched again on first use
+        )
 
     # ── favourite albums and followed artists ────────────────────────────────
 
     async def ensure_favorite_albums(self) -> list[Album]:
         """Favourite albums, fetched once. Raises on failure (nothing cached)."""
-        async with self._fav_lock:
+        async with self._fav_albums_lock:
             if self._fav_albums is None:
                 raw = await self._client.get_all_favorite_albums()
                 self._fav_albums = [Album.from_api(r) for r in raw]
@@ -627,7 +637,7 @@ class QobitApp(App[None]):
 
     async def ensure_favorite_artists(self) -> list[Artist]:
         """Followed (favourite) artists, fetched once. Raises on failure."""
-        async with self._fav_lock:
+        async with self._fav_artists_lock:
             if self._fav_artists is None:
                 raw = await self._client.get_all_favorite_artists()
                 self._fav_artists = [Artist.from_api(r) for r in raw]

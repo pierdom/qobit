@@ -13,7 +13,7 @@ from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import Screen
 from textual.timer import Timer
-from textual.widget import Widget
+from textual.widget import AwaitMount, Widget
 from textual.widgets import ContentSwitcher, Footer, Label, ListItem, ListView
 from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
@@ -181,6 +181,9 @@ class AlbumCard(Widget):
         self.post_message(AlbumCard.Selected(self._album))
 
 
+_GRID_PAGE = 60  # cards per lazy mount (see _GridNav.set_cards)
+
+
 class _GridNav:
     """Shared Page/Home/End navigation, plus viewport-lazy art loading, for the
     card grids.
@@ -202,6 +205,35 @@ class _GridNav:
     re-transmitted."""
 
     _art_sync_timer: Timer | None = None
+    _backlog: list[Widget] | None = None
+
+    # ── lazy mounting ────────────────────────────────────────────────────────
+    # Mounting cards gets slower the more a grid already holds (~0.6 s for 200,
+    # ~6 s for 1000), so ``set_cards`` mounts a first page and keeps the rest,
+    # mounted a page at a time as the cursor or scroll position nears the end.
+
+    async def clear_cards(self) -> None:
+        self._backlog = None
+        await self.remove_children()  # type: ignore[attr-defined]
+
+    async def set_cards(self, cards: list[Widget]) -> None:
+        """Fill an empty grid: the first page now, the rest on demand."""
+        self._backlog = cards[_GRID_PAGE:]
+        await self.mount(*cards[:_GRID_PAGE])  # type: ignore[attr-defined]
+        self.sync_visible_art()
+
+    def _mount_more(self, everything: bool = False) -> AwaitMount | None:
+        if not self._backlog:
+            return None
+        n = len(self._backlog) if everything else _GRID_PAGE
+        batch, self._backlog = self._backlog[:n], self._backlog[n:]
+        self.sync_visible_art()
+        return self.mount(*batch)  # type: ignore[attr-defined]
+
+    def _near_end(self) -> None:
+        """Mount the next page once the cursor is within a few rows of the end."""
+        if self._backlog and self._cursor >= len(self._visible_cards()) - self._cols * 4:  # type: ignore[attr-defined]
+            self._mount_more()
 
     def sync_visible_art(self) -> None:
         """Fetch art for cards in the viewport + margin. Deferred until after
@@ -242,6 +274,9 @@ class _GridNav:
     def watch_scroll_y(self, old_value: float, new_value: float) -> None:
         super().watch_scroll_y(old_value, new_value)  # type: ignore[misc]
         self._schedule_sync_art()
+        # Mouse-wheel scrolling moves the view, not the cursor.
+        if self._backlog and new_value >= self.max_scroll_y - self.size.height:  # type: ignore[attr-defined]
+            self._mount_more()
 
     def _page_rows(self) -> int:
         cards = self._visible_cards()  # type: ignore[attr-defined]
@@ -277,6 +312,7 @@ class _GridNav:
             target = idx - self._cols  # type: ignore[attr-defined]
         if target is not None:
             self._move_cursor(target, cards)  # type: ignore[attr-defined]
+            self._near_end()
 
     def action_page(self, direction: str) -> None:
         cards = self._visible_cards()  # type: ignore[attr-defined]
@@ -291,6 +327,7 @@ class _GridNav:
         else:
             target = min(len(cards) - 1, self._cursor + delta)  # type: ignore[attr-defined]
         self._move_cursor(target, cards, top=True)  # type: ignore[attr-defined]
+        self._near_end()
 
     def selected_card(self) -> Widget | None:
         """The card under the cursor, or None."""
@@ -302,7 +339,9 @@ class _GridNav:
         if cards:
             self._move_cursor(0, cards, top=True)  # type: ignore[attr-defined]
 
-    def action_jump_last(self) -> None:
+    async def action_jump_last(self) -> None:
+        if (pending := self._mount_more(everything=True)) is not None:
+            await pending
         cards = self._visible_cards()  # type: ignore[attr-defined]
         if cards:
             self._move_cursor(len(cards) - 1, cards, top=True)  # type: ignore[attr-defined]
@@ -352,11 +391,16 @@ class AlbumGrid(_GridNav, ScrollableContainer):
         return [c for c in self.query(AlbumCard) if c.display]
 
     def filter_cards(self, visible_ids: set[str] | None) -> bool:
-        """Hide/show mounted cards by album id without remounting (so the
+        """Hide/show cards by album id without remounting (so the
         Kitty images are never re-transmitted).  ``None`` shows everything.
         Returns whether any card is visible."""
         any_visible = False
-        for card in self.query(AlbumCard):
+        # Cards not mounted yet may match: mount them all while filtering (a
+        # card listed twice below is harmless).
+        cards = [*self.query(AlbumCard), *(self._backlog or [])]
+        if visible_ids is not None:
+            self._mount_more(everything=True)
+        for card in cards:
             vis = visible_ids is None or card._album.id in visible_ids
             if bool(card.display) != vis:
                 card.display = vis
@@ -504,7 +548,12 @@ class ArtistGrid(_GridNav, ScrollableContainer):
         Kitty images are never re-transmitted).  ``None`` shows everything.
         Returns whether any card is visible."""
         any_visible = False
-        for card in self.query(ArtistCard):
+        # Cards not mounted yet may match: mount them all while filtering (a
+        # card listed twice below is harmless).
+        cards = [*self.query(ArtistCard), *(self._backlog or [])]
+        if visible_ids is not None:
+            self._mount_more(everything=True)
+        for card in cards:
             vis = visible_ids is None or card._artist.id in visible_ids
             if bool(card.display) != vis:
                 card.display = vis

@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from textual import work
 from textual.binding import Binding
+from textual.widget import AwaitMount
 from textual.widgets import ListItem, ListView
+
+# Long lists mount in pages: mounting gets slower the more rows a list already
+# holds (~0.3 s per 200 rows, ~4.5 s for 2000), so ``set_rows`` mounts the
+# first page and keeps the rest as a backlog, mounted a page at a time once the
+# cursor (or the scroll position) is within ``_LOOKAHEAD`` rows of the end.
+_PAGE_ROWS = 200
+_LOOKAHEAD = 50
 
 
 class PagedListView(ListView):
@@ -14,6 +22,9 @@ class PagedListView(ListView):
     ``VerticalScroll`` and move the view while the selection stays put. Setting
     ``index`` here triggers ``watch_index``, which scrolls the new item into
     view, so the selection tracks the visible page.
+
+    Lists filled with ``set_rows`` mount lazily (see ``_PAGE_ROWS``); ``rows``
+    is every row in order, mounted or not, and End mounts them all.
     """
 
     BINDINGS = [
@@ -22,6 +33,45 @@ class PagedListView(ListView):
         Binding("home", "cursor_first", "First", show=False),
         Binding("end", "cursor_last", "Last", show=False),
     ]
+
+    _backlog: list[ListItem] | None = None
+
+    async def set_rows(self, rows: list[ListItem]) -> None:
+        """Replace the list's rows: mount the first page now, the rest as the
+        cursor approaches them."""
+        await self.clear()
+        self._backlog = rows[_PAGE_ROWS:]
+        if rows:
+            await self.mount(*rows[:_PAGE_ROWS])
+
+    @property
+    def rows(self) -> list[ListItem]:
+        """Every row in order, including those not mounted yet."""
+        return [*self._nodes, *(self._backlog or [])]
+
+    def remove_row(self, row: ListItem) -> None:
+        if self._backlog and row in self._backlog:
+            self._backlog.remove(row)
+        else:
+            row.remove()
+
+    def _mount_more(self, everything: bool = False) -> AwaitMount | None:
+        if not self._backlog:
+            return None
+        n = len(self._backlog) if everything else _PAGE_ROWS
+        batch, self._backlog = self._backlog[:n], self._backlog[n:]
+        return self.mount(*batch)
+
+    def watch_index(self, old_index: int | None, new_index: int | None) -> None:
+        super().watch_index(old_index, new_index)
+        if new_index is not None and new_index >= len(self._nodes) - _LOOKAHEAD:
+            self._mount_more()
+
+    def watch_scroll_y(self, old_value: float, new_value: float) -> None:
+        super().watch_scroll_y(old_value, new_value)
+        # Mouse-wheel scrolling moves the view, not the cursor.
+        if self._backlog and new_value >= self.max_scroll_y - _LOOKAHEAD * 2:
+            self._mount_more()
 
     def _page(self) -> int:
         """Number of rows that fit in the viewport (rows are uniform height)."""
@@ -51,7 +101,9 @@ class PagedListView(ListView):
         if self._nodes:
             self._jump(-len(self._nodes))
 
-    def action_cursor_last(self) -> None:
+    async def action_cursor_last(self) -> None:
+        if (pending := self._mount_more(everything=True)) is not None:
+            await pending
         if self._nodes:
             self._jump(len(self._nodes))
 

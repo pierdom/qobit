@@ -30,8 +30,6 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
 # Same tile size as the Albums and Artists grids (artist_detail.GRID_CARD_IMG_H).
-_MAX_GRID = 200
-_BATCH = 50
 
 
 class PlaylistCard(Widget):
@@ -254,7 +252,8 @@ class PlaylistsView(Widget):
         grid.border_title = "Playlists"
         self._update_subtitle()
 
-    def on_show(self) -> None:
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         if not self._loaded:
             self._loaded = True
             self._load()
@@ -321,8 +320,7 @@ class PlaylistsView(Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            suffix = f"  ·  {_MAX_GRID} of {total}" if total > _MAX_GRID else ""
-            grid.border_subtitle = f"{arrow} {label}{suffix}"
+            grid.border_subtitle = f"{arrow} {label}  ·  {total}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -362,19 +360,14 @@ class PlaylistsView(Widget):
         if version != self._render_version:
             return
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
-        await grid.remove_children()
+        await grid.clear_cards()
         if version != self._render_version:
             return
         if not playlists:
             msg = "[dim]No matches.[/dim]" if self._filter_query else "[dim]No playlists yet.[/dim]"
             await grid.mount(Label(msg, markup=True))
             return
-        shown = playlists[:_MAX_GRID]
-        for i in range(0, len(shown), _BATCH):
-            if version != self._render_version:
-                return
-            await grid.mount(*[PlaylistCard(p) for p in shown[i : i + _BATCH]])
-            grid.sync_visible_art()
+        await grid.set_cards([PlaylistCard(p) for p in playlists])
 
     @work
     async def _load(self) -> None:
@@ -386,6 +379,7 @@ class PlaylistsView(Widget):
             await grid.mount(Label(f"[red]{e}[/red]", markup=True))
             return
         self._playlists = [Playlist.from_api(raw) for raw in items]
+        self._update_subtitle()
         self._render_grid()
 
     # ── navigation ───────────────────────────────────────────────────────────

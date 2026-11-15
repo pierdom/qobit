@@ -32,9 +32,6 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
-_MAX_GRID = 200
-_BATCH = 50
-
 
 class ArtistsView(Widget):
     BINDINGS = [
@@ -163,7 +160,8 @@ class ArtistsView(Widget):
             return album.title if album else None
         return self.page_artist.name if self.page_artist else None
 
-    def on_show(self) -> None:
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         if not self._loaded:
             self._loaded = True
             self._load()
@@ -240,8 +238,7 @@ class ArtistsView(Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            suffix = f"  ·  {_MAX_GRID} of {total}" if total > _MAX_GRID else ""
-            grid.border_subtitle = f"{arrow} {label}{suffix}"
+            grid.border_subtitle = f"{arrow} {label}  ·  {total}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -296,18 +293,13 @@ class ArtistsView(Widget):
         if version != self._render_version:
             return
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
-        await grid.remove_children()
+        await grid.clear_cards()
         if version != self._render_version:
             return
         if not artists:
             await grid.mount(Label("[dim]No favourite artists yet.[/dim]", markup=True))
             return
-        shown = artists[:_MAX_GRID]
-        for i in range(0, len(shown), _BATCH):
-            if version != self._render_version:
-                return
-            await grid.mount(*[ArtistCard(a) for a in shown[i : i + _BATCH]])
-            grid.sync_visible_art()
+        await grid.set_cards([ArtistCard(a) for a in artists])
         self._apply_filter()
 
     @work
@@ -319,6 +311,7 @@ class ArtistsView(Widget):
         except Exception as e:
             await grid.mount(Label(f"[red]{e}[/red]", markup=True))
             return
+        self._update_subtitle()
         self._render_grid()
 
     def favorites_changed(self) -> None:

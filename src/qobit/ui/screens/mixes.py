@@ -35,7 +35,17 @@ def _cache_key(kind: str) -> str:
     return str(today)
 
 
-class MixCard(Widget):
+class MixCard(Widget, can_focus=True):
+    """One of the two mix tiles. Focusable, so the keyboard reaches it (Tab,
+    ←/→ between the two); Enter or Space opens it, ↓ goes to the track list."""
+
+    BINDINGS = [
+        Binding("enter,space", "open", "Open mix", show=False),
+        Binding("left", "sibling(-1)", show=False),
+        Binding("right", "sibling(1)", show=False),
+        Binding("down", "to_list", show=False),
+    ]
+
     class Selected(Message):
         def __init__(self, kind: MixKind) -> None:
             super().__init__()
@@ -54,6 +64,7 @@ class MixCard(Widget):
     }
     MixCard .mix-name { text-style: bold; height: 2; }
     MixCard.-selected .mix-name { color: $accent; }
+    MixCard:focus { border: round $accent; }
     MixCard .mix-desc { color: $text-muted; height: 1; }
     MixCard .mix-status { color: $text-disabled; height: 1; }
     """
@@ -76,6 +87,18 @@ class MixCard(Widget):
 
     def on_click(self) -> None:
         self.post_message(MixCard.Selected(self._kind))
+
+    def action_open(self) -> None:
+        self.post_message(MixCard.Selected(self._kind))
+
+    def action_sibling(self, step: int) -> None:
+        cards = list(self.parent.query(MixCard)) if self.parent else []
+        if self in cards:
+            cards[(cards.index(self) + step) % len(cards)].focus()
+
+    def action_to_list(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.screen.query_one("#mix-track-list").focus()
 
 
 class MixTrackRow(NowPlayingRowMixin, ListItem):
@@ -168,9 +191,12 @@ class MixesView(NowPlayingViewMixin, Widget):
         self._refresh_card_statuses()
         self._wire_now_playing(MixTrackRow, "#mix-track-list")
 
-    def on_show(self) -> None:
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         if self._tracks:
             self.call_after_refresh(self.query_one("#mix-track-list", TrackListView).focus)
+        else:  # nothing open yet: start on the DailyQ card
+            self.call_after_refresh(self.query(MixCard).first().focus)
 
     def _refresh_card_statuses(self) -> None:
         cache = load_state("mixes_cache.json")

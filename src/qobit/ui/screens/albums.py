@@ -27,13 +27,6 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
-# Only mount this many cards at once.  The layout pass Textual runs when
-# switching to this tab is O(mounted widgets); keeping the tree small keeps
-# transitions snappy.  Mount in batches so the event loop stays responsive
-# during the initial load.
-_MAX_GRID = 200
-_BATCH = 50
-
 
 class AlbumsView(Widget):
     BINDINGS = [
@@ -113,7 +106,8 @@ class AlbumsView(Widget):
         album = self.query_one("#album-panel", AlbumDetailPanel).album
         return album.title if album else None
 
-    def on_show(self) -> None:
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         if not self._loaded:
             self._loaded = True
             self._load()
@@ -197,8 +191,7 @@ class AlbumsView(Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            suffix = f"  ·  {_MAX_GRID} of {total}" if total > _MAX_GRID else ""
-            grid.border_subtitle = f"{arrow} {label}{suffix}"
+            grid.border_subtitle = f"{arrow} {label}  ·  {total}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -264,18 +257,13 @@ class AlbumsView(Widget):
         if version != self._render_version:
             return
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
-        await grid.remove_children()
+        await grid.clear_cards()
         if version != self._render_version:
             return
         if not albums:
             await grid.mount(Label("[dim]No favourite albums yet.[/dim]", markup=True))
             return
-        shown = albums[:_MAX_GRID]
-        for i in range(0, len(shown), _BATCH):
-            if version != self._render_version:
-                return
-            await grid.mount(*[AlbumCard(a, show_artist=True) for a in shown[i : i + _BATCH]])
-            grid.sync_visible_art()
+        await grid.set_cards([AlbumCard(a, show_artist=True) for a in albums])
         self._apply_filter()
 
     @work
@@ -287,6 +275,7 @@ class AlbumsView(Widget):
         except Exception as e:
             await grid.mount(Label(f"[red]{e}[/red]", markup=True))
             return
+        self._update_subtitle()
         self._render_grid()
 
     def favorites_changed(self) -> None:

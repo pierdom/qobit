@@ -89,11 +89,16 @@ class NowPlayingViewMixin:
         if self._np_list_sel is not None:
             try:
                 lv = self.query_one(self._np_list_sel, ListView)  # type: ignore[attr-defined]
-                for idx, row in enumerate(lv.query(self._np_row_cls)):
-                    if row.track.id == now_id:
+                # A PagedListView's `rows` includes rows not mounted yet: mark
+                # those too (they render marked), but only move the cursor to
+                # a mounted one.
+                rows = getattr(lv, "rows", None) or list(lv.query(self._np_row_cls))
+                for idx, row in enumerate(rows):
+                    if isinstance(row, self._np_row_cls) and row.track.id == now_id:
                         row.set_playing(True, paused=paused)
                         self._np_playing_row = row
-                        lv.index = idx
+                        if idx < len(lv.children):
+                            lv.index = idx
                         break
                 return
             except NoMatches:

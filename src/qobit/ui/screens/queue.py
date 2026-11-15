@@ -386,7 +386,8 @@ class QueueView(Widget):
     def on_resize(self, event: Resize) -> None:
         self.set_class(event.size.width < self._NARROW_BELOW, "-narrow")
 
-    def on_show(self) -> None:
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         self.call_after_refresh(self.query_one("#queue-list", ListView).focus)
 
     def _on_queue_changed(self, _: int) -> None:
@@ -428,7 +429,7 @@ class QueueView(Widget):
         # Only the list should re-grab focus after a rebuild — and only if it
         # already had it. Otherwise a refresh triggered by favouriting the
         # now-playing track (f on the hero) would yank focus off the hero.
-        # Tab-entry focus is handled separately by on_show.
+        # Tab-entry focus is handled separately by activate().
         keep_focus = self.app.focused is lv
         await lv.clear()
         if version != self._render_version:
