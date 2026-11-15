@@ -455,7 +455,7 @@ manually via `textual console` / a tmux-driven smoke run instead.
 
 - `pierdom/picast`: audio player TUI template (raw Rich, not Textual; useful for transport bar patterns)
 - `pierdom/tuidash`: Textual patterns: `@work(thread=True)`, `reactive` + `watch_*`, `DEFAULT_CSS`, `ContentSwitcher`
-- `vicrodh/qbz`: bit-perfect audio reference (Rust; ALSA/CoreAudio strategy maps directly to mpv flags)
+- `vicrodh/qbz`: qobit's main source and inspiration, and its bit-perfect audio reference (Rust; ALSA/CoreAudio strategy maps directly to mpv flags). Discontinued: the code is no longer available (the repo page only holds the discontinuation note), so the strategy now lives in `audio/` and `docs/audio.md`.
 - `pierdom/qobuz-mcp`: original source of `client.py`
 
 ## Phases
