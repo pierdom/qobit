@@ -25,14 +25,14 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
 
-- **Keep it bit-perfect.** Never add anything that changes the audio samples
-  (resampling, DSP, software volume) unless it's opt-in and off by default.
-- **Add or update tests** for logic changes. UI changes: include a screenshot.
-- **Update the docs** your change touches: README, `docs/`, and `CLAUDE.md`
+- Don't add anything that changes the audio samples (resampling, DSP, software
+  volume) unless it's opt-in and off by default.
+- Add or update tests for logic changes. For UI changes, include a screenshot.
+- Update the docs your change affects: README, `docs/`, and `CLAUDE.md`
   (architecture notes).
-- **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org):
-  `feat(ui): …`, `fix(connect): …`, `docs: …`.
-- One topic per pull request. CI must pass.
+- Write commit messages in the [Conventional Commits](https://www.conventionalcommits.org)
+  style: `feat(ui): …`, `fix(connect): …`, `docs: …`.
+- Keep one topic per pull request. CI must pass.
 
 `CLAUDE.md` explains how the code is organised and the patterns to follow.
 

@@ -1,6 +1,6 @@
 # Using qobit
 
-Every key, and how each tab behaves. The README has the short version.
+All keys, and how each tab works. The README has a short version.
 
 ## Global keys
 
@@ -27,17 +27,17 @@ plus Textual's built-in themes. `Ctrl+P` → *Theme*; the choice is saved.
 
 ## Playback (`1`)
 
-qobit opens here, on the same queue you had when you last closed it, paused on
-the last track — `Space` resumes from where you left off.
+qobit opens here, on the queue you had when you last closed it, paused on the
+last track. `Space` resumes from where you left off.
 
-On the **left** is one timeline: **Recently Played** (`↺`) flows into the
-**now-playing** track (▶/⏸) and on into **Up Next**. Selecting any row just moves
-the cursor there; nothing is dropped. Skip ahead and the skipped tracks stay
-under Recently Played; jump back and the tracks in between return to Up Next.
+The **left** side is one list: **Recently Played** (`↺`), then the
+**now-playing** track (▶/⏸), then **Up Next**. Selecting a row moves playback
+there without removing anything. Tracks you skip stay under Recently Played; if
+you jump back, the tracks in between return to Up Next.
 Playing an album or playlist from the library replaces Up Next and keeps your
 history.
 
-On the **right**, the **Now Playing** panel: large cover art, title and artist,
+The **right** side is the **Now Playing** panel: cover art, title and artist,
 `album · year`, `genre · label`, the stream's resolution, and the artist's
 biography (scroll with the mouse wheel). Below ~100 columns the panel is hidden
 and the timeline takes the full width.
@@ -57,7 +57,7 @@ steps back in history after that.
 |-----|--------|
 | `s` | Cycle the sort key (Date Added → Artist/Name → Title/Album → Year → …) |
 | `r` | Reverse the sort |
-| `/` | Live filter — type to narrow the list |
+| `/` | Live filter: type to narrow the list |
 | `Escape` | Close the filter, then clear it |
 
 The border shows the filter: `/ query_` while typing, `⌕ query` while results
@@ -84,13 +84,14 @@ Type and press `Enter`; results are split into tracks, albums and artists.
 
 Turn it on from `Ctrl+P` → *Qobuz Connect* (saved) or with
 `qobit --connect-on` (this run only). qobit then appears in the Qobuz apps'
-device picker; pick it and the app becomes the remote. While active:
+device picker. Pick it there to control qobit from the app. While qobit is
+the active device:
 
-- Play, pause, seek, skip and picking music work from the app; the Playback tab
-  mirrors the app's queue.
-- Everything also works from qobit — transport keys, selecting a row, play from
-  the library, play next, add, remove, clear, song radio — and shows up in the
-  app within about a second.
+- You can play, pause, seek, skip and pick music in the app. The Playback tab
+  shows the app's queue.
+- The same actions work in qobit (transport keys, selecting a row, playing from
+  the library, play next, add, remove, clear, song radio). Changes show up in
+  the app within about a second.
 - The app's volume slider is ignored on purpose: software volume would change
   the bits the DAC receives.
 - Autoplay suggestions added by the app can't be removed from qobit yet, and

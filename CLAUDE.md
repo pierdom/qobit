@@ -1,8 +1,8 @@
-# qobit — developer guide
+# qobit: developer guide
 
 ## Non-negotiable invariant
 
-The DAC receives exactly the bits from the FLAC file — no resampling, no DSP.
+The DAC receives exactly the bits from the FLAC file: no resampling, no DSP.
 Every design decision must preserve this. mpv is the playback engine; audio
 routing choices ensure the system mixer never touches the signal.
 
@@ -127,7 +127,7 @@ User docs: README (overview) → `docs/usage.md` (keys, tabs) and `docs/audio.md
 - Queue reorder (single-item remove + free skip back/forth via timeline+cursor done)
 - Gapless playback, ReplayGain, CMAF fallback
 - Qobuz Connect: **phases 1–2 done** (renderer; queue mirror; local queue edits as
-  server commands). Next: phase 3 — autoplay↔radio (incl. editing autoplay rows,
+  server commands). Next: phase 3, autoplay↔radio (incl. editing autoplay rows,
   endless-radio refill while active), shuffle/repeat UI, play reporting; phase 4
   qobit as controller + LAN discovery.
   Protocol: `docs/qobuz-connect.md`; design: `docs/qobuz-connect-design.md`; original
@@ -135,10 +135,10 @@ User docs: README (overview) → `docs/usage.md` (keys, tabs) and `docs/audio.md
 
 ## Known issues / in progress
 
-**Grid card selection highlight on Ghostty — likely root cause found (2026-11-14), awaiting the
+**Grid card selection highlight on Ghostty: likely root cause found (2026-11-14), awaiting the
 user's visual confirmation.** Three earlier rounds fixed the *card's* `.-selected` background,
 which was correct but invisible: under `Screen.-transparent *` (ansi_default for every widget)
-the card's own children — `.card-info` and its Labels — painted the terminal default over the
+the card's own children (`.card-info` and its Labels) painted the terminal default over the
 tint everywhere except the 1-col gap beside the image. Every earlier check inspected the card's
 own computed colour, never what was drawn on top of it. Found by rendering screenshots
 (`app.save_screenshot` → `rsvg-convert` → PNG) with the user's real config. Fix: one shared
@@ -148,42 +148,42 @@ and no outline (child Labels paint over the parent's outline cells, so it only s
 with spare rows). **Lesson: verify UI by looking at a rendered screenshot, not computed styles.**
 
 Secondary, smaller finding from the same investigation, not yet fixed: **screens pushed after
-`action_toggle_background()` runs never receive the `-transparent` CSS class** — the toggle only loops
+`action_toggle_background()` runs never receive the `-transparent` CSS class**: the toggle only loops
 `self.screen_stack` at call time, so `TrackContextMenu`, `AlbumScreen`, `ArtistScreen`, `PlaylistScreen`,
 etc. pushed *afterward* stay opaque regardless of the setting. Not reported by the user; found
 incidentally while testing fix #2 above.
 
 ## Key non-obvious patterns
 
-**Timeline + cursor (the play context)** — `QobitApp` holds one ordered
+**Timeline + cursor (the play context)**: `QobitApp` holds one ordered
 `_timeline: list[Track]` plus `_cursor: int` (index of the now-playing track,
 -1 when nothing is loaded). There is **no** separate history/queue list: they're
 read-only slice-properties (`_history == _timeline[:_cursor]`, `_play_queue ==
 _timeline[_cursor+1:]`) kept for the Queue UI, which reads them unchanged.
 Invariant: `now_playing == _timeline[_cursor]`, set in `_do_play` (which no
-longer pushes history — the cursor *is* the history boundary). Transitions:
+longer pushes history; the cursor *is* the history boundary). Transitions:
 `_advance_queue` → `_cursor += 1` (radio refill extends the timeline at the end);
 `action_previous` → `jump_to(_cursor-1)`; **selecting any Queue row →
 `jump_to(index)`** which just moves the cursor, so skipping back/forth never
 drops tracks (the old behaviour sliced `rows[idx+1:]` and silently discarded
 everything before the picked row). `play_track(t, queue=…)` launches a *new*
 context: it keeps the past (`_timeline[:_cursor+1]`), splices in `[t]+queue`, and
-drops the old Up Next — deliberate, since it's a fresh library selection, not a
+drops the old Up Next. That's deliberate: it's a fresh library selection, not a
 skip. `_trim_history()` bounds the past to `_HISTORY_MAX`. Queue rows carry a
 `timeline_index` tagged in `_refresh_list` (rendered order == timeline order),
 which `_on_queue_selected` passes to `jump_to`. `jump_to` is `@work` because
 sync action handlers call it.
 
-**Play contexts (Qobuz Connect seam)** — every `_timeline`/`_cursor` *write*
+**Play contexts (Qobuz Connect seam)**: every `_timeline`/`_cursor` *write*
 goes through `QobitApp._ctx` (`ui/play_context.py`): `LocalPlayContext` normally,
 `ConnectPlayContext` while qobit is the **active** Connect renderer (phase 2:
-its mutators send `CTRL_SRVR_QUEUE_*` commands — load/insert/add/remove — and
+its mutators send `CTRL_SRVR_QUEUE_*` commands (load/insert/add/remove) and
 return at once; the timeline changes only when the server echoes, through the
 same resync path as an edit from the phone. Commands go out **one at a time**:
 each carries the queue version it was based on, so the next waits for its
 predecessor's echo (matched by `action_uuid`, 10 s timeout); an echo's version is
 noted *before* the next is built, and the next is sent only *after* the echo
-message is fully applied — a LOADED echo must update the queue model before an
+message is fully applied: a LOADED echo must update the queue model before an
 edit queued behind it (menu "Play radio" = load + replace) picks its targets.
 `queue_replace_upcoming` therefore resolves its item ids at send time. A
 QUEUE_ERROR drops pending commands and re-syncs. Mirror rows are distinct
@@ -193,7 +193,7 @@ song queued twice; autoplay rows are read-only for now). App methods
 history`, `_advance_queue`, `_start_radio`) are thin delegators returning
 whether the edit happened; readers (Queue tab, hero, transport) are untouched.
 Any new timeline mutator must be added to **both** contexts. Rule while active:
-*server owns the queue, renderer owns playback* — queue structure is a mirror
+*server owns the queue, renderer owns playback*. Queue structure is a mirror
 rebuilt only from server events (LOADED, or an ASK_FOR_QUEUE_STATE snapshot for
 every other edit), while play/pause/seek/jump/natural-end act on mpv at once and
 are reported. Transport actions (`action_pause`, `_seek_to`, seek keys) check
@@ -201,53 +201,53 @@ are reported. Transport actions (`action_pause`, `_seek_to`, seek keys) check
 facts that each cost a bug: `SET_STATE.current_track` reloads unless it names
 the item already held *in the same queue major version* (item ids restart at 0
 per queue, and the server's activation handover can re-send the current item
-after a queue load already started it — reloading then stopped playback);
-picking a song in an app is *only* `QUEUE_TRACKS_LOADED` — the renderer starts
+after a queue load already started it, and reloading then stopped playback);
+picking a song in an app is *only* `QUEUE_TRACKS_LOADED`; the renderer starts
 `tracks[queue_position]` itself. After each track starts, the renderer sends `RNDR_SRVR_FILE_AUDIO_QUALITY_CHANGED`
 + `DEVICE_AUDIO_QUALITY_CHANGED` (Hz, bit depth, level from format_id 5/6/7/27
-→ MP3/CD/HIRES_L1/L2, qobuz-proxy's proven mapping) from `app._last_stream` —
+→ MP3/CD/HIRES_L1/L2, qobuz-proxy's proven mapping) from `app._last_stream`;
 identical file/device values since output is bit-perfect; without them the
 apps show "unknown quality". `_play_stream()` returns "ok"/"sample"/"none"/"auth" and never skips;
 skip policy belongs to the caller (`_do_play` locally, the renderer in Connect).
 
-**`_stop_gen` for end-of-track** — `MpvPlayer._stop_gen` increments on every `stop()` call. The poll thread records the gen when running; on transition to not running, equal gen = natural end (advance queue), different gen = stop was called (skip). **Always read both via `MpvPlayer.snapshot()`**: `stop()` bumps the gen and drops `_proc` together under `_state_lock` *before* terminating mpv, so a snapshot is only ever (old gen, running) or (new gen, not running). Reading `running` and `_stop_gen` separately was a real race (stop landing between the reads looked like a natural end and skipped a track) — found when Qobuz Connect reloads made stop-then-play frequent.
+**`_stop_gen` for end-of-track**: `MpvPlayer._stop_gen` increments on every `stop()` call. The poll thread records the gen when running; on transition to not running, equal gen = natural end (advance queue), different gen = stop was called (skip). **Always read both via `MpvPlayer.snapshot()`**: `stop()` bumps the gen and drops `_proc` together under `_state_lock` *before* terminating mpv, so a snapshot is only ever (old gen, running) or (new gen, not running). Reading `running` and `_stop_gen` separately was a real race (stop landing between the reads looked like a natural end and skipped a track). It showed up once Qobuz Connect reloads made stop-then-play frequent.
 
-**Async image-worker guard** — every `@work` art fetcher does `if img is not None and self.is_mounted:` then `try: self.query_one(TGPImage).image = img / except NoMatches: pass`. Workers resume after an `await` that may outlive the widget (teardown, sort/reload remount); without the guard Textual raises `NoMatches`. Must replicate in any new art-fetch worker.
+**Async image-worker guard**: every `@work` art fetcher does `if img is not None and self.is_mounted:` then `try: self.query_one(TGPImage).image = img / except NoMatches: pass`. Workers resume after an `await` that may outlive the widget (teardown, sort/reload remount); without the guard Textual raises `NoMatches`. Must replicate in any new art-fetch worker.
 
-**`_render_version` counter** — each view holds `_render_version: int`, incremented before starting a `@work` load. The worker captures the version at start and discards results if it changed by the time it returns — prevents stale workers from overwriting newer results.
+**`_render_version` counter**: each view holds `_render_version: int`, incremented before starting a `@work` load. The worker captures the version at start and discards results if it changed by the time it returns, so stale workers can't overwrite newer results.
 
-**Grid tile size** — the Albums, Artists and Playlists tabs share one image
+**Grid tile size**: the Albums, Artists and Playlists tabs share one image
 height, `artist_detail.GRID_CARD_IMG_H` (5 rows); the CSS heights carry a
 `/* GRID_CARD_IMG_H */` marker. Each card's text column must fit in that many
 rows (album: title 3 + artist + year; playlist: name 2 + owner + meta + date).
 Playlist art uses `images300` (the API's `images` are 50 px thumbnails). Selection
 is one shared style for all three: cards carry the `grid-card` class and labels
-`card-primary` / `card-secondary`; the rules live once in `QobitApp.CSS` — never
+`card-primary` / `card-secondary`; the rules live once in `QobitApp.CSS`. Never
 add per-card `.-selected` rules back.
 
-**Filter by hide/show, not remount (image grids)** — `AlbumGrid/ArtistGrid.filter_cards(ids)` toggles `card.display` on already-mounted cards so Kitty images are never re-transmitted. `_visible_cards` skips hidden cards during cursor navigation. Remount is reserved for data load and sort only.
+**Filter by hide/show, not remount (image grids)**: `AlbumGrid/ArtistGrid.filter_cards(ids)` toggles `card.display` on already-mounted cards so Kitty images are never re-transmitted. `_visible_cards` skips hidden cards during cursor navigation. Remount is reserved for data load and sort only.
 
-**`Content.assemble` for safe label text** — track rows use `Content.assemble(text, heart_suffix(favorite))` (`ui/_now_playing.py`) rather than Rich markup strings. Titles containing `[`/`]` corrupt markup-parsed labels; `Content` parts are literal, so they can't crash the render. `heart_suffix()` is the one place the `♥` tuple is built — every *TrackRow class across screens/ calls it instead of hand-rolling `(f"  {ICON_FAV}", "$accent")`.
+**`Content.assemble` for safe label text**: track rows use `Content.assemble(text, heart_suffix(favorite))` (`ui/_now_playing.py`) rather than Rich markup strings. Titles containing `[`/`]` corrupt markup-parsed labels; `Content` parts are literal, so they can't crash the render. `heart_suffix()` is the one place the `♥` tuple is built; every *TrackRow class across screens/ calls it instead of hand-rolling `(f"  {ICON_FAV}", "$accent")`.
 
-**Favourites single source of truth** — `QobitApp.ensure_favorite_tracks()` fetches exactly once (double-checked `_fav_lock`). `ensure_favorite_ids()` derives the id set from it. `toggle_favorite` updates both caches and surgically patches `TracksView` so no tab ever re-fetches.
+**Favourites single source of truth**: `QobitApp.ensure_favorite_tracks()` fetches exactly once (double-checked `_fav_lock`). `ensure_favorite_ids()` derives the id set from it. `toggle_favorite` updates both caches and surgically patches `TracksView` so no tab ever re-fetches.
 
-**TransportBar / NowPlayingHero self-wiring** — `on_mount` calls `self.watch(app, "reactive", callback, init=True)` for each `QobitApp` reactive. Any instance placed anywhere in the widget tree is automatically live with no `sync_*` calls from screens. Textual allows one label per border edge (`border_title` top-left, `border_subtitle` bottom-right).
+**TransportBar / NowPlayingHero self-wiring**: `on_mount` calls `self.watch(app, "reactive", callback, init=True)` for each `QobitApp` reactive. Any instance placed anywhere in the widget tree is automatically live with no `sync_*` calls from screens. Textual allows one label per border edge (`border_title` top-left, `border_subtitle` bottom-right).
 
-**Container-owns-cursor (grids)** — `AlbumGrid`/`ArtistGrid` hold focus; the container tracks `_cursor: int` and toggles `-selected` on child cards. `ScrollableContainer` has `can_focus=True` so Tab targets the container, not its children — children can't hold focus themselves.
+**Container-owns-cursor (grids)**: `AlbumGrid`/`ArtistGrid` hold focus; the container tracks `_cursor: int` and toggles `-selected` on child cards. `ScrollableContainer` has `can_focus=True` so Tab targets the container; children can't hold focus themselves.
 
-**Custom back navigation** — views implement `action_navigate_back() -> bool` (Escape, `priority=True`). Return `True` if the event was consumed (panel pop, filter teardown), `False` to let `QobitApp.action_focus_tabs` fall through. The app checks `hasattr(active_view, "action_navigate_back")` before dispatching.
+**Custom back navigation**: views implement `action_navigate_back() -> bool` (Escape, `priority=True`). Return `True` if the event was consumed (panel pop, filter teardown), `False` to let `QobitApp.action_focus_tabs` fall through. The app checks `hasattr(active_view, "action_navigate_back")` before dispatching.
 
-**Go-to popup (`g`)** — `QobitApp.action_goto_menu` opens `GoToMenu` (a
+**Go-to popup (`g`)**: `QobitApp.action_goto_menu` opens `GoToMenu` (a
 `TrackContextMenu` subclass restricted to the artist/album options; `g` closes
 it) for `now_playing`, or the paused track restored from the last session.
 It dispatches through the same `_on_track_menu`, so navigation, breadcrumb and
 Escape target behave exactly like the `i` menu's "Go to …".
 
-**Track context menu resolves via focus** — `i` is a single app-level binding
+**Track context menu resolves via focus**: `i` is a single app-level binding
 (`QobitApp.action_track_menu`). It reads `self.focused`; if it's a `ListView`
 whose `highlighted_child` exposes a `.track`, it pushes `TrackContextMenu`. This
 covers every track list (search, tracks, queue, album/artist/playlist panels)
-with no per-widget binding — every track row already exposes `.track`. The modal
+with no per-widget binding, since every track row already exposes `.track`. The modal
 is decoupled: it `dismiss()`es the chosen action id and `_on_track_menu`
 dispatches (queue_next/queue_last/remove_from_queue/_start_radio/_open_artist/
 _open_album). "Remove from queue" is offered only when the highlighted row is a
@@ -257,57 +257,57 @@ artist" needs a `get_track` round-trip since `Track` carries no `artist_id`.
 Both push their detail screen with the active tab from `_current_tab()` →
 `(tab id, display name)`: the name is the breadcrumb (`source=`), the id is
 `ArtistScreen`'s Escape target (`back_tab=`). Never derive a tab id from a
-display name — names aren't ids (the Playback tab's id is `queue`), and a bad
+display name. Names aren't ids (the Playback tab's id is `queue`), and a bad
 id crashes Escape with `No Tab with id …`.
 
-**One Connect device per machine** — the device uuid is derived from the
+**One Connect device per machine**: the device uuid is derived from the
 hostname, so two qobits on one host *are the same device* to Qobuz: when either
 leaves, the server drops the device for both while the survivor's socket stays
-open (verified live — the device just vanishes from every app, the "client
+open (verified live: the device vanishes from every app, the "client
 disappears" report). Hence `connect.acquire_instance_lock` (flock on
 `DATA_DIR/connect.lock`, released by the OS on crash) in `_start_connect`: a
 second instance doesn't join. And `ConnectSession` rejoins when it sees
 `SRVR_CTRL_REMOVE_RENDERER` for its own id (rate-limited to one per 10 s, so two
 clients can't flap). Test harnesses that build `QobitApp()` read the user's real
-config — pass `connect=False` unless Connect is under test, or they evict the
+config. Pass `connect=False` unless Connect is under test, or they evict the
 user's running qobit.
 
-**Top bar** — `_TABS` (app.py) is the single source of truth: `(id, name)` in
+**Top bar**: `_TABS` (app.py) is the single source of truth: `(id, name)` in
 left-to-right order. Labels (`[N] Name`) and the `1`–`7` bindings are generated
 from it, so reordering is a one-line change. Below `_TABBAR_FULL_WIDTH` (90
 cols, computed from the labels) `_fit_tab_labels` switches to compact `N Name`
 so the last tab isn't clipped. The Playback tab keeps the internal id `queue`,
-the view `QueueView` / `#view-queue` — renamed in the UI only.
+the view `QueueView` / `#view-queue`; it's renamed in the UI only.
 
-**Queue version pattern** — `queue_version: reactive[int]` on `QobitApp` is bumped whenever `_timeline`/`_cursor` changes. Widgets watch this to re-render. Combined with a local `_render_version` they guard against stale workers.
+**Queue version pattern**: `queue_version: reactive[int]` on `QobitApp` is bumped whenever `_timeline`/`_cursor` changes. Widgets watch this to re-render. Combined with a local `_render_version` they guard against stale workers.
 
-**`_flash_status` vs `status_msg`** — `status_msg` drives the transport bar's main `artist — title` label; setting it for transient notices would erase now-playing info until the next track. `_flash_status` sets it temporarily and auto-clears (~3 s).
+**`_flash_status` vs `status_msg`**: `status_msg` drives the transport bar's main `artist — title` label; setting it for transient notices would erase now-playing info until the next track. `_flash_status` sets it temporarily and auto-clears (~3 s).
 
-**Queue persistence** — the timeline + cursor survive restarts:
+**Queue persistence**: the timeline + cursor survive restarts:
 `watch_queue_version` debounces (1 s) a `_save_queue_state()` to
 `queue_state.json` (and `on_unmount` saves once more); `_restore_player_state`
 rebuilds `_timeline`/`_cursor` from it. Position stays in `player_state.json`
 (rewritten every ~5 s while playing) so the queue file is only written when the
 queue changes. If the two disagree (cursor track ≠ last-played track, e.g.
-killed between saves) restore falls back to the single last-played track —
+killed between saves) restore falls back to the single last-played track,
 never a mismatched queue. Any new timeline mutator gets this for free as long
 as it bumps `queue_version` (it must anyway). The app opens on the Playback tab.
 
-**Session restore order** — `QobuzClient.restore_session()` is called in `QobitApp.__init__()`, not `on_mount`, so credentials are available before any child widget worker fires.
+**Session restore order**: `QobuzClient.restore_session()` is called in `QobitApp.__init__()`, not `on_mount`, so credentials are available before any child widget worker fires.
 
-**Linux MPRIS2 signal attribute** — pydbus `bus.publish()` raises `AttributeError` for any `<signal>` in the introspection XML that lacks a matching `signal()` attribute on the object. The backend must declare `signal()` for every signal (`Seeked`, `PropertiesChanged`); a missing one silently kills the whole backend since `MediaKeys.__init__` swallows the error.
+**Linux MPRIS2 signal attribute**: pydbus `bus.publish()` raises `AttributeError` for any `<signal>` in the introspection XML that lacks a matching `signal()` attribute on the object. The backend must declare `signal()` for every signal (`Seeked`, `PropertiesChanged`); a missing one silently kills the whole backend since `MediaKeys.__init__` swallows the error.
 
-**Bit-perfect flags** — macOS: `--af-clr`, `--audio-pitch-correction=no`, `--audio-exclusive=yes`, `--load-scripts=no` (prevents system `mpv-mpris` from publishing a second tagless MPRIS player). Linux: no `--audio-exclusive`; bit-perfect is device selection — PipeWire rate-following (recommended, requires `default.clock.allowed-rates` drop-in) or exclusive `hw:` ALSA. **Don't add mpv `set volume` IPC without a non-bit-perfect mode gate** — software gain corrupts the signal on `hw:` output.
+**Bit-perfect flags**: macOS: `--af-clr`, `--audio-pitch-correction=no`, `--audio-exclusive=yes`, `--load-scripts=no` (prevents system `mpv-mpris` from publishing a second tagless MPRIS player). Linux: no `--audio-exclusive`; bit-perfect comes from device selection: PipeWire rate-following (recommended, requires `default.clock.allowed-rates` drop-in) or exclusive `hw:` ALSA. **Don't add mpv `set volume` IPC without a non-bit-perfect mode gate**: software gain corrupts the signal on `hw:` output.
 
 ## Qobuz API layer
 
-`client.py` reverse-engineers `app_id` and signing secrets from the web player bundle on login; cached in config. Streaming URLs expire ~10 min — re-fetch on track start. Quality fallback: FLAC_24_192 → FLAC_24_96 → FLAC_CD, walked by `QobitApp._resolve_stream`. **Previews:** for tracks the account can't stream, `getFileUrl` returns `"sample": true` (30 s MP3, `TrackRestrictedByPurchaseCredentials`) at *every* quality, so a fallback never escapes it. `StreamUrl.sample` flags it, `_resolve_stream` stops at the first one (never cached), and `_do_play` refuses to play it — flashes and skips forward (or stops if nothing is queued). Never play a sample: it's lossy and breaks the bit-perfect guarantee.
+`client.py` reverse-engineers `app_id` and signing secrets from the web player bundle on login; cached in config. Streaming URLs expire after ~10 min; re-fetch on track start. Quality fallback: FLAC_24_192 → FLAC_24_96 → FLAC_CD, walked by `QobitApp._resolve_stream`. **Previews:** for tracks the account can't stream, `getFileUrl` returns `"sample": true` (30 s MP3, `TrackRestrictedByPurchaseCredentials`) at *every* quality, so a fallback never escapes it. `StreamUrl.sample` flags it, `_resolve_stream` stops at the first one (never cached), and `_do_play` refuses to play it: it flashes and skips forward (or stops if nothing is queued). Never play a sample: it's lossy and breaks the bit-perfect guarantee.
 
 `get_artist_detail` (`artist/get`) and `get_artist_top_tracks` (`artist/page`) fire concurrently. `Track.from_api` handles both `performer.name` (string) and `artist.name.display` (nested dict) formats. `get_artist` is a third, lighter `artist/get` call (`albums_limit` instead of `limit`, no cache) used only by `_fetch_now_playing_bio` to pull a radio-seed track's artist bio.
 
 `get_all_favorite_tracks/albums/artists()` issue parallel 50-item page requests after the first. `Track`, `Album`, `Artist` carry `favorited_at: int | None` for Date Added sorting.
 
-`Album.from_api` backfills its own `image_url` onto nested tracks whose `image_url` is unset — without this, cover art is missing in the transport bar and OS media controls when playing tracks from an album payload.
+`Album.from_api` backfills its own `image_url` onto nested tracks whose `image_url` is unset. Without this, cover art is missing in the transport bar and OS media controls when playing tracks from an album payload.
 
 **Song radio** (`get_dynamic_suggestions`): `POST dynamic/suggest`, JSON body sent as `text/plain;charset=UTF-8` (same quirk as OAuth `user/login`). Body fields: `limit`, `listened_tracks_ids` (int ids), `track_to_analysed` (`[{track_id, artist_id, label_id, genre_id}]`). Response: `{"tracks": {"items": [...]}}`. Reverse-engineered from HAR; not in official docs.
 
@@ -344,7 +344,7 @@ uv run pytest              # unit tests — models, config/store, client auth,
 uv run textual console     # Textual dev console (separate terminal)
 ```
 
-**Releasing** — semver tags `vX.Y.Z` with a GitHub release per tag (first
+**Releasing**: semver tags `vX.Y.Z` with a GitHub release per tag (first
 three cut 2026-11-14: v0.1.0 baseline, v0.1.1, v0.2.0). The version lives only in
 `pyproject.toml` (`__version__` reads installed metadata). To release: bump it,
 add a `CHANGELOG.md` entry, `uv lock`, commit `chore(release): X.Y.Z`, annotated
@@ -353,7 +353,7 @@ Feature merges → minor bump; fix-only merges → patch bump.
 
 Tests live in `tests/`; `conftest.py`'s autouse fixture redirects `config.py`/
 `store.py`/`_images.py`'s real paths (under `~/.config` and `~/.local/share`)
-to a tmp dir for every test — never add a test that touches those modules'
+to a tmp dir for every test. Never add a test that touches those modules'
 module-level path constants without going through it, or a test run can read
 or overwrite a developer's real saved session. Widget/screen rendering isn't
 covered by this suite (no Kitty-protocol terminal in CI); that's exercised
@@ -361,10 +361,10 @@ manually via `textual console` / a tmux-driven smoke run instead.
 
 ## Reference repos
 
-- `pierdom/picast` — audio player TUI template (Raw Rich, not Textual — useful for transport bar patterns)
-- `pierdom/tuidash` — Textual patterns: `@work(thread=True)`, `reactive` + `watch_*`, `DEFAULT_CSS`, `ContentSwitcher`
-- `vicrodh/qbz` — bit-perfect audio reference (Rust; ALSA/CoreAudio strategy maps directly to mpv flags)
-- `pierdom/qobuz-mcp` — original source of `client.py`
+- `pierdom/picast`: audio player TUI template (raw Rich, not Textual; useful for transport bar patterns)
+- `pierdom/tuidash`: Textual patterns: `@work(thread=True)`, `reactive` + `watch_*`, `DEFAULT_CSS`, `ContentSwitcher`
+- `vicrodh/qbz`: bit-perfect audio reference (Rust; ALSA/CoreAudio strategy maps directly to mpv flags)
+- `pierdom/qobuz-mcp`: original source of `client.py`
 
 ## Phases
 
