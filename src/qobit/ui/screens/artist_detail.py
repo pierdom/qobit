@@ -141,6 +141,10 @@ class AlbumCard(Widget):
         self._show_artist = show_artist
         self._art_requested = False
 
+    @property
+    def album(self) -> Album:
+        return self._album
+
     def compose(self) -> ComposeResult:
         yield TGPImage()
         with Vertical(classes="card-info"):
@@ -288,6 +292,11 @@ class _GridNav:
             target = min(len(cards) - 1, self._cursor + delta)  # type: ignore[attr-defined]
         self._move_cursor(target, cards, top=True)  # type: ignore[attr-defined]
 
+    def selected_card(self) -> Widget | None:
+        """The card under the cursor, or None."""
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        return cards[self._cursor] if 0 <= self._cursor < len(cards) else None  # type: ignore[attr-defined]
+
     def action_jump_first(self) -> None:
         cards = self._visible_cards()  # type: ignore[attr-defined]
         if cards:
@@ -374,9 +383,8 @@ class AlbumGrid(_GridNav, ScrollableContainer):
             cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
-        cards = self._visible_cards()
-        if 0 <= self._cursor < len(cards):
-            self.post_message(AlbumCard.Selected(cards[self._cursor]._album))
+        if isinstance(card := self.selected_card(), AlbumCard):
+            self.post_message(AlbumCard.Selected(card.album))
 
 
 class ArtistCard(Widget):
@@ -523,9 +531,8 @@ class ArtistGrid(_GridNav, ScrollableContainer):
             cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
-        cards = self._visible_cards()
-        if 0 <= self._cursor < len(cards):
-            self.post_message(ArtistCard.Selected(cards[self._cursor]._artist))
+        if isinstance(card := self.selected_card(), ArtistCard):
+            self.post_message(ArtistCard.Selected(card.artist))
 
 
 class ArtistHeader(Widget):
@@ -573,11 +580,16 @@ class ArtistHeader(Widget):
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), 7)
 
+    artist: Artist | None = None
+    """The artist shown, once ``populate`` has run."""
+
     def set_loading(self, name: str = "Loading…") -> None:
+        self.artist = None
         self.query_one(".ah-bio-section").border_title = name
         self.query_one(".ah-bio", Label).update("")
 
     def populate(self, artist: Artist) -> None:
+        self.artist = artist
         self.query_one(".ah-bio-section").border_title = escape(artist.name)
         if artist.biography:
             self.query_one(".ah-bio", Label).update(escape(artist.biography))
@@ -690,6 +702,11 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
         self._wire_now_playing(ArtistTrackRow, "#top-tracks")
         self._load_detail()
         self._load_tracks()
+
+    @property
+    def page_artist(self) -> Artist | None:
+        """The artist this page is about: what the ``i`` menu's follow acts on."""
+        return self.query_one(ArtistHeader).artist
 
     def action_navigate_back(self) -> None:
         if self._album_view_active:

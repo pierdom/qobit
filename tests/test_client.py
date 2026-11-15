@@ -152,3 +152,41 @@ def test_repr_does_not_leak_the_token_value():
     client.restore_session("app1", "super-secret-token", [])
     assert "super-secret-token" not in repr(client)
     assert "chars" in repr(client)
+
+
+# ── favourites ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("kind", "on", "endpoint"),
+    [
+        ("track", True, "favorite/create"),
+        ("album", False, "favorite/delete"),
+        ("artist", True, "favorite/create"),
+    ],
+)
+def test_set_favorite_picks_endpoint_and_id_param(monkeypatch, kind, on, endpoint):
+    calls = []
+
+    async def fake_get(endpoint, **params):
+        calls.append((endpoint, params))
+        return {}
+
+    client = QobuzClient()
+    monkeypatch.setattr(client, "_get", fake_get)
+    asyncio.run(client.set_favorite(kind, "42", on))
+    assert calls == [(endpoint, {f"{kind}_ids": "42"})]
+
+
+def test_get_all_favorites_fetches_remaining_pages(monkeypatch):
+    offsets = []
+
+    async def fake_get(endpoint, type, limit, offset):
+        offsets.append(offset)
+        return {type: {"total": 120, "items": [{"id": offset}]}}
+
+    client = QobuzClient()
+    monkeypatch.setattr(client, "_get", fake_get)
+    items = asyncio.run(client.get_all_favorite_albums())
+    assert sorted(offsets) == [0, 50, 100]
+    assert [i["id"] for i in items] == [0, 50, 100]

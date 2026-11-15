@@ -252,6 +252,9 @@ class NowPlayingHero(Widget):
         self.watch(app, "is_playing", self._on_is_playing, init=True)
         self.watch(app, "now_playing_album", self._on_details, init=True)
         self.watch(app, "now_playing_bio", self._on_bio, init=True)
+        # toggle_favorite bumps queue_version: keeps the heart right when the
+        # track is (un)favourited from a list or the `i` menu.
+        self.watch(app, "queue_version", lambda _: self._refresh_favorite(), init=False)
 
     # ── reactive watchers ─────────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@ All keys, and how each tab works. The README has a short version.
 | `Space` | Pause / resume |
 | `[` / `]` | Seek back / forward 10 s (or click the progress bar) |
 | `g` | Go to the artist or album of the track that's playing (`1` artist, `2` album) |
-| `i` | Context menu for the highlighted track: Play next, Add to queue, Play radio, Go to artist, Go to album (+ Remove from queue on Up Next rows) |
+| `i` | Menu for what's highlighted. A track: Play next, Add to queue, Play radio, add/remove from favourites, Go to artist, Go to album (+ Remove from queue on Up Next rows). An album (a card, or the album page): add/remove from favourites. An artist (a card, or the artist page): follow/unfollow |
 | `f` | Favourite / unfavourite the highlighted track |
 | `R` | Song radio from the current track |
 | `Enter` | Open the selected item, or play the selected track |

@@ -150,6 +150,11 @@ class ArtistsView(Widget):
         self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
         self.query_one("#artist-albums-grid", AlbumGrid).border_title = "Albums & EPs"
 
+    @property
+    def page_artist(self) -> Artist | None:
+        """The open artist (detail or one of their albums), for the ``i`` menu."""
+        return self._current_artist if self._view != "grid" else None
+
     def on_show(self) -> None:
         if not self._loaded:
             self._loaded = True
@@ -302,12 +307,21 @@ class ArtistsView(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
         try:
-            items = await app._client.get_all_favorite_artists()
+            self._artists = list(await app.ensure_favorite_artists())
         except Exception as e:
             await grid.mount(Label(f"[red]{e}[/red]", markup=True))
             return
-        self._artists = [Artist.from_api(raw) for raw in items]
         self._render_grid()
+
+    def favorites_changed(self) -> None:
+        """A artist was added or removed elsewhere (the ``i`` menu): redraw
+        the grid from the app's cache. Before the first load there's nothing
+        to redraw; the load reads the cache anyway."""
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if self._loaded and app._fav_artists is not None:
+            self._artists = list(app._fav_artists)
+            self._update_subtitle()
+            self._render_grid()
 
     # ── navigation ───────────────────────────────────────────────────────────
 

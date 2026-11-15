@@ -425,62 +425,38 @@ class QobuzClient:
 
     # --- user library ---
 
-    async def add_favorite_track(self, track_id: str) -> dict:
-        return await self._get("favorite/create", track_ids=track_id)
+    async def set_favorite(self, kind: str, item_id: str, on: bool) -> dict:
+        """Add or remove a favourite. ``kind`` is "track", "album" or "artist"
+        (a favourite artist is what the apps call following)."""
+        endpoint = "favorite/create" if on else "favorite/delete"
+        return await self._get(endpoint, **{f"{kind}_ids": item_id})
 
-    async def remove_favorite_track(self, track_id: str) -> dict:
-        return await self._get("favorite/delete", track_ids=track_id)
+    async def _get_all_favorites(self, kind: str) -> list[dict]:
+        """Every favourite of one kind ("tracks", "albums", "artists"): the
+        first page, then the rest in parallel."""
+        first = await self._get("favorite/getUserFavorites", type=kind, limit=50, offset=0)
+        data = first.get(kind, {})
+        total: int = data.get("total", 0)
+        items: list[dict] = list(data.get("items", []))
+        if total > 50:
+            results = await asyncio.gather(
+                *[
+                    self._get("favorite/getUserFavorites", type=kind, limit=50, offset=off)
+                    for off in range(50, total, 50)
+                ]
+            )
+            for r in results:
+                items.extend(r.get(kind, {}).get("items", []))
+        return items
 
     async def get_all_favorite_tracks(self) -> list[dict]:
-        """Fetch every favourited track, paginating as needed."""
-        first = await self._get("favorite/getUserFavorites", type="tracks", limit=50, offset=0)
-        data = first.get("tracks", {})
-        total: int = data.get("total", 0)
-        items: list[dict] = list(data.get("items", []))
-        if total > 50:
-            results = await asyncio.gather(
-                *[
-                    self._get("favorite/getUserFavorites", type="tracks", limit=50, offset=off)
-                    for off in range(50, total, 50)
-                ]
-            )
-            for r in results:
-                items.extend(r.get("tracks", {}).get("items", []))
-        return items
+        return await self._get_all_favorites("tracks")
 
     async def get_all_favorite_albums(self) -> list[dict]:
-        """Fetch every favourited album, paginating as needed."""
-        first = await self._get("favorite/getUserFavorites", type="albums", limit=50, offset=0)
-        data = first.get("albums", {})
-        total: int = data.get("total", 0)
-        items: list[dict] = list(data.get("items", []))
-        if total > 50:
-            results = await asyncio.gather(
-                *[
-                    self._get("favorite/getUserFavorites", type="albums", limit=50, offset=off)
-                    for off in range(50, total, 50)
-                ]
-            )
-            for r in results:
-                items.extend(r.get("albums", {}).get("items", []))
-        return items
+        return await self._get_all_favorites("albums")
 
     async def get_all_favorite_artists(self) -> list[dict]:
-        """Fetch every favourited artist, paginating as needed."""
-        first = await self._get("favorite/getUserFavorites", type="artists", limit=50, offset=0)
-        data = first.get("artists", {})
-        total: int = data.get("total", 0)
-        items: list[dict] = list(data.get("items", []))
-        if total > 50:
-            results = await asyncio.gather(
-                *[
-                    self._get("favorite/getUserFavorites", type="artists", limit=50, offset=off)
-                    for off in range(50, total, 50)
-                ]
-            )
-            for r in results:
-                items.extend(r.get("artists", {}).get("items", []))
-        return items
+        return await self._get_all_favorites("artists")
 
     async def get_all_user_playlists(self) -> list[dict]:
         """Fetch all user playlists, paginating as needed."""

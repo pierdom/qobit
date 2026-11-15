@@ -275,12 +275,21 @@ class AlbumsView(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
         try:
-            items = await app._client.get_all_favorite_albums()
+            self._albums = list(await app.ensure_favorite_albums())
         except Exception as e:
             await grid.mount(Label(f"[red]{e}[/red]", markup=True))
             return
-        self._albums = [Album.from_api(raw) for raw in items]
         self._render_grid()
+
+    def favorites_changed(self) -> None:
+        """A album was added or removed elsewhere (the ``i`` menu): redraw
+        the grid from the app's cache. Before the first load there's nothing
+        to redraw; the load reads the cache anyway."""
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if self._loaded and app._fav_albums is not None:
+            self._albums = list(app._fav_albums)
+            self._update_subtitle()
+            self._render_grid()
 
     @work
     async def _load_artist_info(self, artist_id: str) -> None:

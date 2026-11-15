@@ -111,6 +111,9 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     """
     )
 
+    album: Album | None = None
+    """The album on show: what the ``i`` menu's album favourite acts on."""
+
     def compose(self) -> ComposeResult:
         with Horizontal(classes="detail-header"):
             yield TGPImage(classes="detail-art")
@@ -142,6 +145,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
 
     def load(self, album: Album) -> None:
         """Populate the panel with album data and start async loading."""
+        self.album = album
         self.border_title = escape(album.title)
         year = str(album.year) if album.year else "—"
         parts: list[str] = [escape(album.artist), year]
@@ -184,8 +188,9 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
                     self._set_optional(".detail-desc", "[dim]Failed to load album details.[/dim]")
             return
 
-        if not self.is_mounted:
+        if not self.is_mounted or self.album is None or self.album.id != full.id:
             return
+        self.album = full
 
         try:
             self._set_optional(

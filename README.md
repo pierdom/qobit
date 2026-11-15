@@ -102,7 +102,7 @@ There is no fallback for other terminals.
 | `1`–`7` | switch tab | `Space` | pause / resume |
 | `/` | filter | `[` `]` | seek 10 s |
 | `s` `r` | sort, reverse | `R` | song radio |
-| `i` | track menu | `g` | go to artist / album |
+| `i` | menu: queue, favourite, follow | `g` | go to artist / album |
 | `f` | favourite | `Ctrl+P` | command palette |
 
 All keys, and how each tab works, are in [docs/usage.md](docs/usage.md).

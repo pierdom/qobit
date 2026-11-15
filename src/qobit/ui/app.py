@@ -16,6 +16,7 @@ from textual.command import Hit, Hits, Provider
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
+from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Footer, Label, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
@@ -405,6 +406,10 @@ class QobitApp(App[None]):
         self._fav_tracks: list[Track] | None = None
         self._fav_ids: set[str] | None = None
         self._fav_lock = asyncio.Lock()
+        # Favourite albums / followed artists: fetched once, shared by the
+        # Albums and Artists tabs and the `i` menu, kept in sync by the toggles.
+        self._fav_albums: list[Album] | None = None
+        self._fav_artists: list[Artist] | None = None
         # Prevents two concurrent _advance_queue calls from both seeing an empty
         # queue and both fetching radio + starting playback.
         self._advance_lock = asyncio.Lock()
@@ -578,20 +583,20 @@ class QobitApp(App[None]):
         ids = await self.ensure_favorite_ids()  # also loads _fav_tracks
         try:
             if tid in ids:
-                await self._client.remove_favorite_track(tid)
+                await self._client.set_favorite("track", tid, False)
                 ids.discard(tid)
                 if self._fav_tracks is not None:
                     self._fav_tracks = [t for t in self._fav_tracks if t.id != tid]
                 new_state = False
             else:
-                await self._client.add_favorite_track(tid)
+                await self._client.set_favorite("track", tid, True)
                 ids.add(tid)
                 if self._fav_tracks is not None and not any(t.id == tid for t in self._fav_tracks):
                     added = dataclasses.replace(track, favorited_at=int(time.time()))
                     self._fav_tracks.append(added)
                 new_state = True
         except Exception:
-            self.status_msg = "Couldn't update favourite"
+            self._flash_status("Couldn't update favourite")
             return tid in ids
         with contextlib.suppress(Exception):
             self.query_one(TracksView).favorite_changed(tid, new_state)
@@ -602,6 +607,58 @@ class QobitApp(App[None]):
     @work
     async def _warm_favorite_ids(self) -> None:
         await self.ensure_favorite_ids()
+
+    # ── favourite albums and followed artists ────────────────────────────────
+
+    async def ensure_favorite_albums(self) -> list[Album]:
+        """Favourite albums, fetched once. Raises on failure (nothing cached)."""
+        async with self._fav_lock:
+            if self._fav_albums is None:
+                raw = await self._client.get_all_favorite_albums()
+                self._fav_albums = [Album.from_api(r) for r in raw]
+            return self._fav_albums
+
+    async def ensure_favorite_artists(self) -> list[Artist]:
+        """Followed (favourite) artists, fetched once. Raises on failure."""
+        async with self._fav_lock:
+            if self._fav_artists is None:
+                raw = await self._client.get_all_favorite_artists()
+                self._fav_artists = [Artist.from_api(r) for r in raw]
+            return self._fav_artists
+
+    async def toggle_favorite_album(self, album: Album) -> None:
+        albums = await self.ensure_favorite_albums()
+        on = not any(a.id == album.id for a in albums)
+        try:
+            await self._client.set_favorite("album", album.id, on)
+        except QobuzError:
+            self._flash_status("Couldn't update favourite")
+            return
+        if on:
+            albums.append(dataclasses.replace(album, favorited_at=int(time.time())))
+            self._flash_status(f"Added to favourites: {album.title}")
+        else:
+            albums[:] = [a for a in albums if a.id != album.id]
+            self._flash_status(f"Removed from favourites: {album.title}")
+        with contextlib.suppress(Exception):
+            self.query_one(AlbumsView).favorites_changed()
+
+    async def toggle_follow_artist(self, artist: Artist) -> None:
+        artists = await self.ensure_favorite_artists()
+        on = not any(a.id == artist.id for a in artists)
+        try:
+            await self._client.set_favorite("artist", artist.id, on)
+        except QobuzError:
+            self._flash_status("Couldn't update followed artists")
+            return
+        if on:
+            artists.append(dataclasses.replace(artist, favorited_at=int(time.time())))
+            self._flash_status(f"Following {artist.name}")
+        else:
+            artists[:] = [a for a in artists if a.id != artist.id]
+            self._flash_status(f"Unfollowed {artist.name}")
+        with contextlib.suppress(Exception):
+            self.query_one(ArtistsView).favorites_changed()
 
     # ── seek from mouse click on bar ─────────────────────────────────────────
 
@@ -1200,28 +1257,92 @@ class QobitApp(App[None]):
             return
         self.push_screen(GoToMenu(track), lambda action: self._on_track_menu(action, track))
 
-    def action_track_menu(self) -> None:
-        """Open the context menu for the track highlighted in the focused list.
-        No-op unless a ListView with a track row currently holds focus."""
-        from .screens.context_menu import TrackContextMenu
+    @work
+    async def action_track_menu(self) -> None:
+        """``i``: the menu for what's highlighted in the focused widget. A track
+        row gets the track actions; an album (a grid card or the album page on
+        show) adds its favourite toggle; an artist (a card, or the artist page
+        on show) adds follow/unfollow. Nothing to act on: no menu."""
+        from .screens.context_menu import ContextMenu, album_option, artist_option, track_options
         from .screens.queue import QueueTrackRow
 
         focused = self.focused
-        if not isinstance(focused, ListView):
+        if focused is None:
             return
-        child = focused.highlighted_child
-        if child is None or not hasattr(child, "track"):
+        row = focused.highlighted_child if isinstance(focused, ListView) else None
+        track: Track | None = getattr(row, "track", None)
+        album, artist = self._menu_subjects(focused)
+        try:
+            options = []
+            if track is not None:
+                fav = str(track.id) in await self.ensure_favorite_ids()
+                options += track_options(favorite=fav, in_queue=isinstance(row, QueueTrackRow))
+            if album is not None:
+                fav_albums = await self.ensure_favorite_albums()
+                options.append(album_option(any(a.id == album.id for a in fav_albums)))
+            if artist is not None:
+                followed = await self.ensure_favorite_artists()
+                options.append(artist_option(any(a.id == artist.id for a in followed)))
+        except QobuzError:
+            self._flash_status("Couldn't load favourites")
             return
-        track: Track = child.track
-        # "Remove from queue" only makes sense for an Up Next row.
-        in_queue = isinstance(child, QueueTrackRow)
+        if not options or self.focused is not focused:  # focus moved while loading
+            return
+        if track is not None:
+            title, subtitle = track.display_title, track.artist
+        elif album is not None:
+            title, subtitle = album.title, album.artist
+        else:
+            title, subtitle = artist.name, "Artist"  # type: ignore[union-attr]
         self.push_screen(
-            TrackContextMenu(track, in_queue=in_queue),
-            lambda action: self._on_track_menu(action, track),
+            ContextMenu(title, subtitle, options),
+            lambda action: self._on_track_menu(action, track, album, artist, row),
         )
 
-    def _on_track_menu(self, action: str | None, track: Track) -> None:
-        if action == "remove_queue":
+    @staticmethod
+    def _menu_subjects(focused: Widget) -> tuple[Album | None, Artist | None]:
+        """The album and the artist the ``i`` menu can act on: the selected
+        card or row first, then the album panel and artist page the focus
+        sits in."""
+        from .screens.album_detail import AlbumDetailPanel
+        from .screens.artist_detail import AlbumGrid, ArtistGrid
+
+        album: Album | None = None
+        artist: Artist | None = None
+        # A grid's selected card, or a Search result row.
+        item = None
+        if isinstance(focused, AlbumGrid | ArtistGrid):
+            item = focused.selected_card()
+        elif isinstance(focused, ListView):
+            item = focused.highlighted_child
+        if isinstance(getattr(item, "album", None), Album):
+            album = item.album  # type: ignore[union-attr]
+        if isinstance(getattr(item, "artist", None), Artist):
+            artist = item.artist  # type: ignore[union-attr]
+        for node in focused.ancestors_with_self:
+            if album is None and isinstance(node, AlbumDetailPanel):
+                album = node.album
+            if artist is None:
+                artist = getattr(node, "page_artist", None)
+        return album, artist
+
+    def _on_track_menu(
+        self,
+        action: str | None,
+        track: Track | None,
+        album: Album | None = None,
+        artist: Artist | None = None,
+        row: object = None,
+    ) -> None:
+        if action == "favorite_album" and album is not None:
+            self.run_worker(self.toggle_favorite_album(album))
+        elif action == "follow_artist" and artist is not None:
+            self.run_worker(self.toggle_follow_artist(artist))
+        elif track is None:
+            return
+        elif action == "favorite":
+            self._toggle_favorite_from_menu(track, row)
+        elif action == "remove_queue":
             if self.remove_from_queue(track):
                 self._flash_status(f"Removed from queue: {track.display_title}")
         elif action == "play_next":
@@ -1237,6 +1358,17 @@ class QobitApp(App[None]):
             self._open_artist(track)
         elif action == "album":
             self._open_album(track)
+
+    @work
+    async def _toggle_favorite_from_menu(self, track: Track, row: object) -> None:
+        was = str(track.id) in await self.ensure_favorite_ids()
+        on = await self.toggle_favorite(track)
+        if on == was:
+            return  # failed; toggle_favorite said so
+        if hasattr(row, "set_favorite"):
+            row.set_favorite(on)  # the row's heart; other lists update via the caches
+        verb = "Added to" if on else "Removed from"
+        self._flash_status(f"{verb} favourites: {track.display_title}")
 
     def _open_album(self, track: Track) -> None:
         from .screens.album_detail import AlbumScreen

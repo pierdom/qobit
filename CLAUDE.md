@@ -60,10 +60,9 @@ src/qobit/
     │                        concurrent HTTP fetches; module-level URL→PIL cache
     │                        prevents re-downloading the same image within a session
     ├── screens/
-    │   ├── context_menu.py  TrackContextMenu — ModalScreen popup for one track
-    │   │                    (Play next / Add to queue / Play radio / Go to
-    │   │                    artist / Go to album; + Remove from queue when
-    │   │                    in_queue=True); opened app-wide with `i`.
+    │   ├── context_menu.py  ContextMenu — the `i` ModalScreen popup; options
+    │   │                    built by track_options / album_option /
+    │   │                    artist_option (favourite toggles, follow).
     │   │                    GoToMenu — artist/album of the playing track (`g`)
     │   ├── search.py        SearchView + shared item widgets (TrackItem,
     │   │                    AlbumItem, ArtistItem, PlaylistItem)
@@ -120,7 +119,8 @@ User docs: README (overview) → `docs/usage.md` (keys, tabs) and `docs/audio.md
 
 ## Roadmap
 
-- Context menus: `i` opens a per-track popup (done for track rows); still todo on album/artist cards
+- Context menus: `i` covers track rows, album/artist cards and album/artist pages
+  (favourites, follow); playlists still todo
 - AlbumScreen / PlaylistScreen / PlaylistsView redesign (art, rich header, queue actions, format badges)
 - Search UI overhaul (art thumbnails, quality badges, better layout)
 - TrackScreen detail overlay (composer, performer, related albums)
@@ -149,7 +149,7 @@ with spare rows). **Lesson: verify UI by looking at a rendered screenshot, not c
 
 Secondary, smaller finding from the same investigation, not yet fixed: **screens pushed after
 `action_toggle_background()` runs never receive the `-transparent` CSS class**: the toggle only loops
-`self.screen_stack` at call time, so `TrackContextMenu`, `AlbumScreen`, `ArtistScreen`, `PlaylistScreen`,
+`self.screen_stack` at call time, so `ContextMenu`, `AlbumScreen`, `ArtistScreen`, `PlaylistScreen`,
 etc. pushed *afterward* stay opaque regardless of the setting. Not reported by the user; found
 incidentally while testing fix #2 above.
 
@@ -258,18 +258,25 @@ add per-card `.-selected` rules back.
 **Custom back navigation**: views implement `action_navigate_back() -> bool` (Escape, `priority=True`). Return `True` if the event was consumed (panel pop, filter teardown), `False` to let `QobitApp.action_focus_tabs` fall through. The app checks `hasattr(active_view, "action_navigate_back")` before dispatching.
 
 **Go-to popup (`g`)**: `QobitApp.action_goto_menu` opens `GoToMenu` (a
-`TrackContextMenu` subclass restricted to the artist/album options; `g` closes
+`ContextMenu` subclass restricted to the artist/album options; `g` closes
 it) for `now_playing`, or the paused track restored from the last session.
 It dispatches through the same `_on_track_menu`, so navigation, breadcrumb and
 Escape target behave exactly like the `i` menu's "Go to …".
 
-**Track context menu resolves via focus**: `i` is a single app-level binding
-(`QobitApp.action_track_menu`). It reads `self.focused`; if it's a `ListView`
-whose `highlighted_child` exposes a `.track`, it pushes `TrackContextMenu`. This
-covers every track list (search, tracks, queue, album/artist/playlist panels)
-with no per-widget binding, since every track row already exposes `.track`. The modal
+**The `i` menu resolves via focus**: `i` is a single app-level binding
+(`QobitApp.action_track_menu`, a worker: it awaits the favourite caches to label
+the toggles). It reads `self.focused`: a `ListView` row exposing `.track` gives
+the track options (incl. favourite toggle); `_menu_subjects` adds an album (a
+grid's `selected_card()`, a Search `AlbumItem`, or the enclosing
+`AlbumDetailPanel.album`) and an artist (an `ArtistCard`/`ArtistItem`, or a
+`page_artist` property on an ancestor: `ArtistScreen`, `ArtistsView` while an
+artist is open). Any combination works; nothing to act on, no menu. This covers
+every list and grid with no per-widget binding. Album/artist favourites are
+cached like tracks (`ensure_favorite_albums/artists`, shared with the Albums and
+Artists tabs; `toggle_favorite_album`/`toggle_follow_artist` update the cache and
+call the tab's `favorites_changed()` to redraw). The modal
 is decoupled: it `dismiss()`es the chosen action id and `_on_track_menu`
-dispatches (queue_next/queue_last/remove_from_queue/_start_radio/_open_artist/
+dispatches (favourite toggles/queue_next/queue_last/remove_from_queue/_start_radio/_open_artist/
 _open_album). "Remove from queue" is offered only when the highlighted row is a
 `QueueTrackRow`, and removes by identity so the exact queued instance goes. "Go to
 album" builds a lean `Album` from the track (panel re-fetches the rest); "Go to
@@ -325,7 +332,7 @@ as it bumps `queue_version` (it must anyway). The app opens on the Playback tab.
 
 `get_artist_detail` (`artist/get`) and `get_artist_top_tracks` (`artist/page`) fire concurrently. `Track.from_api` handles both `performer.name` (string) and `artist.name.display` (nested dict) formats. `get_artist` is a third, lighter `artist/get` call (`albums_limit` instead of `limit`, no cache) used only by `_fetch_now_playing_bio` to pull a radio-seed track's artist bio.
 
-`get_all_favorite_tracks/albums/artists()` issue parallel 50-item page requests after the first. `Track`, `Album`, `Artist` carry `favorited_at: int | None` for Date Added sorting.
+`get_all_favorite_tracks/albums/artists()` (one `_get_all_favorites(kind)`) issue parallel 50-item page requests after the first; `set_favorite(kind, id, on)` adds or removes a track, album or artist (following = favourite artist). `Track`, `Album`, `Artist` carry `favorited_at: int | None` for Date Added sorting.
 
 `Album.from_api` backfills its own `image_url` onto nested tracks whose `image_url` is unset. Without this, cover art is missing in the transport bar and OS media controls when playing tracks from an album payload.
 
