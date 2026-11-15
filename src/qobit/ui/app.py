@@ -319,6 +319,7 @@ class QobitApp(App[None]):
         Binding("]", "seek_fwd", "10s▶"),
         Binding("R", "start_radio", "Radio"),
         Binding("i", "track_menu", "Menu", show=False),
+        Binding("g", "goto_menu", "Go to", show=False),
         # No-op (with an explanatory flash) until software volume is turned on
         # via the command palette — see action_toggle_software_volume.
         Binding("minus", "volume_down", "Vol-"),
@@ -1191,6 +1192,17 @@ class QobitApp(App[None]):
         self.jump_to(self._cursor - 1)
 
     # ── track context menu ───────────────────────────────────────────────────
+
+    def action_goto_menu(self) -> None:
+        """``g``: go to the artist or album of the track that's playing (or the
+        paused one restored from the last session)."""
+        from .screens.context_menu import GoToMenu
+
+        track = self.now_playing or (self._pending_resume[0] if self._pending_resume else None)
+        if track is None:
+            self._flash_status("Nothing is playing")
+            return
+        self.push_screen(GoToMenu(track), lambda action: self._on_track_menu(action, track))
 
     def action_track_menu(self) -> None:
         """Open the context menu for the track highlighted in the focused list.

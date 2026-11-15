@@ -6,7 +6,7 @@ track's sample rate instead of resampling everything to one fixed clock.
 
 This is the convenient sweet spot — the DAC stays a normal, shareable system
 device, your system volume keeps working, and playback is bit-transparent for
-streaming FLAC. See the main [README "Audio device setup"](../../README.md#audio-device-setup)
+streaming FLAC. See the main [audio setup guide](../../docs/audio.md)
 for how this compares to exclusive `alsa/hw:` (Option B) output.
 
 ## Install

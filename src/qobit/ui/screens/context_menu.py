@@ -98,10 +98,16 @@ class TrackContextMenu(ModalScreen[str | None]):
     TrackContextMenu MenuOption Label { width: 1fr; }
     """
 
-    def __init__(self, track: Track, in_queue: bool = False) -> None:
+    def __init__(
+        self,
+        track: Track,
+        in_queue: bool = False,
+        options: list[tuple[str, str, str]] | None = None,
+    ) -> None:
         super().__init__()
         self._track = track
-        self._options = _OPTIONS + ([_REMOVE_OPTION] if in_queue else [])
+        base = _OPTIONS if options is None else options
+        self._options = base + ([_REMOVE_OPTION] if in_queue else [])
         self._label_w = max(len(label) for _, _, label in self._options) + 2
 
     def compose(self) -> ComposeResult:
@@ -125,3 +131,14 @@ class TrackContextMenu(ModalScreen[str | None]):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, MenuOption):
             self.dismiss(event.item.action_id)
+
+
+class GoToMenu(TrackContextMenu):
+    """The "go to" popup (``g``): jump to the artist or album of the track
+    that's playing. Same look and dispatch as the track menu (the caller routes
+    "artist"/"album" through QobitApp._on_track_menu); ``g`` closes it again."""
+
+    BINDINGS = [Binding("g", "close", "Close", show=False)]
+
+    def __init__(self, track: Track) -> None:
+        super().__init__(track, options=[o for o in _OPTIONS if o[0] in ("artist", "album")])

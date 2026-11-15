@@ -7,6 +7,24 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.4.0] — 2026-11-14
+
+### Added
+
+- `g` — go to the artist or album of the track that's playing (a small popup;
+  also works on the paused track restored after a restart).
+
+### Changed
+
+- Documentation rewritten: a compact README (Qobuz Connect now front and
+  centre) with the detail moved to `docs/usage.md` (every key, each tab) and
+  `docs/audio.md` (bit-perfect setup, quality, verification). New logo.
+
+### Fixed
+
+- CI: install the system headers PyGObject/pycairo build against (they have
+  been required for Linux media keys since 0.1.x), so lint and tests run again.
+
 ## [0.3.0] — 2026-11-14
 
 ### Added
@@ -106,6 +124,7 @@ releases (development phases 1–9).
 - Session restore (last track + position).
 - CLI: `play`, `auth`, `devices`, `set-device`, `clear-cache`.
 
+[0.4.0]: https://github.com/pierdom/qobit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/pierdom/qobit/releases/tag/v0.3.0
 [0.2.2]: https://github.com/pierdom/qobit/releases/tag/v0.2.2
 [0.2.1]: https://github.com/pierdom/qobit/releases/tag/v0.2.1

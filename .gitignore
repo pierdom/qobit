@@ -34,6 +34,8 @@ Thumbs.db
 
 # Textual / Rich snapshots
 *.svg
+# ...but not the project's own artwork (README logo)
+!docs/assets/*.svg
 
 # Test / coverage
 .coverage

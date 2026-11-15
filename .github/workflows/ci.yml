@@ -13,6 +13,14 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+      # PyGObject/pycairo (Linux media keys, MPRIS) ship no wheels and compile
+      # against these; without them `uv sync` fails before anything runs.
+      # Same list as the README's Debian/Ubuntu line (needs GLib >= 2.80).
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config python3-dev libcairo2-dev libgirepository-2.0-dev
       - run: uv sync --group dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -24,5 +32,10 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config python3-dev libcairo2-dev libgirepository-2.0-dev
       - run: uv sync --group dev
       - run: uv run pytest -v
