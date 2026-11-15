@@ -17,10 +17,10 @@ A bit-perfect Qobuz client with a terminal UI, for Linux and macOS.
 
 </div>
 
-qobit plays hi-res FLAC from Qobuz through mpv with no resampling and no DSP:
-the output device gets each track's own sample rate and bit depth, and the DAC
-receives exactly the bits from the file. The library, queue and now-playing
-view live in a keyboard-driven terminal UI with cover art.
+qobit plays hi-res FLAC from Qobuz through mpv with no resampling and no DSP.
+The output device runs at each track's own sample rate and bit depth, and the
+DAC receives exactly the bits from the file. You browse your library and
+control playback from a keyboard-driven terminal UI with cover art.
 
 <div align="center">
 
@@ -31,10 +31,10 @@ view live in a keyboard-driven terminal UI with cover art.
 ## Features
 
 - Bit-perfect output through PipeWire rate-following or exclusive ALSA `hw:` /
-  CoreAudio devices. Tracks your account can only preview are skipped, not
-  played as 30-second MP3s.
-- Your favourite tracks, artists and albums, and your playlists, with sorting
-  and a live filter.
+  CoreAudio devices. Tracks your account can only preview (30-second MP3s) are
+  skipped.
+- Favourite tracks, artists and albums, and your playlists, with sorting and a
+  live filter.
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
@@ -42,8 +42,8 @@ view live in a keyboard-driven terminal UI with cover art.
   [Terminal](#terminal)).
 - Themes, including Ayu Dark, Mirage and Light.
 - OS media keys and now-playing widgets (MPRIS on Linux, Now Playing on macOS).
-- Qobuz Connect: qobit can appear as a device in the Qobuz apps and be
-  controlled from them. Off by default.
+- Qobuz Connect (off by default): qobit shows up as a device in the Qobuz apps,
+  and you can control it from there.
 
 ## Install
 
@@ -79,8 +79,8 @@ For bit-perfect output, choose the device as described in
 ## Terminal
 
 qobit draws all images (cover art, artist photos) with the
-[Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/),
-and only with it. There is no fallback.
+[Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
+There is no fallback for other terminals.
 
 | Terminal | Images |
 |---|---|
@@ -90,10 +90,10 @@ and only with it. There is no fallback.
 | Inside tmux | needs `set -g allow-passthrough on`; not tested with qobit |
 
 > [!WARNING]
-> In any other terminal (GNOME Terminal, iTerm2, macOS Terminal, Alacritty,
-> Windows Terminal, VS Code, …) qobit looks very bad: every image turns into
-> blocks of garbled characters across the grids, the Now Playing panel and the
-> transport bar. Playback still works, but use one of the terminals above.
+> In other terminals (GNOME Terminal, iTerm2, macOS Terminal, Alacritty,
+> Windows Terminal, VS Code, …) every image shows up as blocks of garbled
+> characters, so qobit looks very bad. Playback still works, but use one of the
+> terminals above.
 
 ## Usage
 
@@ -105,8 +105,8 @@ and only with it. There is no fallback.
 | `i` | track menu | `g` | go to artist / album |
 | `f` | favourite | `Ctrl+P` | command palette |
 
-The full list of keys and how each tab works is in
-[docs/usage.md](docs/usage.md). From the command line:
+All keys, and how each tab works, are in [docs/usage.md](docs/usage.md).
+From the command line:
 
 ```bash
 qobit play "Kind of Blue"   # search, play the first result, check the output format
