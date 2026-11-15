@@ -50,21 +50,27 @@ class Track:
     version: str | None = None
     image_url: str | None = None
     favorited_at: int | None = None
+    # Who performs it, and whose album it's on: they differ on compilations and
+    # soundtracks. The artist page's "Your favourites" matches either.
+    artist_id: str | None = None
+    album_artist_id: str | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "Track":
-        album = data.get("album", {})
-        image = album.get("image", {})
+        album = data.get("album") or {}
+        image = album.get("image") or {}
 
         def _name(obj: dict) -> str:
             # artist/get: name is a str; artist/page top_tracks: name is {"display": "..."}
             n = obj.get("name", "")
             return n.get("display", "") if isinstance(n, dict) else n
 
+        performer = data.get("performer") or data.get("artist") or {}
+        album_artist = album.get("artist") or {}
         artist = (
-            data.get("performer", {}).get("name", "")
-            or _name(data.get("artist", {}))
-            or _name(album.get("artist", {}))
+            (data.get("performer") or {}).get("name", "")
+            or _name(data.get("artist") or {})
+            or _name(album_artist)
         )
         return cls(
             id=str(data["id"]),
@@ -76,7 +82,12 @@ class Track:
             version=data.get("version") or None,
             image_url=image.get("large") or image.get("small") or None,
             favorited_at=data.get("favorited_at") or None,
+            artist_id=str(performer["id"]) if performer.get("id") else None,
+            album_artist_id=str(album_artist["id"]) if album_artist.get("id") else None,
         )
+
+    def by_artist(self, artist_id: str) -> bool:
+        return artist_id in (self.artist_id, self.album_artist_id)
 
     @property
     def display_title(self) -> str:
@@ -129,8 +140,8 @@ class Album:
 
     @classmethod
     def from_api(cls, data: dict) -> "Album":
-        tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
-        image = data.get("image", {})
+        tracks = [Track.from_api(t) for t in (data.get("tracks") or {}).get("items") or []]
+        image = data.get("image") or {}
         img_url = image.get("large") or image.get("small") or None
         # Track items nested under an album carry no album of their own, so
         # Track.from_api leaves image_url, album and album_id unset. Backfill
@@ -149,7 +160,7 @@ class Album:
             for a in (data.get("awards") or [])
             if (name := (a.get("label") or a.get("name") or "").strip())
         ]
-        artist_data = data.get("artist", {})
+        artist_data = data.get("artist") or {}
         return cls(
             id=album_id,
             title=data.get("title", ""),
@@ -157,7 +168,7 @@ class Album:
             artist_id=str(artist_data["id"]) if artist_data.get("id") else None,
             year=year,
             tracks_count=data.get("tracks_count", len(tracks)),
-            genre=data.get("genre", {}).get("name") or None,
+            genre=(data.get("genre") or {}).get("name") or None,
             genre_id=(data.get("genre") or {}).get("id"),
             description=data.get("description") or None,
             label=(data.get("label") or {}).get("name") or None,
@@ -172,6 +183,15 @@ class Album:
             tracks=tracks,
             favorited_at=data.get("favorited_at") or None,
         )
+
+
+def _newest_cover(albums: list[dict]) -> str | None:
+    """Cover of the most recent release that has one. The API's album order
+    isn't by date (its sort parameter is ignored), so pick by `released_at`."""
+    with_cover = [a for a in albums if (a.get("image") or {}).get("large")]
+    if not with_cover:
+        return None
+    return max(with_cover, key=lambda a: a.get("released_at") or 0)["image"]["large"]
 
 
 @dataclass
@@ -189,9 +209,10 @@ class Artist:
     def from_api(cls, data: dict) -> "Artist":
         image = data.get("image") or {}
         bio = data.get("biography") or {}
-        tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
+        tracks = [Track.from_api(t) for t in (data.get("tracks") or {}).get("items") or []]
+        raw_albums = (data.get("albums") or {}).get("items") or []
         albums = sorted(
-            [Album.from_api(a) for a in data.get("albums", {}).get("items", [])],
+            [Album.from_api(a) for a in raw_albums],
             key=lambda a: a.year or 0,
             reverse=True,
         )
@@ -199,7 +220,9 @@ class Artist:
             id=str(data["id"]),
             name=data.get("name", ""),
             albums_count=data.get("albums_count"),
-            image_url=image.get("mega") or image.get("large") or None,
+            # Qobuz has no photo for some artists (about 1 in 10 here): show
+            # their newest release's cover instead of an empty tile.
+            image_url=image.get("mega") or image.get("large") or _newest_cover(raw_albums),
             biography=bio.get("content") or bio.get("summary") or None,
             tracks=tracks,
             albums=albums,
@@ -239,7 +262,7 @@ class Playlist:
 
     @classmethod
     def from_api(cls, data: dict) -> "Playlist":
-        tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
+        tracks = [Track.from_api(t) for t in (data.get("tracks") or {}).get("items") or []]
         # Prefer the 300 px covers: "images" holds 50 px thumbnails, which
         # turned visibly blurry once scaled up to a grid tile.
         images = data.get("images300") or data.get("images150") or data.get("images") or []

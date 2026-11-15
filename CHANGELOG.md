@@ -7,6 +7,34 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.6.0] - 2026-11-15
+
+### Added
+
+- The artist page shows **Your favourites**: your favourite tracks by that
+  artist, next to Top Tracks. Side by side on wide terminals; on narrower ones
+  they share a panel; `t` or a click on the panel title switches. Hidden when
+  you have none.
+- Similar artists on the artist page: in the Albums & EPs panel (`t` or a
+  click on the panel title switches), and as a short list beside the bio from
+  128 columns. `♥` marks artists you follow.
+- The `i` and `g` menus wrap around: up on the first option goes to the last.
+
+### Changed
+
+- Panels with two views name both in the title, the shown one underlined;
+  click a name, or press `t`, to switch.
+
+### Fixed
+
+- Opening the `i` or `g` menu (or the command palette) shifted the whole
+  screen behind it one column to the right, and hid every image behind it.
+  The page behind a menu is no longer dimmed.
+- Artists Qobuz has no photo for (about 1 in 10, e.g. Besso0) showed an empty
+  tile. They now show the cover of their newest release, in the Artists tab
+  and on the artist page.
+- An album or artist sent with a missing (null) field could fail to load.
+
 ## [0.5.0] - 2026-11-15
 
 ### Added
@@ -170,6 +198,7 @@ releases (development phases 1–9).
 - Session restore (last track + position).
 - CLI: `play`, `auth`, `devices`, `set-device`, `clear-cache`.
 
+[0.6.0]: https://github.com/pierdom/qobit/releases/tag/v0.6.0
 [0.5.0]: https://github.com/pierdom/qobit/releases/tag/v0.5.0
 [0.4.0]: https://github.com/pierdom/qobit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/pierdom/qobit/releases/tag/v0.3.0

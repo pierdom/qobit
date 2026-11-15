@@ -54,6 +54,22 @@ def artist_option(following: bool) -> Option:
     return ("follow_artist", _heart(following), "Unfollow artist" if following else "Follow artist")
 
 
+class _WrapListView(ListView):
+    """Up on the first option goes to the last, down on the last to the first."""
+
+    def action_cursor_down(self) -> None:
+        if self._nodes and self.index == len(self._nodes) - 1:
+            self.index = 0
+        else:
+            super().action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        if self._nodes and self.index in (0, None):
+            self.index = len(self._nodes) - 1
+        else:
+            super().action_cursor_up()
+
+
 class MenuOption(ListItem):
     def __init__(self, action: str, icon: str, label: str, number: int, label_w: int) -> None:
         super().__init__()
@@ -87,7 +103,7 @@ class ContextMenu(ModalScreen[str | None]):
     DEFAULT_CSS = """
     ContextMenu {
         align: center middle;
-        background: $background 55%;
+        /* No tint behind: see ModalScreen in QobitApp.CSS (Kitty images). */
     }
     ContextMenu #menu {
         width: 42;
@@ -133,7 +149,7 @@ class ContextMenu(ModalScreen[str | None]):
         with Vertical(id="menu"):
             yield Label(self._title, id="menu-header", markup=False)
             yield Label(self._subtitle, id="menu-sub", markup=False)
-            with ListView(id="menu-options"):
+            with _WrapListView(id="menu-options"):
                 for i, (action, icon, label) in enumerate(self._options, 1):
                     yield MenuOption(action, icon, label, i, self._label_w)
 

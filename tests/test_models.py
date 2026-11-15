@@ -358,3 +358,57 @@ def test_album_backfills_its_identity_onto_nested_tracks():
         "The Axeman Cometh",
         "https://img/cover.jpg",
     )
+
+
+def test_artist_without_photo_uses_newest_release_cover():
+    """Qobuz has no photo for some artists. Fall back to the newest release's
+    cover, picked by date: the API's album order isn't chronological."""
+    artist = Artist.from_api(
+        {
+            "id": 1,
+            "name": "Besso0",
+            "image": None,
+            "albums": {
+                "items": [
+                    {"id": "a", "title": "Old", "released_at": 100, "image": {"large": "old.jpg"}},
+                    {"id": "b", "title": "New", "released_at": 300, "image": {"large": "new.jpg"}},
+                    {"id": "c", "title": "Mid", "released_at": 200, "image": {"large": "mid.jpg"}},
+                    {"id": "d", "title": "No art", "released_at": 400, "image": None},
+                ]
+            },
+        }
+    )
+    assert artist.image_url == "new.jpg"
+
+
+def test_artist_photo_wins_over_album_cover():
+    artist = Artist.from_api(
+        {
+            "id": 1,
+            "name": "Mogwai",
+            "image": {"large": "photo.jpg"},
+            "albums": {"items": [{"id": "a", "released_at": 1, "image": {"large": "c.jpg"}}]},
+        }
+    )
+    assert artist.image_url == "photo.jpg"
+
+
+def test_track_matches_performer_or_album_artist():
+    """A soundtrack track performed by Aimer on a Kajiura Yuki album counts
+    as a favourite on both artists' pages."""
+    t = Track.from_api(
+        {
+            "id": 1,
+            "title": "Zankyou Sanka",
+            "performer": {"id": 11, "name": "Aimer"},
+            "album": {"id": "a", "title": "OST", "artist": {"id": 22, "name": "Kajiura Yuki"}},
+        }
+    )
+    assert (t.artist_id, t.album_artist_id) == ("11", "22")
+    assert t.by_artist("11") and t.by_artist("22") and not t.by_artist("33")
+
+
+def test_saved_tracks_without_artist_ids_still_load():
+    """queue_state.json written before artist ids existed must still restore."""
+    t = Track(id="1", title="T", artist="A", album="B", album_id="b", duration=1)
+    assert t.artist_id is None and not t.by_artist("1")

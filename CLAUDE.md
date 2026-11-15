@@ -51,8 +51,9 @@ src/qobit/
         mixes.py         DailyQ/WeeklyQ cards (d/w or Tab/←→/Enter) + tracks
         search.py        SearchView + TrackItem/AlbumItem/ArtistItem/PlaylistItem
         album_detail.py  AlbumDetailPanel (shared) + AlbumScreen
-        artist_detail.py ArtistHeader, AlbumCard/AlbumGrid, ArtistCard/
-                         ArtistGrid, _GridNav (shared), ArtistScreen
+        artist_detail.py ArtistHeader, ArtistTracks (Top Tracks + the
+                         user's favourites by the artist), AlbumCard/AlbumGrid,
+                         ArtistCard/ArtistGrid, _GridNav (all shared), ArtistScreen
         playlist_detail.py PlaylistScreen
         context_menu.py  ContextMenu (`i`), GoToMenu (`g`)
 ```
@@ -172,6 +173,32 @@ rows (removes by identity). **`g`** opens `GoToMenu` for the playing (or
 restored) track through the same dispatch. "Go to artist" needs `get_track`
 (Track has no artist id); "Go to album" passes a lean `Album`.
 
+**Artist tracks.** `ArtistTracks` is shared by ArtistScreen and the Artists
+tab: Top Tracks plus "Your favourites" (favourite tracks where
+`Track.by_artist(id)` matches the performer or the album artist; they differ
+on compilations and soundtracks). Two columns from
+`ARTIST_TRACKS_COLUMNS_MIN_W` (120) of panel width, else one panel with `t`
+switching; no favourites, no second list. It refreshes on `queue_version`
+(bumped by every favourite toggle). Border titles take style markup
+(`[underline]`, `[not bold]`, `[dim]`) but don't resolve `$variables`.
+
+**Similar artists.** `ArtistReleases` wraps the album grid (keeping the
+host's id) and an `ArtistGrid` of similar artists behind `t` (the arrows move
+the grid cursor, so no arrow switch here). The full list
+(`artist/getSimilarArtists`, paged) loads on first switch; whether to offer it
+comes from the preview in `artist/page`. `ArtistHeader(similar=True)` lists
+that preview beside the bio from `ARTIST_HEADER_SIMILAR_MIN_W` (128, compared
+with the terminal width). Both switching panels derive from `_TitleSwitch`
+(click on a name in the title → `action_switch`) and build the title with
+`switch_title()`: the shown view underlined like the active top-bar tab, the
+other at normal weight (`dim` made it unreadable on an unfocused panel).
+`clicked_label()` maps a click to a name (the title starts 3 cells in).
+`artist/page` is cached per artist and shared in flight
+(`client.get_artist_page`). Opening an artist from any of these goes through
+`QobitApp.open_artist`. Don't name widget methods or attributes after Textual
+internals: an `ArtistCard._name()` helper shadowed `Widget._name` and crashed
+every tile.
+
 **Breadcrumbs.** Pages opened from `g`/`i` get `_origin()`: the main screen's
 active tab id (`screen_stack[0]`, the artist page's Escape target) and the text
 from the page underneath's `page_title` (album/artist page or inline detail),
@@ -196,6 +223,11 @@ part is built.
 **Visual rules** (check every UI change on a rendered screenshot, never on
 computed styles: they misled three times):
 - Borders and dividers are `round`; no heavy, solid or double lines.
+- The app inset is `Screen { padding: 0 1 }`; `ModalScreen { padding: 0 }`
+  undoes it, or Textual draws the page behind a modal one column right.
+- Never tint behind a modal (`ModalScreen { background: transparent }`): Kitty
+  images are placeholder cells whose text colour encodes the image id, and a
+  tint changes it, so every image behind the menu vanished.
 - qobit's chrome uses `$accent`. Rich `Text` doesn't resolve `$variables`: read
   `app.theme_variables["accent"]`.
 - Lists are `background: transparent` (Textual's `$surface` boxes them).
@@ -229,6 +261,12 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
   it and qobit never plays it (flash + skip).
 - `Album.from_api` backfills its id, title and image onto nested tracks, which
   carry none (needed for art and "Go to album").
+- About 1 in 10 artists has no photo (`image: null` everywhere, incl.
+  `artist/page`). `Artist.from_api` falls back to the newest release's cover,
+  picked by `released_at` (the API's album order and sort parameter are
+  unreliable); Artists-tab cards fetch the full record lazily for it.
+- The API sends `null` for missing objects: parse with `data.get(k) or {}`,
+  never `data.get(k, {})`.
 - `Track.from_api` accepts both `performer.name` and `artist.name.display`.
   `get_artist` (light, uncached) only feeds the hero's bio.
 - `set_favorite(kind, id, on)` adds/removes a track, album or artist (follow =
