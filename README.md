@@ -38,7 +38,7 @@ control playback from a keyboard-driven terminal UI with cover art.
   CoreAudio devices. Tracks your account can only preview (30-second MP3s) are
   skipped.
 - Favourite tracks, artists and albums, and your playlists, with sorting and a
-  live filter.
+  live filter. Add favourites and follow artists from any list with `i`.
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
@@ -141,15 +141,20 @@ uv run ruff check . && uv run ruff format --check .
 
 ## Why this exists
 
-This is a personal project. [qbz](https://github.com/vicrodh/qbz) by vicrodh is
-a more complete Qobuz player with a graphical UI, and qobit borrows its
-bit-perfect approach. [qobine](https://github.com/SofusA/qobine) is a lighter
-terminal client. I wanted a Qobuz client that looks good on a cyberdeck build,
-with large cover art and a terminal UI.
+This is a personal project. I wanted a Qobuz client that looks good on a
+cyberdeck build, with large cover art and a terminal UI.
 
-The Qobuz Connect support is based on the protocol work in
-[qobuz-connect](https://github.com/ciaens/qobuz-connect) and
-[qobuz-proxy](https://github.com/leolobato/qobuz-proxy).
+qobit builds on other people's work:
+
+- [qbz](https://github.com/vicrodh/qbz) by vicrodh, a full-featured Qobuz
+  desktop player and the main source and inspiration for qobit, including its
+  bit-perfect approach. qbz has been discontinued and its code is no longer
+  available.
+- [qobine](https://github.com/SofusA/qobine) by SofusA, a lighter terminal
+  client for Qobuz.
+- [qobuz-connect](https://github.com/ciaens/qobuz-connect) and
+  [qobuz-proxy](https://github.com/leolobato/qobuz-proxy), whose protocol work
+  is the basis of qobit's Qobuz Connect support.
 
 ## Disclaimer
 
@@ -159,8 +164,8 @@ to say which service qobit works with.
 
 qobit is not a replacement for the official Qobuz apps. It is a small terminal
 player for a narrow audience: people who want bit-perfect playback from a
-keyboard-driven terminal UI. Many things the official apps do, qobit doesn't.
-If you want the full Qobuz experience, use the official apps.
+keyboard-driven terminal UI. It does far less than the official apps, so use
+them for everything else.
 
 It talks to the same API as the Qobuz web player. You need your own Qobuz
 subscription, qobit only plays what your account can stream, and you are
