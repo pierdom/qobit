@@ -800,8 +800,7 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
             self.query_one(ArtistHeader).populate(artist)
             if artist.albums:
                 grid = self.query_one("#albums", AlbumGrid)
-                await grid.mount(*[AlbumCard(album) for album in artist.albums])
-                grid.sync_visible_art()
+                await grid.set_cards([AlbumCard(album) for album in artist.albums])
         except NoMatches:
             pass
 

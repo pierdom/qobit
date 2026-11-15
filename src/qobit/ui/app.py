@@ -419,6 +419,9 @@ class QobitApp(App[None]):
         # Maps track_id → last successful stream quality so _do_play tries the
         # known-good format first instead of always starting at FLAC_24_192.
         self._track_quality_cache: dict[str, str] = {}
+        # Bumped by every _play_stream call: a call whose stream resolved after
+        # a newer one started is stale and must not touch the player.
+        self._play_gen = 0
         # The stream _play_stream last started (format/rate/depth) — the Connect
         # renderer reports it to the apps.
         self._last_stream: StreamUrl | None = None
@@ -575,12 +578,14 @@ class QobitApp(App[None]):
 
     async def ensure_favorite_ids(self) -> set[str]:
         """Set of favourited track ids, derived from the shared favourites
-        cache. Degrades to an empty set if the fetch fails (no hearts)."""
+        cache. A failed fetch gives an empty set (no hearts) but isn't cached,
+        so the next call retries; caching it hid every favourite for the rest
+        of the session after one failed request at startup."""
         if self._fav_ids is None:
             try:
                 tracks = await self.ensure_favorite_tracks()
             except Exception:
-                tracks = []
+                return set()
             self._fav_ids = {t.id for t in tracks}
         return self._fav_ids
 
@@ -590,6 +595,9 @@ class QobitApp(App[None]):
         state (unchanged on API error)."""
         tid = str(track.id)
         ids = await self.ensure_favorite_ids()  # also loads _fav_tracks
+        if self._fav_ids is None:  # couldn't load them: don't guess the state
+            self._flash_status("Couldn't load favourites")
+            return False
         try:
             if tid in ids:
                 await self._client.set_favorite("track", tid, False)
@@ -1054,14 +1062,22 @@ class QobitApp(App[None]):
 
     async def _play_stream(self, track: Track, start: float = 0.0) -> str:
         """Resolve and start ``track`` in mpv. Returns "ok", "sample" (preview
-        only — nothing started), "none" (no stream) or "auth" (session expired).
-        Shared by both play contexts; skipping policy is the caller's."""
+        only — nothing started), "none" (no stream), "auth" (session expired)
+        or "stale" (another track was requested while this one resolved; it
+        took over, nothing started). Shared by both play contexts; skipping
+        policy is the caller's."""
+        self._play_gen += 1
+        gen = self._play_gen
         self.status_msg = f"Loading {track.display_title}…"
         try:
             stream = await self._resolve_stream(str(track.id))
         except AuthExpiredError:
             self.status_msg = "Session expired — run: qobit auth"
             return "auth"
+        if gen != self._play_gen:
+            # Picking A then B quickly: if A's URL arrives last it would stop B
+            # and play A while the queue's cursor says B.
+            return "stale"
 
         if stream is None:
             self.status_msg = "No stream available"

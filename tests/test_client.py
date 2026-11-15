@@ -190,3 +190,19 @@ def test_get_all_favorites_fetches_remaining_pages(monkeypatch):
     items = asyncio.run(client.get_all_favorite_albums())
     assert sorted(offsets) == [0, 50, 100]
     assert [i["id"] for i in items] == [0, 50, 100]
+
+
+def test_artist_detail_fetches_every_album_page(monkeypatch):
+    """artist/get stops at its `limit`: an artist with 291 releases showed 100."""
+    calls = []
+
+    async def fake_get(endpoint, **params):
+        calls.append(params["offset"])
+        return {"name": "A", "albums": {"total": 1200, "items": [{"id": params["offset"]}]}}
+
+    client = QobuzClient()
+    monkeypatch.setattr(client, "_get", fake_get)
+    data = asyncio.run(client.get_artist_detail("1"))
+    assert sorted(calls) == [0, 500, 1000]
+    assert [a["id"] for a in data["albums"]["items"]] == [0, 500, 1000]
+    assert data["name"] == "A"  # the rest of the payload is kept

@@ -336,7 +336,7 @@ class ArtistsView(Widget):
         grid = self.query_one("#artist-albums-grid", AlbumGrid)
         await lv.clear()
         grid._cursor = -1
-        await grid.remove_children()
+        await grid.clear_cards()
 
         inner_cs = self.query_one("#artist-content-switcher", ContentSwitcher)
         inner_cs.current = "artist-tracks-albums-view"
@@ -381,8 +381,7 @@ class ArtistsView(Widget):
             self.query_one(ArtistHeader).populate(artist)
             if artist.albums:
                 grid = self.query_one("#artist-albums-grid", AlbumGrid)
-                await grid.mount(*[AlbumCard(album) for album in artist.albums])
-                grid.sync_visible_art()
+                await grid.set_cards([AlbumCard(album) for album in artist.albums])
         except Exception:
             pass
 

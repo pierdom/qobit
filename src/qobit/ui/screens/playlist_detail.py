@@ -172,7 +172,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
                 for i, t in enumerate(playlist.tracks, 1)
             ]
             self._apply_now_playing(rows)
-            await lv.mount(*rows)
+            await lv.set_rows(rows)  # type: ignore[attr-defined]  # lazy: playlists can be long
         except NoMatches:
             return
 
@@ -192,7 +192,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         if isinstance(event.item, PlaylistTrackRow):
             app: QobitApp = self.app  # type: ignore[assignment]
             lv = self.query_one(".detail-tracklist", ListView)
-            rows = list(lv.query(PlaylistTrackRow))
+            rows = [r for r in lv.rows if isinstance(r, PlaylistTrackRow)]  # type: ignore[attr-defined]
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)

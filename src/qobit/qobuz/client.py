@@ -169,14 +169,14 @@ class QobuzClient:
         raise last_err or QobuzError("No working app_id found in Qobuz bundle")
 
     async def _fetch_bundle_credentials(self) -> list[str]:
-        r = await self._http.get(f"{PLAY_BASE}/login")
+        r = await self._send("GET", f"{PLAY_BASE}/login")
         r.raise_for_status()
 
         bundle_match = _BUNDLE_RE.search(r.text)
         if not bundle_match:
             raise QobuzError("Cannot locate Qobuz bundle script in login page")
 
-        r = await self._http.get(PLAY_BASE + bundle_match.group(1))
+        r = await self._send("GET", PLAY_BASE + bundle_match.group(1))
         r.raise_for_status()
         bundle = r.text
 
@@ -211,17 +211,27 @@ class QobuzClient:
             params["user_auth_token"] = self.user_auth_token
         return params
 
+    async def _send(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """Every HTTP call goes through here: network failures (offline,
+        timeouts, dropped connections) become QobuzError, which callers
+        handle. Raw httpx errors used to escape them, and a worker that
+        raises closes the app, so a search while offline quit qobit."""
+        try:
+            return await self._http.request(method, url, **kwargs)
+        except httpx.HTTPError as e:
+            raise QobuzError(f"Network error: {e or type(e).__name__}") from e
+
     async def _get(self, endpoint: str, **params: Any) -> dict:
         p = self._base_params()
         p.update(params)
-        r = await self._http.get(API_BASE + endpoint, params=p)
+        r = await self._send("GET", API_BASE + endpoint, params=p)
         self._raise_for_status(r)
         return r.json()
 
     async def _post(self, endpoint: str, **data: Any) -> dict:
         d = self._base_params()
         d.update(data)
-        r = await self._http.post(API_BASE + endpoint, data=d)
+        r = await self._send("POST", API_BASE + endpoint, data=d)
         self._raise_for_status(r)
         return r.json()
 
@@ -268,7 +278,8 @@ class QobuzClient:
 
         code = await _wait_for_oauth_code(port)
 
-        r = await self._http.get(
+        r = await self._send(
+            "GET",
             API_BASE + "oauth/callback",
             params={"code": code, "private_key": private_key},
             headers={"X-App-Id": app_id},
@@ -278,7 +289,8 @@ class QobuzClient:
         if not interim_token:
             raise QobuzError(f"OAuth callback returned no token: {r.json()}")
 
-        r = await self._http.post(
+        r = await self._send(
+            "POST",
             API_BASE + "user/login",
             content=b"extra=partner",
             headers={
@@ -327,7 +339,8 @@ class QobuzClient:
             "listened_tracks_ids": listened_track_ids,
             "track_to_analysed": analysed,
         }
-        r = await self._http.post(
+        r = await self._send(
+            "POST",
             API_BASE + "dynamic/suggest",
             params=self._base_params(),
             content=json.dumps(body),
@@ -345,16 +358,17 @@ class QobuzClient:
             albums_sort="release_date",
         )
 
-    async def get_artist_detail(self, artist_id: str, albums_limit: int = 100) -> dict:
-        """Biography, image, and albums from artist/get (no top tracks)."""
+    async def get_artist_detail(self, artist_id: str) -> dict:
+        """Biography, image, and every album from artist/get (no top tracks)."""
         if artist_id in self._artist_detail_cache:
             self._artist_detail_cache.move_to_end(artist_id)
             return self._artist_detail_cache[artist_id]
-        result = await self._get(
+        result = await self._get_paged(
             "artist/get",
+            "albums",
+            500,
             artist_id=artist_id,
             extra="albums",
-            limit=albums_limit,
             albums_sort="release_date",
         )
         self._artist_detail_cache[artist_id] = result
@@ -381,7 +395,8 @@ class QobuzClient:
             try:
                 # Auth via headers so app_id/token are excluded from genSignedRequest's
                 # sorted-param hash (which only covers the URL query params).
-                r = await self._http.get(
+                r = await self._send(
+                    "GET",
                     API_BASE + "track/getFileUrl",
                     params={
                         "track_id": track_id,
@@ -412,7 +427,8 @@ class QobuzClient:
         per socket — the cloud evicts a second socket using the same one."""
         if not self._app_id or not self.user_auth_token:
             raise QobuzError("Not authenticated — run: qobit auth")
-        r = await self._http.post(
+        r = await self._send(
+            "POST",
             API_BASE + "qws/createToken",
             data={"jwt": "jwt_qws"},
             headers={"X-App-Id": self._app_id, "X-User-Auth-Token": self.user_auth_token},
@@ -431,23 +447,33 @@ class QobuzClient:
         endpoint = "favorite/create" if on else "favorite/delete"
         return await self._get(endpoint, **{f"{kind}_ids": item_id})
 
+    async def _get_paged(self, endpoint: str, key: str, page: int, **params: Any) -> dict:
+        """GET ``endpoint`` and fill in every page of the list it embeds under
+        ``key`` (``{"items": [...], "total": n}``): the first page, then the
+        rest in parallel, a few requests at a time. Returns the first response
+        with the complete list. Endpoints cap their lists (an artist's albums,
+        a playlist's tracks), so a single call silently truncates."""
+        first = await self._get(endpoint, limit=page, offset=0, **params)
+        data = first.get(key) or {}
+        items: list[dict] = list(data.get("items") or [])
+        total: int = data.get("total") or 0
+        if total > len(items):
+            gate = asyncio.Semaphore(4)
+
+            async def fetch(offset: int) -> list[dict]:
+                async with gate:
+                    r = await self._get(endpoint, limit=page, offset=offset, **params)
+                return (r.get(key) or {}).get("items") or []
+
+            for chunk in await asyncio.gather(*[fetch(o) for o in range(page, total, page)]):
+                items.extend(chunk)
+            data["items"] = items
+        return first
+
     async def _get_all_favorites(self, kind: str) -> list[dict]:
-        """Every favourite of one kind ("tracks", "albums", "artists"): the
-        first page, then the rest in parallel."""
-        first = await self._get("favorite/getUserFavorites", type=kind, limit=50, offset=0)
-        data = first.get(kind, {})
-        total: int = data.get("total", 0)
-        items: list[dict] = list(data.get("items", []))
-        if total > 50:
-            results = await asyncio.gather(
-                *[
-                    self._get("favorite/getUserFavorites", type=kind, limit=50, offset=off)
-                    for off in range(50, total, 50)
-                ]
-            )
-            for r in results:
-                items.extend(r.get(kind, {}).get("items", []))
-        return items
+        """Every favourite of one kind ("tracks", "albums", "artists")."""
+        first = await self._get_paged("favorite/getUserFavorites", kind, 50, type=kind)
+        return (first.get(kind) or {}).get("items") or []
 
     async def get_all_favorite_tracks(self) -> list[dict]:
         return await self._get_all_favorites("tracks")
@@ -459,26 +485,11 @@ class QobuzClient:
         return await self._get_all_favorites("artists")
 
     async def get_all_user_playlists(self) -> list[dict]:
-        """Fetch all user playlists, paginating as needed."""
-        first = await self._get("playlist/getUserPlaylists", limit=50, offset=0)
-        data = first.get("playlists", {})
-        total: int = data.get("total", 0)
-        items: list[dict] = list(data.get("items", []))
-        if total > 50:
-            results = await asyncio.gather(
-                *[
-                    self._get("playlist/getUserPlaylists", limit=50, offset=off)
-                    for off in range(50, total, 50)
-                ]
-            )
-            for r in results:
-                items.extend(r.get("playlists", {}).get("items", []))
-        return items
+        first = await self._get_paged("playlist/getUserPlaylists", "playlists", 50)
+        return (first.get("playlists") or {}).get("items") or []
 
     async def get_playlist(self, playlist_id: str) -> dict:
-        return await self._get(
-            "playlist/get",
-            playlist_id=playlist_id,
-            extra="tracks",
-            limit=500,
+        """A playlist with all its tracks (one call stops at 500)."""
+        return await self._get_paged(
+            "playlist/get", "tracks", 500, playlist_id=playlist_id, extra="tracks"
         )

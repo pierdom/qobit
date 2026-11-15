@@ -285,7 +285,9 @@ class ConnectPlayContext:
             self.renderer.report_quality(st.format_id, round(st.sampling_rate), st.bit_depth or 16)
         if result == "sample":
             app._flash_status(f"Not streamable (preview only): {track.display_title}")
-        return result == "ok"
+        # "stale": a newer load took over; not unplayable, so the renderer
+        # mustn't skip past it.
+        return result in ("ok", "stale")
 
     async def _track(self, track_id: int) -> Track | None:
         if track_id in self._tracks:
