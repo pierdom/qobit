@@ -18,6 +18,7 @@ from textual.widgets import ContentSwitcher, Footer, Label, ListItem, ListView
 from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
+from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
 from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
@@ -484,13 +485,24 @@ class ArtistCard(Widget):
         # sync_visible_art(), not eagerly here.
 
     def maybe_fetch_art(self) -> None:
-        if self._art_requested or not self._artist.image_url:
+        if self._art_requested:
             return
         self._art_requested = True
         self._fetch_art(self._artist.image_url)
 
     @work
-    async def _fetch_art(self, url: str) -> None:
+    async def _fetch_art(self, url: str | None) -> None:
+        if url is None:
+            # No photo in the favourites payload: the full artist record (cached,
+            # reused by the artist page) falls back to the newest release cover.
+            app: QobitApp = self.app  # type: ignore[assignment]
+            try:
+                full = Artist.from_api(await app._client.get_artist_detail(self._artist.id))
+            except QobuzError:
+                return
+            url = self._artist.image_url = full.image_url
+            if url is None:
+                return
         img = await fetch_image(url)
         if img is not None and self.is_attached:
             with contextlib.suppress(NoMatches):

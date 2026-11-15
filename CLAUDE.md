@@ -229,6 +229,12 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
   it and qobit never plays it (flash + skip).
 - `Album.from_api` backfills its id, title and image onto nested tracks, which
   carry none (needed for art and "Go to album").
+- About 1 in 10 artists has no photo (`image: null` everywhere, incl.
+  `artist/page`). `Artist.from_api` falls back to the newest release's cover,
+  picked by `released_at` (the API's album order and sort parameter are
+  unreliable); Artists-tab cards fetch the full record lazily for it.
+- The API sends `null` for missing objects: parse with `data.get(k) or {}`,
+  never `data.get(k, {})`.
 - `Track.from_api` accepts both `performer.name` and `artist.name.display`.
   `get_artist` (light, uncached) only feeds the hero's bio.
 - `set_favorite(kind, id, on)` adds/removes a track, album or artist (follow =

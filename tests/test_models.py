@@ -358,3 +358,36 @@ def test_album_backfills_its_identity_onto_nested_tracks():
         "The Axeman Cometh",
         "https://img/cover.jpg",
     )
+
+
+def test_artist_without_photo_uses_newest_release_cover():
+    """Qobuz has no photo for some artists. Fall back to the newest release's
+    cover, picked by date: the API's album order isn't chronological."""
+    artist = Artist.from_api(
+        {
+            "id": 1,
+            "name": "Besso0",
+            "image": None,
+            "albums": {
+                "items": [
+                    {"id": "a", "title": "Old", "released_at": 100, "image": {"large": "old.jpg"}},
+                    {"id": "b", "title": "New", "released_at": 300, "image": {"large": "new.jpg"}},
+                    {"id": "c", "title": "Mid", "released_at": 200, "image": {"large": "mid.jpg"}},
+                    {"id": "d", "title": "No art", "released_at": 400, "image": None},
+                ]
+            },
+        }
+    )
+    assert artist.image_url == "new.jpg"
+
+
+def test_artist_photo_wins_over_album_cover():
+    artist = Artist.from_api(
+        {
+            "id": 1,
+            "name": "Mogwai",
+            "image": {"large": "photo.jpg"},
+            "albums": {"items": [{"id": "a", "released_at": 1, "image": {"large": "c.jpg"}}]},
+        }
+    )
+    assert artist.image_url == "photo.jpg"

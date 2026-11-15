@@ -7,6 +7,15 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [Unreleased]
+
+### Fixed
+
+- Artists Qobuz has no photo for (about 1 in 10, e.g. Besso0) showed an empty
+  tile. They now show the cover of their newest release, in the Artists tab
+  and on the artist page.
+- An album or artist sent with a missing (null) field could fail to load.
+
 ## [0.5.0] - 2026-11-15
 
 ### Added
