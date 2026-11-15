@@ -98,3 +98,44 @@ def test_page_behind_a_menu_does_not_shift():
 
     before, with_menu = asyncio.run(run())
     assert before == with_menu
+
+
+def test_images_behind_a_menu_keep_their_ids():
+    """Kitty images are placeholder cells whose text colour encodes the image
+    id. A tinted modal background changed those colours, so every image behind
+    the `i`/`g` menu vanished. QobitApp.CSS keeps modal backgrounds clear."""
+    import asyncio
+    import re
+
+    from PIL import Image
+    from textual.app import App
+    from textual_image.widget import TGPImage
+
+    from qobit.ui.app import QobitApp
+    from qobit.ui.screens.context_menu import ContextMenu
+
+    class _App(App):
+        CSS = QobitApp.CSS + " TGPImage { width: 10; height: 5; }"
+
+        def compose(self):
+            yield TGPImage(Image.new("RGB", (40, 40), "red"))
+
+    def placeholder_colours(svg: str) -> set[str]:
+        fills = dict(re.findall(r"\.(terminal-[\w-]+) \{ fill: (#[0-9a-fA-F]+)", svg))
+        return {
+            fills.get(cls, "?")
+            for cls, text in re.findall(r'<text class="(terminal-[\w-]+)"[^>]*>([^<]*)</text>', svg)
+            if "\U0010eeee" in text
+        }
+
+    async def run():
+        app = _App()
+        async with app.run_test(size=(40, 14)) as pilot:
+            await pilot.pause()
+            before = placeholder_colours(app.export_screenshot())
+            app.push_screen(ContextMenu("T", "A", track_options(favorite=False)))
+            await pilot.pause()
+            return before, placeholder_colours(app.export_screenshot())
+
+    before, with_menu = asyncio.run(run())
+    assert before and before == with_menu

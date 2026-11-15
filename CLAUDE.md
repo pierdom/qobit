@@ -223,6 +223,9 @@ computed styles: they misled three times):
 - Borders and dividers are `round`; no heavy, solid or double lines.
 - The app inset is `Screen { padding: 0 1 }`; `ModalScreen { padding: 0 }`
   undoes it, or Textual draws the page behind a modal one column right.
+- Never tint behind a modal (`ModalScreen { background: transparent }`): Kitty
+  images are placeholder cells whose text colour encodes the image id, and a
+  tint changes it, so every image behind the menu vanished.
 - qobit's chrome uses `$accent`. Rich `Text` doesn't resolve `$variables`: read
   `app.theme_variables["accent"]`.
 - Lists are `background: transparent` (Textual's `$surface` boxes them).

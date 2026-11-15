@@ -204,10 +204,13 @@ class QobitApp(App[None]):
         */
         padding: 0 1;
     }
-    /* Modals (the `i`/`g` menus, the command palette) are Screens too, but
-       Textual draws the page behind a modal inside the modal's padding: with
-       the inset above, the whole background jumped one column right. */
-    ModalScreen { padding: 0; }
+    /* Modals (the `i`/`g` menus, the command palette):
+       - no padding: they're Screens too, and Textual draws the page behind a
+         modal inside the modal's padding, so it jumped one column right;
+       - no tint: Kitty images are placeholder cells whose text colour encodes
+         the image id. Tinting the page behind a modal changed those colours,
+         and every image vanished while the menu was open. */
+    ModalScreen { padding: 0; background: transparent; }
     /* Unified scrollbar design across every scrollable widget / page. */
     * {
         scrollbar-size-vertical: 1;

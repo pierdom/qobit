@@ -23,7 +23,8 @@ release from this entry.
 ### Fixed
 
 - Opening the `i` or `g` menu (or the command palette) shifted the whole
-  screen behind it one column to the right.
+  screen behind it one column to the right, and hid every image behind it.
+  The page behind a menu is no longer dimmed.
 - Artists Qobuz has no photo for (about 1 in 10, e.g. Besso0) showed an empty
   tile. They now show the cover of their newest release, in the Artists tab
   and on the artist page.
