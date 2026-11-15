@@ -368,7 +368,7 @@ class ArtistsView(Widget):
         self._view = "grid"
         self.query_one("#fav-artists-grid", ArtistGrid).focus()
 
-    @work
+    @work(exclusive=True, group="_load_artist_detail")  # a newer request cancels a stale one
     async def _load_artist_detail(self, artist_id: str) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         try:
@@ -385,7 +385,7 @@ class ArtistsView(Widget):
         except Exception:
             pass
 
-    @work
+    @work(exclusive=True, group="_load_artist_tracks")  # a newer request cancels a stale one
     async def _load_artist_tracks(self, artist_id: str) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         try:

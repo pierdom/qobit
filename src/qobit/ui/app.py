@@ -1236,7 +1236,7 @@ class QobitApp(App[None]):
             self._queue_save_timer.stop()  # type: ignore[union-attr]
         self._queue_save_timer = self.set_timer(_QUEUE_SAVE_DELAY, self._save_queue_state)
 
-    @work
+    @work(exclusive=True, group="_fetch_media_key_art")  # a newer request cancels a stale one
     async def _fetch_media_key_art(self, url: str) -> None:
         from ._images import fetch_image
 

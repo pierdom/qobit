@@ -645,7 +645,7 @@ class ArtistHeader(Widget):
         if artist.image_url:
             self._fetch_image(artist.image_url)
 
-    @work
+    @work(exclusive=True, group="_fetch_image")  # a newer request cancels a stale one
     async def _fetch_image(self, url: str) -> None:
         img = await fetch_image(url)
         if img is not None and self.is_attached:

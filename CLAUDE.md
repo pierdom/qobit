@@ -227,6 +227,20 @@ the terminal, does: the `g`/`i` album and artist pages lost their artist header
 and album grid whenever the artist was already cached. To reproduce headless,
 make the screen's `on_mount` await briefly. Must replicate in any new worker.
 
+**Exclusive workers where content is replaced**: a widget reused for different
+content (transport bar and hero art, the inline album panel, the artist header,
+an artist's top tracks in the Artists tab, media-key art) runs its fetch as
+`@work(exclusive=True, group="<method name>")`, so a newer request cancels the
+stale one. Without it, opening artist A then B quickly showed A's header with
+both artists' top tracks. One group per method: a shared group cancels
+unrelated work.
+
+**Overlapping plays (`_play_gen`)**: `_play_stream` bumps `_play_gen` and,
+after resolving the stream URL, returns "stale" if another call started
+meanwhile, without touching mpv. Otherwise picking A then B quickly could play
+A while the cursor showed B. Connect's `load_track` treats "stale" as handled
+(not unplayable), so the renderer doesn't skip.
+
 **`_render_version` counter**: each view holds `_render_version: int`, incremented before starting a `@work` load. The worker captures the version at start and discards results if it changed by the time it returns, so stale workers can't overwrite newer results.
 
 **Visual consistency rules** (aesthetic sweep, 2026-11-15; check every UI change
@@ -364,9 +378,22 @@ as it bumps `queue_version` (it must anyway). The app opens on the Playback tab.
 
 `get_artist_detail` (`artist/get`) and `get_artist_top_tracks` (`artist/page`) fire concurrently. `Track.from_api` handles both `performer.name` (string) and `artist.name.display` (nested dict) formats. `get_artist` is a third, lighter `artist/get` call (`albums_limit` instead of `limit`, no cache) used only by `_fetch_now_playing_bio` to pull a radio-seed track's artist bio.
 
-`get_all_favorite_tracks/albums/artists()` (one `_get_all_favorites(kind)`) issue parallel 50-item page requests after the first; `set_favorite(kind, id, on)` adds or removes a track, album or artist (following = favourite artist). `Track`, `Album`, `Artist` carry `favorited_at: int | None` for Date Added sorting.
+`get_all_favorite_tracks/albums/artists()` (one `_get_all_favorites(kind)`, via `_get_paged`) fetch every page; `set_favorite(kind, id, on)` adds or removes a track, album or artist (following = favourite artist). `Track`, `Album`, `Artist` carry `favorited_at: int | None` for Date Added sorting.
 
 `Album.from_api` backfills its own `image_url` onto nested tracks whose `image_url` is unset. Without this, cover art is missing in the transport bar and OS media controls when playing tracks from an album payload.
+
+**Network errors**: every HTTP call goes through `QobuzClient._send`, which
+turns httpx errors (offline, timeouts) into `QobuzError`. Callers catch
+`QobuzError`, and a `@work` that raises closes the app (Textual's
+`exit_on_error`), so a raw httpx error used to quit qobit on a search while
+offline. Never call `self._http` directly.
+
+**Paged lists (`_get_paged`)**: endpoints cap the lists they embed: `artist/get`
+returned 100 of an artist's 291 albums, `playlist/get` stops at 500 tracks.
+`_get_paged(endpoint, key, page, **params)` fetches the first page, then the
+rest in parallel (4 at a time), and returns the first response with the full
+list. Use it for any list that can be long (favourites, user playlists,
+playlist tracks, artist albums).
 
 **Song radio** (`get_dynamic_suggestions`): `POST dynamic/suggest`, JSON body sent as `text/plain;charset=UTF-8` (same quirk as OAuth `user/login`). Body fields: `limit`, `listened_tracks_ids` (int ids), `track_to_analysed` (`[{track_id, artist_id, label_id, genre_id}]`). Response: `{"tracks": {"items": [...]}}`. Reverse-engineered from HAR; not in official docs.
 

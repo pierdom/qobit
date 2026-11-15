@@ -256,7 +256,7 @@ class TransportBar(Widget):
         else:
             content.label = ""
 
-    @work
+    @work(exclusive=True, group="_fetch_art")  # a newer request cancels a stale one
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
         if img is not None and self.is_attached:

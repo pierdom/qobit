@@ -170,14 +170,14 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         label.update(content)
         label.display = bool(content)
 
-    @work
+    @work(exclusive=True, group="_fetch_art")  # a newer request cancels a stale one
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
         if img is not None and self.is_attached:
             with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
 
-    @work
+    @work(exclusive=True, group="_fetch_full_album")  # a newer request cancels a stale one
     async def _fetch_full_album(self, album: Album) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         try:

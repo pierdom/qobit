@@ -288,7 +288,7 @@ class AlbumsView(Widget):
             self._update_subtitle()
             self._render_grid()
 
-    @work
+    @work(exclusive=True, group="_load_artist_info")  # a newer request cancels a stale one
     async def _load_artist_info(self, artist_id: str) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         try:
