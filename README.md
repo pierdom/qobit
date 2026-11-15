@@ -17,6 +17,10 @@ A bit-perfect Qobuz client with a terminal UI, for Linux and macOS.
 
 </div>
 
+> [!NOTE]
+> qobit is an unofficial project. It is not affiliated with, endorsed by or
+> sponsored by Qobuz. See [Disclaimer](#disclaimer).
+
 qobit plays hi-res FLAC from Qobuz through mpv with no resampling and no DSP.
 The output device runs at each track's own sample rate and bit depth, and the
 DAC receives exactly the bits from the file. You browse your library and
@@ -149,10 +153,22 @@ The Qobuz Connect support is based on the protocol work in
 
 ## Disclaimer
 
-qobit is not affiliated with or endorsed by Qobuz. It uses the same API as the
-Qobuz web player, requires your own subscription, and only plays what your
-account can stream. It is an early-stage project. Use it at your own risk and
-within Qobuz's terms of service.
+qobit is an independent, unofficial project. It is not affiliated with Qobuz in
+any way, and Qobuz does not endorse or sponsor it. The Qobuz name is only used
+to say which service qobit works with.
+
+qobit is not a replacement for the official Qobuz apps. It is a small terminal
+player for a narrow audience: people who want bit-perfect playback from a
+keyboard-driven terminal UI. Many things the official apps do, qobit doesn't.
+If you want the full Qobuz experience, use the official apps.
+
+It talks to the same API as the Qobuz web player. You need your own Qobuz
+subscription, qobit only plays what your account can stream, and you are
+responsible for using it within Qobuz's terms of service.
+
+qobit is free software, provided as is, without any warranty. See sections 15
+and 16 of the [GPL-3.0 license](LICENSE). It is an early-stage personal
+project: use it at your own risk.
 
 ## License
 

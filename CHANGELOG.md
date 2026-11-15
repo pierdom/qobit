@@ -7,6 +7,52 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.5.0] - 2026-11-15
+
+### Added
+
+- The `i` menu works on whatever is highlighted, not just track rows:
+  - tracks: add to / remove from favourites;
+  - albums (Albums tab, an artist's albums, Search, an open album page): add
+    to / remove from favourites;
+  - artists (Artists tab, Search, an open artist page): follow / unfollow.
+- Ayu themes: Ayu Dark, Ayu Mirage and Ayu Light.
+- Mixes: the DailyQ and WeeklyQ cards can be reached from the keyboard (`Tab`,
+  `←` `→`, `Enter` to open, `↓` to the tracks).
+- A logo, and a short CONTRIBUTING guide.
+
+### Changed
+
+- Visual pass: every border and divider is rounded, one accent colour
+  throughout, one selection style for lists and grids. Lists no longer show a
+  lighter box behind them when the background isn't transparent.
+- The breadcrumb on a page opened with `g` or `i` names the page you came
+  from (the album or artist you were on, or the tab).
+- Tab subtitles show how many items there are (`↓ Date Added · 700`).
+- Plainer documentation, a Terminal section in the README (images need the
+  Kitty graphics protocol), a clearer disclaimer, and new screenshots.
+- `LICENSE` now holds the full GPL-3.0 text.
+- Minimum dependencies match what qobit needs: Textual 8.2, textual-image 0.12.
+
+### Fixed
+
+- Tracks, Artists, Albums and Playlists stopped at 200 items, so the oldest
+  favourites couldn't be reached. Long lists now load more as you scroll, and
+  `End` goes to the real last item.
+- Artist pages showed at most 100 releases and playlists at most 500 tracks.
+- qobit closed itself on a network error, e.g. a search while offline.
+- "Go to album" did nothing for tracks started from an album page.
+- Album and artist pages opened with `g` or `i` sometimes had no artist info
+  or albums.
+- Cover art was missing for the paused track restored after a restart.
+- Picking two tracks quickly could play the first while the queue showed the
+  second.
+- Quickly opening one artist after another could mix their top tracks, and a
+  previous track's cover could stay on screen.
+- One failed favourites load at startup hid every favourite heart until
+  restart.
+- After `End` on a long Tracks list, the next tab could stay empty.
+
 ## [0.4.0] - 2026-11-14
 
 ### Added
@@ -124,6 +170,7 @@ releases (development phases 1–9).
 - Session restore (last track + position).
 - CLI: `play`, `auth`, `devices`, `set-device`, `clear-cache`.
 
+[0.5.0]: https://github.com/pierdom/qobit/releases/tag/v0.5.0
 [0.4.0]: https://github.com/pierdom/qobit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/pierdom/qobit/releases/tag/v0.3.0
 [0.2.2]: https://github.com/pierdom/qobit/releases/tag/v0.2.2
