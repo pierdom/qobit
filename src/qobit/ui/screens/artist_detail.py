@@ -87,15 +87,17 @@ ARTIST_TRACKS_COLUMNS_MIN_W = 120
 ARTIST_HEADER_SIMILAR_MIN_W = 128
 
 # Panels that hold two views (Top Tracks / Your favourites, Albums / Similar)
-# name both in the border title, the hidden one dimmed; `t` or a click on a
-# name switches.
+# name both in the border title: the shown one underlined, like the active tab
+# in the top bar; `t` or a click on a name switches. (Not `dim` for the other:
+# on an unfocused panel's 40% title it became unreadable.)
 _SWITCH_SEP = "  │  "
 SWITCH_HINT = "t or click the title to switch"
 
 
 def switch_title(labels: list[str], active: int) -> str:
     return _SWITCH_SEP.join(
-        label if i == active else f"[dim]{label}[/dim]" for i, label in enumerate(labels)
+        f"[underline]{label}[/underline]" if i == active else f"[not bold]{label}[/not bold]"
+        for i, label in enumerate(labels)
     )
 
 
@@ -113,7 +115,29 @@ def clicked_label(panel: Widget, event: events.Click, labels: list[str]) -> int 
     return None
 
 
-class ArtistTracks(Widget):
+class _TitleSwitch:
+    """A panel with two views named in its border title: a click on the
+    hidden view's name runs ``action_switch``. Hosts say which panel shows
+    the title, its labels and the active index (None: not switching)."""
+
+    def _switch_state(self) -> tuple[Widget, list[str], int] | None:
+        raise NotImplementedError
+
+    def action_switch(self) -> None:
+        raise NotImplementedError
+
+    def on_click(self, event: events.Click) -> None:
+        state = self._switch_state()
+        if state is None:
+            return
+        panel, labels, active = state
+        picked = clicked_label(panel, event, labels)
+        if picked is not None and picked != active:
+            event.stop()
+            self.action_switch()
+
+
+class ArtistTracks(_TitleSwitch, Widget):
     """An artist's Top Tracks and the user's favourite tracks by that artist.
 
     Wide: two columns. Narrow: one panel showing either list; `t`, or ←/→,
@@ -253,14 +277,12 @@ class ArtistTracks(Widget):
     def _labels(self) -> list[str]:
         return ["Top Tracks", f"Your favourites · {len(self._fav_ids)}"]
 
-    def on_click(self, event: events.Click) -> None:
+    def _switch_state(self) -> tuple[Widget, list[str], int] | None:
         if not self._fav_ids or self._columns:
-            return
-        panel = self.query_one("#top-tracks" if self._showing == "top" else "#artist-favs")
-        picked = clicked_label(panel, event, self._labels)
-        if picked is not None and ("top", "favs")[picked] != self._showing:
-            event.stop()
-            self.action_switch()
+            return None
+        top = self._showing == "top"
+        panel = self.query_one("#top-tracks" if top else "#artist-favs")
+        return panel, self._labels, 0 if top else 1
 
     def action_switch(self) -> None:
         if not self._fav_ids:
@@ -819,7 +841,7 @@ class ArtistGrid(_GridNav, ScrollableContainer):
             self.post_message(ArtistCard.Selected(card.artist))
 
 
-class ArtistReleases(Widget):
+class ArtistReleases(_TitleSwitch, Widget):
     """The artist's Albums & EPs, and their Similar artists in the same panel:
     `t` switches (the arrows move the grid cursor). Shown only when Qobuz has
     similar artists. The full list loads the first time it's opened. The
@@ -904,15 +926,12 @@ class ArtistReleases(Widget):
         count = f" · {self._similar_count}" if self._similar_count is not None else ""
         return ["Albums & EPs", f"Similar artists{count}"]
 
-    def on_click(self, event: events.Click) -> None:
+    def _switch_state(self) -> tuple[Widget, list[str], int] | None:
         if not self._has_similar:
-            return
+            return None
         on_similar = self._showing == "similar"
         panel = self.query_one("#similar-artists") if on_similar else self.albums
-        picked = clicked_label(panel, event, self._labels)
-        if picked is not None and picked != int(on_similar):
-            event.stop()
-            self.action_switch()
+        return panel, self._labels, int(on_similar)
 
     def action_switch(self) -> None:
         if not self._has_similar:

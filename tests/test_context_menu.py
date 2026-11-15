@@ -3,7 +3,16 @@ follow the favourite state of the track, album or artist."""
 
 from __future__ import annotations
 
-from qobit.ui.screens.context_menu import album_option, artist_option, track_options
+import asyncio
+import re
+
+from PIL import Image
+from textual.app import App
+from textual.widgets import Label
+from textual_image.widget import TGPImage
+
+from qobit.ui.app import QobitApp
+from qobit.ui.screens.context_menu import ContextMenu, album_option, artist_option, track_options
 
 
 def _ids(options):
@@ -42,11 +51,6 @@ def test_album_and_artist_options():
 
 def test_menu_options_wrap_around():
     """Up on the first option goes to the last; down on the last to the first."""
-    import asyncio
-
-    from textual.app import App
-
-    from qobit.ui.screens.context_menu import ContextMenu
 
     options = track_options(favorite=False)
 
@@ -70,14 +74,6 @@ def test_page_behind_a_menu_does_not_shift():
     """Textual draws the page behind a modal inside the modal's padding; the
     app-wide `Screen { padding: 0 1 }` made it jump one column right when the
     `i`/`g` menu opened. QobitApp.CSS zeroes ModalScreen padding."""
-    import asyncio
-    import re
-
-    from textual.app import App
-    from textual.widgets import Label
-
-    from qobit.ui.app import QobitApp
-    from qobit.ui.screens.context_menu import ContextMenu
 
     class _App(App):
         CSS = QobitApp.CSS
@@ -104,15 +100,6 @@ def test_images_behind_a_menu_keep_their_ids():
     """Kitty images are placeholder cells whose text colour encodes the image
     id. A tinted modal background changed those colours, so every image behind
     the `i`/`g` menu vanished. QobitApp.CSS keeps modal backgrounds clear."""
-    import asyncio
-    import re
-
-    from PIL import Image
-    from textual.app import App
-    from textual_image.widget import TGPImage
-
-    from qobit.ui.app import QobitApp
-    from qobit.ui.screens.context_menu import ContextMenu
 
     class _App(App):
         CSS = QobitApp.CSS + " TGPImage { width: 10; height: 5; }"

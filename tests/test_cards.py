@@ -38,3 +38,27 @@ def test_artist_card_renders_name():
 
 def test_followed_artist_card_shows_heart():
     assert "♥" in _label_text(True)
+
+
+def test_clicked_label_maps_title_clicks_to_views():
+    """A click on a name in a two-view panel title picks that view. The title
+    starts 3 cells in (corner, rule, space); names are joined by `  │  `."""
+    from types import SimpleNamespace
+
+    from textual.geometry import Region
+
+    from qobit.ui.screens.artist_detail import clicked_label, switch_title
+
+    labels = ["Albums & EPs", "Similar artists · 79"]
+    panel = SimpleNamespace(region=Region(10, 5, 80, 20))
+
+    def click(col: int, row: int = 5):
+        return clicked_label(panel, SimpleNamespace(screen_x=10 + col, screen_y=row), labels)
+
+    assert click(3) == 0  # first letter of "Albums & EPs"
+    assert click(3 + len(labels[0]) + 5) == 1  # first letter after the separator
+    assert click(3 + len(labels[0]) + 1) is None  # on the separator
+    assert click(3, row=6) is None  # not the title row
+    assert switch_title(labels, 1) == (
+        "[not bold]Albums & EPs[/not bold]  │  [underline]Similar artists · 79[/underline]"
+    )
