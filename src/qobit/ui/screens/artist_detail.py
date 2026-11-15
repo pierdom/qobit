@@ -168,7 +168,7 @@ class AlbumCard(Widget):
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
+        if img is not None and self.is_attached:
             try:
                 self.query_one(TGPImage).image = img
             except NoMatches:
@@ -441,7 +441,7 @@ class ArtistCard(Widget):
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
+        if img is not None and self.is_attached:
             try:
                 self.query_one(TGPImage).image = img
             except NoMatches:
@@ -590,7 +590,7 @@ class ArtistHeader(Widget):
     @work
     async def _fetch_image(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
+        if img is not None and self.is_attached:
             try:
                 self.query_one(TGPImage).image = img
             except NoMatches:

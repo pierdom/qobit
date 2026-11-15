@@ -184,7 +184,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
+        if img is not None and self.is_attached:
             try:
                 self.query_one(".detail-art", TGPImage).image = img
             except NoMatches:

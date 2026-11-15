@@ -16,6 +16,7 @@ from textual.widgets import Footer, Label, ListItem, ListView
 from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
+from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
 from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
@@ -167,7 +168,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
+        if img is not None and self.is_attached:
             try:
                 self.query_one(TGPImage).image = img
             except NoMatches:
@@ -271,7 +272,10 @@ class AlbumScreen(Screen):
         background: $boost;
     }
     AlbumScreen #breadcrumb:hover { color: $text; background: $panel; }
-    AlbumScreen AlbumDetailPanel { height: 1fr; margin: 0 1 1 1; }
+    /* Bottom margin only: the app's horizontal inset is the Screen's padding
+       (see QobitApp.CSS). A left/right margin here put the panel one column
+       inside the header and transport bar above and below it. */
+    AlbumScreen AlbumDetailPanel { height: 1fr; margin: 0 0 1 0; }
     """
 
     def __init__(self, album: Album, source: str = "Search results") -> None:
@@ -298,8 +302,10 @@ class AlbumScreen(Screen):
         panel.load(self._album)
         header = self.query_one(ArtistHeader)
         header.set_loading(self._album.artist or "Artist")
-        if self._album.artist_id:
-            self._load_artist_info(self._album.artist_id)
+        # An album built from a track ("Go to album", `g`) has no artist id
+        # (Track doesn't carry one), so the header would stay empty. Resolve it
+        # from the full album; the client caches it for the panel's own fetch.
+        self._load_artist_info(self._album.artist_id)
         self.call_after_refresh(panel.focus_tracklist)
 
     def on_resize(self, event: events.Resize) -> None:
@@ -313,11 +319,19 @@ class AlbumScreen(Screen):
         )
 
     @work
-    async def _load_artist_info(self, artist_id: str) -> None:
+    async def _load_artist_info(self, artist_id: str | None) -> None:
         from .artist_detail import ArtistHeader
 
         app: QobitApp = self.app  # type: ignore[assignment]
-        artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
+        try:
+            if not artist_id:
+                full = Album.from_api(await app._client.get_album(self._album.id))
+                artist_id = full.artist_id
+            if not artist_id:
+                return
+            artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
+        except QobuzError:
+            return
         if self.is_mounted:
             try:
                 self.query_one(ArtistHeader).populate(artist)
