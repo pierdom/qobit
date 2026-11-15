@@ -14,6 +14,7 @@ from ...qobuz.models import Album, Artist, Track
 from ..widgets.lists import TrackListView
 from .album_detail import AlbumDetailPanel
 from .artist_detail import (
+    LIBRARY_TILE_MIN_W,
     AlbumCard,
     AlbumGrid,
     ArtistCard,
@@ -30,9 +31,6 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
     ("name", "Name"),
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
-
-_MAX_GRID = 200
-_BATCH = 50
 
 
 class ArtistsView(Widget):
@@ -129,7 +127,7 @@ class ArtistsView(Widget):
     def compose(self) -> ComposeResult:
         with ContentSwitcher(initial="artists-grid-view", id="artists-switcher"):
             with Vertical(id="artists-grid-view"):
-                yield ArtistGrid(id="fav-artists-grid", tile_min_width=33)
+                yield ArtistGrid(id="fav-artists-grid", tile_min_width=LIBRARY_TILE_MIN_W)
             with Vertical(id="artist-detail-view"):
                 yield Label("← Favourite Artists", id="artist-breadcrumb")
                 yield ArtistHeader()
@@ -149,7 +147,21 @@ class ArtistsView(Widget):
         self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
         self.query_one("#artist-albums-grid", AlbumGrid).border_title = "Albums & EPs"
 
-    def on_show(self) -> None:
+    @property
+    def page_artist(self) -> Artist | None:
+        """The open artist (detail or one of their albums), for the ``i`` menu."""
+        return self._current_artist if self._view != "grid" else None
+
+    @property
+    def page_title(self) -> str | None:
+        """Breadcrumb text for a page opened from this tab (``None``: the tab name)."""
+        if self._view == "album":
+            album = self.query_one("#album-panel", AlbumDetailPanel).album
+            return album.title if album else None
+        return self.page_artist.name if self.page_artist else None
+
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         if not self._loaded:
             self._loaded = True
             self._load()
@@ -226,8 +238,7 @@ class ArtistsView(Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            suffix = f"  ·  {_MAX_GRID} of {total}" if total > _MAX_GRID else ""
-            grid.border_subtitle = f"{arrow} {label}{suffix}"
+            grid.border_subtitle = f"{arrow} {label}  ·  {total}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -282,18 +293,13 @@ class ArtistsView(Widget):
         if version != self._render_version:
             return
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
-        await grid.remove_children()
+        await grid.clear_cards()
         if version != self._render_version:
             return
         if not artists:
             await grid.mount(Label("[dim]No favourite artists yet.[/dim]", markup=True))
             return
-        shown = artists[:_MAX_GRID]
-        for i in range(0, len(shown), _BATCH):
-            if version != self._render_version:
-                return
-            await grid.mount(*[ArtistCard(a) for a in shown[i : i + _BATCH]])
-            grid.sync_visible_art()
+        await grid.set_cards([ArtistCard(a) for a in artists])
         self._apply_filter()
 
     @work
@@ -301,12 +307,22 @@ class ArtistsView(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
         try:
-            items = await app._client.get_all_favorite_artists()
+            self._artists = list(await app.ensure_favorite_artists())
         except Exception as e:
             await grid.mount(Label(f"[red]{e}[/red]", markup=True))
             return
-        self._artists = [Artist.from_api(raw) for raw in items]
+        self._update_subtitle()
         self._render_grid()
+
+    def favorites_changed(self) -> None:
+        """A artist was added or removed elsewhere (the ``i`` menu): redraw
+        the grid from the app's cache. Before the first load there's nothing
+        to redraw; the load reads the cache anyway."""
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if self._loaded and app._fav_artists is not None:
+            self._artists = list(app._fav_artists)
+            self._update_subtitle()
+            self._render_grid()
 
     # ── navigation ───────────────────────────────────────────────────────────
 
@@ -320,7 +336,7 @@ class ArtistsView(Widget):
         grid = self.query_one("#artist-albums-grid", AlbumGrid)
         await lv.clear()
         grid._cursor = -1
-        await grid.remove_children()
+        await grid.clear_cards()
 
         inner_cs = self.query_one("#artist-content-switcher", ContentSwitcher)
         inner_cs.current = "artist-tracks-albums-view"
@@ -352,35 +368,34 @@ class ArtistsView(Widget):
         self._view = "grid"
         self.query_one("#fav-artists-grid", ArtistGrid).focus()
 
-    @work
+    @work(exclusive=True, group="_load_artist_detail")  # a newer request cancels a stale one
     async def _load_artist_detail(self, artist_id: str) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         try:
             artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
         except Exception:
             return
-        if not self.is_mounted:
+        if not self.is_attached:
             return
         try:
             self.query_one(ArtistHeader).populate(artist)
             if artist.albums:
                 grid = self.query_one("#artist-albums-grid", AlbumGrid)
-                await grid.mount(*[AlbumCard(album) for album in artist.albums])
-                grid.sync_visible_art()
+                await grid.set_cards([AlbumCard(album) for album in artist.albums])
         except Exception:
             pass
 
-    @work
+    @work(exclusive=True, group="_load_artist_tracks")  # a newer request cancels a stale one
     async def _load_artist_tracks(self, artist_id: str) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         try:
             items = await app._client.get_artist_top_tracks(artist_id)
         except Exception:
             return
-        if not items or not self.is_mounted:
+        if not items or not self.is_attached:
             return
         fav_ids = await app.ensure_favorite_ids()
-        if not self.is_mounted:
+        if not self.is_attached:
             return
         try:
             lv = self.query_one("#top-tracks", ListView)

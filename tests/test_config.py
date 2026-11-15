@@ -73,7 +73,7 @@ def test_oauth_session_accepts_legacy_single_secret_key():
     and only have a single `secret` string — get_oauth_session must still
     read those without the caller crashing on a missing key."""
     config.save({"oauth_session": {"app_id": "a", "token": "t", "secret": "only-one"}})
-    app_id, token, secrets = config.get_oauth_session()
+    _, _, secrets = config.get_oauth_session()
     assert secrets == ["only-one"]
 
 

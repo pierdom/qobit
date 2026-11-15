@@ -27,24 +27,13 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
-# Only mount this many rows at once. Textual's style/layout pass on a mount
-# scales with how many siblings already exist in the container, so mounting
-# rows one batch at a time into an ever-growing ListView is *quadratic* in
-# total row count — a multi-thousand-track favourites library (no cap existed
-# here before, unlike every other library tab) could take tens of seconds to
-# render on launch. Matches the _MAX_GRID pattern already used by
-# Albums/Artists/Playlists; the live filter (/) still searches the *full*
-# unfiltered library, it just caps how many matches get mounted.
-_MAX_LIST = 200
-_BATCH = 200  # rows per mount call; yields the event loop between batches
-
 
 class FavTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     FavTrackRow { height: 2; padding: 0 0 0 1; }
     FavTrackRow Label { width: 1fr; }
-    FavTrackRow .primary { text-style: bold; }
-    FavTrackRow .secondary { color: $text-muted; }
+    FavTrackRow .row-title { text-style: bold; }
+    FavTrackRow .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track) -> None:
@@ -59,8 +48,8 @@ class FavTrackRow(NowPlayingRowMixin, ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
 
 class TracksView(NowPlayingViewMixin, Widget):
@@ -119,7 +108,8 @@ class TracksView(NowPlayingViewMixin, Widget):
         self._update_subtitle()
         self._wire_now_playing(FavTrackRow, "#fav-tracks")
 
-    def on_show(self) -> None:
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         if not self._loaded:
             self._loaded = True
             self._load()
@@ -183,14 +173,11 @@ class TracksView(NowPlayingViewMixin, Widget):
             container.border_subtitle = f"/ {self._filter_query}_"
         elif self._filter_query:
             matched = len(self._filtered_tracks())
-            suffix = f"  ·  {_MAX_LIST} of {matched}" if matched > _MAX_LIST else ""
-            container.border_subtitle = f"⌕ {self._filter_query}{suffix}"
+            container.border_subtitle = f"⌕ {self._filter_query}  ·  {matched}"
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            total = len(self._tracks)
-            suffix = f"  ·  {_MAX_LIST} of {total}" if total > _MAX_LIST else ""
-            container.border_subtitle = f"{arrow} {label}{suffix}"
+            container.border_subtitle = f"{arrow} {label}  ·  {len(self._tracks)}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -234,7 +221,7 @@ class TracksView(NowPlayingViewMixin, Widget):
             self._filter_timer.stop()
             self._filter_timer = None
         self._render_version += 1
-        self._mount_rows(self._filtered_tracks()[:_MAX_LIST], self._render_version)
+        self._mount_rows(self._filtered_tracks(), self._render_version)
 
     @work
     async def _mount_rows(self, tracks: list[Track], version: int) -> None:
@@ -244,7 +231,7 @@ class TracksView(NowPlayingViewMixin, Widget):
         # Only re-grab focus if this list already had it and is on-screen —
         # otherwise a rebuild triggered by favouriting a track from another tab
         # (e.g. f on the Queue hero) would yank focus onto this off-screen list.
-        # Tab-entry focus is handled by on_show.
+        # Tab-entry focus is handled by activate().
         keep_focus = self.display and self.app.focused is lv
         await lv.clear()
         if version != self._render_version:
@@ -257,12 +244,10 @@ class TracksView(NowPlayingViewMixin, Widget):
             )
             await lv.append(ListItem(Label(msg, markup=True)))
             return
-        for i in range(0, len(tracks), _BATCH):
-            if version != self._render_version:
-                return
-            rows = [FavTrackRow(t) for t in tracks[i : i + _BATCH]]
-            self._apply_now_playing(rows, first_batch=(i == 0))
-            await lv.mount(*rows)
+        # Mounts the first page; the rest follows as the cursor nears it.
+        rows = [FavTrackRow(t) for t in tracks]
+        self._apply_now_playing(rows)
+        await lv.set_rows(rows)  # type: ignore[attr-defined]
         if keep_focus:
             self.call_after_refresh(lv.focus)
 
@@ -276,6 +261,7 @@ class TracksView(NowPlayingViewMixin, Widget):
             await lv.append(ListItem(Label(f"[red]{e}[/red]", markup=True)))
             return
         self._tracks = list(items)
+        self._update_subtitle()
         self._render_list()
 
     def favorite_changed(self, track_id: str, is_fav: bool) -> None:
@@ -283,6 +269,7 @@ class TracksView(NowPlayingViewMixin, Widget):
         anywhere — e.g. pressing `f` in the Queue or an album view."""
         if not self._loaded:
             return  # the first load will read the up-to-date app cache
+        self.call_after_refresh(self._update_subtitle)  # the count changes
         app: QobitApp = self.app  # type: ignore[assignment]
         if is_fav:
             if not any(t.id == track_id for t in self._tracks):
@@ -291,17 +278,18 @@ class TracksView(NowPlayingViewMixin, Widget):
         elif any(t.id == track_id for t in self._tracks):
             # Surgical removal preserves scroll/selection when unfavouriting here.
             self._tracks = [t for t in self._tracks if t.id != track_id]
-            for row in self.query_one("#fav-tracks", ListView).query(FavTrackRow):
-                if row.track.id == track_id:
-                    row.remove()
+            lv = self.query_one("#fav-tracks", TrackListView)
+            for row in lv.rows:
+                if isinstance(row, FavTrackRow) and row.track.id == track_id:
+                    lv.remove_row(row)
                     break
 
     @on(ListView.Selected, "#fav-tracks")
     def _on_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, FavTrackRow):
             app: QobitApp = self.app  # type: ignore[assignment]
-            lv = self.query_one("#fav-tracks", ListView)
-            rows = list(lv.query(FavTrackRow))
+            lv = self.query_one("#fav-tracks", TrackListView)
+            rows = [r for r in lv.rows if isinstance(r, FavTrackRow)]  # incl. not yet mounted
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)

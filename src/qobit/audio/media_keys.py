@@ -13,6 +13,7 @@ Both backends degrade silently when the required packages are not installed.
 
 from __future__ import annotations
 
+import contextlib
 import platform
 import threading
 from collections.abc import Callable
@@ -51,25 +52,19 @@ class MediaKeys:
         duration: float,
     ) -> None:
         if self._backend is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._backend.update(track, is_playing, is_paused, position, duration)
-            except Exception:
-                pass
 
     def set_artwork(self, image: object) -> None:
         """Pass a PIL.Image.Image once it has been fetched."""
         if self._backend is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._backend.set_artwork(image)
-            except Exception:
-                pass
 
     def close(self) -> None:
         if self._backend is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._backend.close()
-            except Exception:
-                pass
             self._backend = None
 
 
@@ -430,22 +425,18 @@ class _MPRISBackend:
             self._GLib.idle_add(self._emit_properties_changed)
 
     def _emit_properties_changed(self) -> bool:
-        try:
+        with contextlib.suppress(Exception):
             self.PropertiesChanged(
                 "org.mpris.MediaPlayer2.Player",
                 {"Metadata": self.Metadata, "PlaybackStatus": self.PlaybackStatus},
                 [],
             )
-        except Exception:
-            pass
         return False  # GLib.idle_add: run once
 
     def set_artwork(self, image: object) -> None:
         pass  # Linux: artwork URL is already included in Metadata via track.image_url
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self._pub.unpublish()
-        except Exception:
-            pass
         self._loop.quit()

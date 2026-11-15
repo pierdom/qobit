@@ -2,8 +2,9 @@
 
 Split of authority (docs/qobuz-connect-design.md):
 
-- **The server owns the queue.** ``ServerQueue`` mirrors it; this class never
-  edits it (phase 1 = mirror only).
+- **The server owns the queue.** ``ServerQueue`` mirrors it. Local edits are
+  sent as ``CTRL_SRVR_QUEUE_*`` commands (``queue_*`` methods) and only show
+  up once the server echoes them.
 - **The renderer owns playback.** Commands from the server, and local transport
   keys, act on the player immediately and are *reported* back with
   ``RNDR_SRVR_STATE_UPDATED``. Natural end of track is the renderer's job too.
@@ -260,11 +261,6 @@ class ConnectRenderer:
         if item is not None:
             await self._go(item, 0.0, PLAYING)
 
-    async def previous(self) -> None:
-        item = self.queue.previous_before(self.item_id)
-        if item is not None:
-            await self._go(item, 0.0, PLAYING)
-
     async def track_ended(self) -> None:
         """Natural end (or an unplayable track): advance like a real renderer."""
         self._loaded = False
@@ -441,7 +437,7 @@ class ConnectRenderer:
             self._send(message)
             return
 
-    def _on_echo(self, t: int, body) -> bool:  # noqa: ANN001 — any echo message
+    def _on_echo(self, t: int, body) -> bool:
         """Bookkeeping for a queue echo. Returns True when it answered our
         in-flight command and the next one may go (the caller sends it once the
         message is fully applied)."""

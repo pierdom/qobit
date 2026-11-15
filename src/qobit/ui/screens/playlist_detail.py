@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -30,8 +31,8 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     PlaylistTrackRow { height: 2; padding: 0 1; }
     PlaylistTrackRow Label { width: 1fr; }
-    PlaylistTrackRow .primary { text-style: bold; }
-    PlaylistTrackRow .secondary { color: $text-muted; }
+    PlaylistTrackRow .row-title { text-style: bold; }
+    PlaylistTrackRow .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -51,8 +52,8 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"        {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"        {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -89,7 +90,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         border-title-color: $accent;
     }
     PlaylistScreen #playlist-panel:focus-within .detail-tracklist {
-        border-top: solid $accent;
+        border-top: round $accent;
     }
     """
     )
@@ -124,7 +125,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         try:
             playlist = Playlist.from_api(await app._client.get_playlist(self._playlist_id))
         except Exception as e:
-            if self.is_mounted:
+            if self.is_attached:
                 try:
                     self.query_one("#playlist-panel").border_title = "Error"
                     self.query_one(".detail-title", Label).update(f"[red]{escape(str(e))}[/red]")
@@ -132,7 +133,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
                     pass
             return
 
-        if not self.is_mounted:
+        if not self.is_attached:
             return
 
         try:
@@ -161,7 +162,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             return
 
         fav_ids = await app.ensure_favorite_ids()
-        if not self.is_mounted:
+        if not self.is_attached:
             return
 
         try:
@@ -171,31 +172,27 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
                 for i, t in enumerate(playlist.tracks, 1)
             ]
             self._apply_now_playing(rows)
-            await lv.mount(*rows)
+            await lv.set_rows(rows)  # type: ignore[attr-defined]  # lazy: playlists can be long
         except NoMatches:
             return
 
-        if self.is_mounted:
-            try:
+        if self.is_attached:
+            with contextlib.suppress(NoMatches):
                 self.call_after_refresh(self.query_one(".detail-tracklist", ListView).focus)
-            except NoMatches:
-                pass
 
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
-            try:
+        if img is not None and self.is_attached:
+            with contextlib.suppress(NoMatches):
                 self.query_one(".detail-art", TGPImage).image = img
-            except NoMatches:
-                pass
 
     @on(ListView.Selected, ".detail-tracklist")
     def _on_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, PlaylistTrackRow):
             app: QobitApp = self.app  # type: ignore[assignment]
             lv = self.query_one(".detail-tracklist", ListView)
-            rows = list(lv.query(PlaylistTrackRow))
+            rows = [r for r in lv.rows if isinstance(r, PlaylistTrackRow)]  # type: ignore[attr-defined]
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)

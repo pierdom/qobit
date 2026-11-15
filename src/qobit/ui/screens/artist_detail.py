@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -12,7 +13,7 @@ from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import Screen
 from textual.timer import Timer
-from textual.widget import Widget
+from textual.widget import AwaitMount, Widget
 from textual.widgets import ContentSwitcher, Footer, Label, ListItem, ListView
 from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
@@ -23,7 +24,6 @@ from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
-from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -33,6 +33,9 @@ _CARD_IMG_H = 4  # album tiles inside an artist page (title + year only)
 # Playlists tabs — so all three tile sizes match. Every card's text column is
 # laid out to fit in this many rows.
 GRID_CARD_IMG_H = 5
+# Minimum tile width for the same three library grids, so they show the same
+# number of columns at a given terminal width.
+LIBRARY_TILE_MIN_W = 40
 _TILE_MIN_W = 22
 
 
@@ -50,7 +53,7 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     ArtistTrackRow { height: 2; padding: 0 1; }
     ArtistTrackRow Label { width: 1fr; }
-    ArtistTrackRow .secondary { color: $text-muted; }
+    ArtistTrackRow .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -62,16 +65,13 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        if self._is_playing:
-            text = f"{self._number}.  {t.display_title}"
-        else:
-            text = f"{self._number}. {ICON_TRACK}  {t.display_title}"
+        text = f"{self._number}.  {t.display_title}"  # numbered: no ♪ (see album rows)
         return playing_content(text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -141,6 +141,10 @@ class AlbumCard(Widget):
         self._show_artist = show_artist
         self._art_requested = False
 
+    @property
+    def album(self) -> Album:
+        return self._album
+
     def compose(self) -> ComposeResult:
         yield TGPImage()
         with Vertical(classes="card-info"):
@@ -169,14 +173,15 @@ class AlbumCard(Widget):
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
-            try:
+        if img is not None and self.is_attached:
+            with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
-            except NoMatches:
-                pass
 
     def on_click(self) -> None:
         self.post_message(AlbumCard.Selected(self._album))
+
+
+_GRID_PAGE = 60  # cards per lazy mount (see _GridNav.set_cards)
 
 
 class _GridNav:
@@ -200,6 +205,35 @@ class _GridNav:
     re-transmitted."""
 
     _art_sync_timer: Timer | None = None
+    _backlog: list[Widget] | None = None
+
+    # ── lazy mounting ────────────────────────────────────────────────────────
+    # Mounting cards gets slower the more a grid already holds (~0.6 s for 200,
+    # ~6 s for 1000), so ``set_cards`` mounts a first page and keeps the rest,
+    # mounted a page at a time as the cursor or scroll position nears the end.
+
+    async def clear_cards(self) -> None:
+        self._backlog = None
+        await self.remove_children()  # type: ignore[attr-defined]
+
+    async def set_cards(self, cards: list[Widget]) -> None:
+        """Fill an empty grid: the first page now, the rest on demand."""
+        self._backlog = cards[_GRID_PAGE:]
+        await self.mount(*cards[:_GRID_PAGE])  # type: ignore[attr-defined]
+        self.sync_visible_art()
+
+    def _mount_more(self, everything: bool = False) -> AwaitMount | None:
+        if not self._backlog:
+            return None
+        n = len(self._backlog) if everything else _GRID_PAGE
+        batch, self._backlog = self._backlog[:n], self._backlog[n:]
+        self.sync_visible_art()
+        return self.mount(*batch)  # type: ignore[attr-defined]
+
+    def _near_end(self) -> None:
+        """Mount the next page once the cursor is within a few rows of the end."""
+        if self._backlog and self._cursor >= len(self._visible_cards()) - self._cols * 4:  # type: ignore[attr-defined]
+            self._mount_more()
 
     def sync_visible_art(self) -> None:
         """Fetch art for cards in the viewport + margin. Deferred until after
@@ -240,6 +274,9 @@ class _GridNav:
     def watch_scroll_y(self, old_value: float, new_value: float) -> None:
         super().watch_scroll_y(old_value, new_value)  # type: ignore[misc]
         self._schedule_sync_art()
+        # Mouse-wheel scrolling moves the view, not the cursor.
+        if self._backlog and new_value >= self.max_scroll_y - self.size.height:  # type: ignore[attr-defined]
+            self._mount_more()
 
     def _page_rows(self) -> int:
         cards = self._visible_cards()  # type: ignore[attr-defined]
@@ -275,6 +312,7 @@ class _GridNav:
             target = idx - self._cols  # type: ignore[attr-defined]
         if target is not None:
             self._move_cursor(target, cards)  # type: ignore[attr-defined]
+            self._near_end()
 
     def action_page(self, direction: str) -> None:
         cards = self._visible_cards()  # type: ignore[attr-defined]
@@ -289,13 +327,21 @@ class _GridNav:
         else:
             target = min(len(cards) - 1, self._cursor + delta)  # type: ignore[attr-defined]
         self._move_cursor(target, cards, top=True)  # type: ignore[attr-defined]
+        self._near_end()
+
+    def selected_card(self) -> Widget | None:
+        """The card under the cursor, or None."""
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        return cards[self._cursor] if 0 <= self._cursor < len(cards) else None  # type: ignore[attr-defined]
 
     def action_jump_first(self) -> None:
         cards = self._visible_cards()  # type: ignore[attr-defined]
         if cards:
             self._move_cursor(0, cards, top=True)  # type: ignore[attr-defined]
 
-    def action_jump_last(self) -> None:
+    async def action_jump_last(self) -> None:
+        if (pending := self._mount_more(everything=True)) is not None:
+            await pending
         cards = self._visible_cards()  # type: ignore[attr-defined]
         if cards:
             self._move_cursor(len(cards) - 1, cards, top=True)  # type: ignore[attr-defined]
@@ -345,11 +391,16 @@ class AlbumGrid(_GridNav, ScrollableContainer):
         return [c for c in self.query(AlbumCard) if c.display]
 
     def filter_cards(self, visible_ids: set[str] | None) -> bool:
-        """Hide/show mounted cards by album id without remounting (so the
+        """Hide/show cards by album id without remounting (so the
         Kitty images are never re-transmitted).  ``None`` shows everything.
         Returns whether any card is visible."""
         any_visible = False
-        for card in self.query(AlbumCard):
+        # Cards not mounted yet may match: mount them all while filtering (a
+        # card listed twice below is harmless).
+        cards = [*self.query(AlbumCard), *(self._backlog or [])]
+        if visible_ids is not None:
+            self._mount_more(everything=True)
+        for card in cards:
             vis = visible_ids is None or card._album.id in visible_ids
             if bool(card.display) != vis:
                 card.display = vis
@@ -376,9 +427,8 @@ class AlbumGrid(_GridNav, ScrollableContainer):
             cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
-        cards = self._visible_cards()
-        if 0 <= self._cursor < len(cards):
-            self.post_message(AlbumCard.Selected(cards[self._cursor]._album))
+        if isinstance(card := self.selected_card(), AlbumCard):
+            self.post_message(AlbumCard.Selected(card.album))
 
 
 class ArtistCard(Widget):
@@ -442,11 +492,9 @@ class ArtistCard(Widget):
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
-            try:
+        if img is not None and self.is_attached:
+            with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
-            except NoMatches:
-                pass
 
     def on_click(self) -> None:
         self.post_message(ArtistCard.Selected(self._artist))
@@ -500,7 +548,12 @@ class ArtistGrid(_GridNav, ScrollableContainer):
         Kitty images are never re-transmitted).  ``None`` shows everything.
         Returns whether any card is visible."""
         any_visible = False
-        for card in self.query(ArtistCard):
+        # Cards not mounted yet may match: mount them all while filtering (a
+        # card listed twice below is harmless).
+        cards = [*self.query(ArtistCard), *(self._backlog or [])]
+        if visible_ids is not None:
+            self._mount_more(everything=True)
+        for card in cards:
             vis = visible_ids is None or card._artist.id in visible_ids
             if bool(card.display) != vis:
                 card.display = vis
@@ -527,9 +580,8 @@ class ArtistGrid(_GridNav, ScrollableContainer):
             cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
-        cards = self._visible_cards()
-        if 0 <= self._cursor < len(cards):
-            self.post_message(ArtistCard.Selected(cards[self._cursor]._artist))
+        if isinstance(card := self.selected_card(), ArtistCard):
+            self.post_message(ArtistCard.Selected(card.artist))
 
 
 class ArtistHeader(Widget):
@@ -577,25 +629,28 @@ class ArtistHeader(Widget):
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), 7)
 
+    artist: Artist | None = None
+    """The artist shown, once ``populate`` has run."""
+
     def set_loading(self, name: str = "Loading…") -> None:
+        self.artist = None
         self.query_one(".ah-bio-section").border_title = name
         self.query_one(".ah-bio", Label).update("")
 
     def populate(self, artist: Artist) -> None:
+        self.artist = artist
         self.query_one(".ah-bio-section").border_title = escape(artist.name)
         if artist.biography:
             self.query_one(".ah-bio", Label).update(escape(artist.biography))
         if artist.image_url:
             self._fetch_image(artist.image_url)
 
-    @work
+    @work(exclusive=True, group="_fetch_image")  # a newer request cancels a stale one
     async def _fetch_image(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
-            try:
+        if img is not None and self.is_attached:
+            with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
-            except NoMatches:
-                pass
 
 
 class ArtistScreen(NowPlayingViewMixin, Screen):
@@ -697,6 +752,21 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
         self._load_detail()
         self._load_tracks()
 
+    @property
+    def page_artist(self) -> Artist | None:
+        """The artist this page is about: what the ``i`` menu's follow acts on."""
+        return self.query_one(ArtistHeader).artist
+
+    @property
+    def page_title(self) -> str | None:
+        """Breadcrumb text for a page opened from this one: the album open
+        here, else the artist."""
+        if self._album_view_active:
+            album = self.query_one("#album-panel", AlbumDetailPanel).album
+            return album.title if album else None
+        artist = self.page_artist
+        return artist.name if artist else None
+
     def action_navigate_back(self) -> None:
         if self._album_view_active:
             self._show_artist_view()
@@ -724,14 +794,13 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
             artist = Artist.from_api(await app._client.get_artist_detail(self._artist_id))
         except Exception:
             return
-        if not self.is_mounted:
+        if not self.is_attached:
             return
         try:
             self.query_one(ArtistHeader).populate(artist)
             if artist.albums:
                 grid = self.query_one("#albums", AlbumGrid)
-                await grid.mount(*[AlbumCard(album) for album in artist.albums])
-                grid.sync_visible_art()
+                await grid.set_cards([AlbumCard(album) for album in artist.albums])
         except NoMatches:
             pass
 
@@ -742,10 +811,10 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
             items = await app._client.get_artist_top_tracks(self._artist_id)
         except Exception:
             return
-        if not items or not self.is_mounted:
+        if not items or not self.is_attached:
             return
         fav_ids = await app.ensure_favorite_ids()
-        if not self.is_mounted:
+        if not self.is_attached:
             return
         try:
             lv = self.query_one("#top-tracks", ListView)

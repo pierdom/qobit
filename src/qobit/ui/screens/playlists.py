@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -15,7 +16,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist
 from .._images import fetch_image
-from .artist_detail import GRID_CARD_IMG_H, _GridNav, _set_art_width
+from .artist_detail import GRID_CARD_IMG_H, LIBRARY_TILE_MIN_W, _GridNav, _set_art_width
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -29,8 +30,6 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
 # Same tile size as the Albums and Artists grids (artist_detail.GRID_CARD_IMG_H).
-_MAX_GRID = 200
-_BATCH = 50
 
 
 class PlaylistCard(Widget):
@@ -126,11 +125,9 @@ class PlaylistCard(Widget):
     @work
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
-            try:
+        if img is not None and self.is_attached:
+            with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
-            except NoMatches:
-                pass
 
     def on_click(self) -> None:
         self.post_message(PlaylistCard.Selected(self._playlist))
@@ -155,7 +152,7 @@ class PlaylistGrid(_GridNav, ScrollableContainer):
     PlaylistGrid {
         layout: grid;
         grid-size: 2;
-        grid-rows: 7;
+        grid-rows: 5;  /* GRID_CARD_IMG_H */
         grid-gutter: 1 2;
     }
     """
@@ -218,7 +215,7 @@ class PlaylistsView(Widget):
     PlaylistsView #playlists-grid-view { height: 1fr; }
     PlaylistsView PlaylistGrid {
         height: 1fr;
-        grid-rows: 7;
+        grid-rows: 5;  /* GRID_CARD_IMG_H */
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;
@@ -248,14 +245,15 @@ class PlaylistsView(Widget):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="playlists-grid-view"):
-            yield PlaylistGrid(id="user-playlists-grid", tile_min_width=50)
+            yield PlaylistGrid(id="user-playlists-grid", tile_min_width=LIBRARY_TILE_MIN_W)
 
     def on_mount(self) -> None:
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
         grid.border_title = "Playlists"
         self._update_subtitle()
 
-    def on_show(self) -> None:
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         if not self._loaded:
             self._loaded = True
             self._load()
@@ -322,8 +320,7 @@ class PlaylistsView(Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            suffix = f"  ·  {_MAX_GRID} of {total}" if total > _MAX_GRID else ""
-            grid.border_subtitle = f"{arrow} {label}{suffix}"
+            grid.border_subtitle = f"{arrow} {label}  ·  {total}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -363,19 +360,14 @@ class PlaylistsView(Widget):
         if version != self._render_version:
             return
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
-        await grid.remove_children()
+        await grid.clear_cards()
         if version != self._render_version:
             return
         if not playlists:
             msg = "[dim]No matches.[/dim]" if self._filter_query else "[dim]No playlists yet.[/dim]"
             await grid.mount(Label(msg, markup=True))
             return
-        shown = playlists[:_MAX_GRID]
-        for i in range(0, len(shown), _BATCH):
-            if version != self._render_version:
-                return
-            await grid.mount(*[PlaylistCard(p) for p in shown[i : i + _BATCH]])
-            grid.sync_visible_art()
+        await grid.set_cards([PlaylistCard(p) for p in playlists])
 
     @work
     async def _load(self) -> None:
@@ -387,6 +379,7 @@ class PlaylistsView(Widget):
             await grid.mount(Label(f"[red]{e}[/red]", markup=True))
             return
         self._playlists = [Playlist.from_api(raw) for raw in items]
+        self._update_subtitle()
         self._render_grid()
 
     # ── navigation ───────────────────────────────────────────────────────────

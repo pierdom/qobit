@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import time
 from functools import lru_cache
@@ -12,10 +13,11 @@ from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import Hit, Hits, Provider
+from textual.css.query import NoMatches
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
-from textual.theme import Theme
+from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Footer, Label, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
@@ -49,6 +51,7 @@ from .screens.playlists import PlaylistsView
 from .screens.queue import QueueView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
+from .themes import CYBERDECK_THEME, QOBIT_THEMES
 from .widgets.transport import TransportBar
 
 
@@ -56,7 +59,7 @@ class _TransparentANSIToTruecolor(_ANSIToTruecolor):
     """ANSIToTruecolor that preserves ansi_default backgrounds so the
     terminal's own background (transparency/blur) shows through."""
 
-    @lru_cache(1024)
+    @lru_cache(1024)  # noqa: B019 — as in Textual's ANSIToTruecolor; lives as long as the app
     def truecolor_style(self, style: _RichStyle, background: _RichColor) -> _RichStyle:
         terminal_theme = self._terminal_theme
         changed = False
@@ -139,22 +142,6 @@ class QobitCommands(Provider):
 # focus) for a two-tone neon identity rather than a single accent colour.
 # Registered in __init__ and set as the default in on_mount; still an
 # ordinary theme choice a user can switch away from via the command palette.
-CYBERDECK_THEME = Theme(
-    name="qobit-cyberdeck",
-    primary="#ff2ec4",  # hot magenta — Textual's own chrome (palette, focus)
-    secondary="#6e3bff",  # electric violet — secondary emphasis
-    accent="#00e5ff",  # electric cyan — qobit's own $accent: borders, now-playing,
-    # selection, hearts
-    warning="#ffb000",  # amber — CRT-terminal warning colour
-    error="#ff2965",  # hot red
-    success="#39ff88",  # acid green
-    foreground="#d6faff",  # pale cyan-white body text
-    background="#0a0612",  # near-black with a violet undertone
-    surface="#140d24",
-    panel="#2f2252",
-    boost="#231a3d",
-    dark=True,
-)
 
 _PLAYER_STATE_FILE = "player_state.json"
 # The whole play context (timeline + cursor), so the Playback tab shows the same
@@ -238,18 +225,43 @@ class QobitApp(App[None]):
         height: 1fr;
         margin-bottom: 1;
     }
-    /* .--highlight doubled: its specificity otherwise exactly ties
-       Screen.-transparent *'s below, and this rule lives in the same
-       App.CSS stylesheet source as that one, so plain specificity decides —
-       doubling the class is enough to win here. (That's NOT true for any
-       rule defined in a *widget's own* DEFAULT_CSS instead of here — see
-       the "transparency survives" block right before Screen.-transparent
-       for why those need a different fix.) */
-    ListItem.--highlight.--highlight {
-        background: $accent 35%;
+    /* Lists sit on their panel. Textual's ListView paints $surface, a shade
+       off the background: with an opaque background every list showed as a
+       lighter box, larger than its rounded border. (Popups that want a
+       surface, like the `i` menu, set it explicitly and win on specificity.) */
+    ListView { background: transparent; }
+
+    /* List highlight: the accent tint, like the grid cards' selection.
+       Textual 8 marks the row with `-highlight` (it was `--highlight` in
+       older Textual; a rule on the old name silently stopped matching and
+       every list fell back to Textual's solid primary-colour cursor).
+       Focused list: full tint. Unfocused list: a faint tint, so the Search
+       tab's three lists don't all look selected. Labels go transparent so
+       the row's tint shows behind the text under Screen.-transparent too
+       (same fix as .grid-card). */
+    ListView > ListItem.-highlight {
+        color: $foreground;
+        background: $accent 12%;
+        text-style: none;
     }
-    ListItem.--highlight > Label {
+    ListView:focus > ListItem.-highlight {
+        color: $foreground;
         background: $accent 35%;
+        text-style: none;
+    }
+    ListItem.-highlight > Label {
+        background: transparent;
+    }
+    /* Active-tab underline in the accent colour too (Textual draws it with
+       $block-cursor-background, i.e. the theme's primary). */
+    Tabs Underline > .underline--bar {
+        color: $accent;
+    }
+    /* The footer scrolls horizontally when its key hints don't fit (narrow
+       terminals), and its scrollbar then covers the hints. Hide it: the
+       hints that fit stay visible. */
+    Footer {
+        scrollbar-size-horizontal: 0;
     }
     Label.-hl {
         color: $accent;
@@ -366,7 +378,8 @@ class QobitApp(App[None]):
         """``connect`` overrides the saved Qobuz Connect setting for this run
         (``qobit --connect-on``); None = use the saved setting."""
         super().__init__()
-        self.register_theme(CYBERDECK_THEME)
+        for theme in QOBIT_THEMES:
+            self.register_theme(theme)
         self._connect_wanted = get_connect_enabled() if connect is None else connect
         self._connect: ConnectPlayContext | None = None
         self._connect_lock: object | None = None  # flock'd file while Connect is on
@@ -400,12 +413,21 @@ class QobitApp(App[None]):
         self._fav_tracks: list[Track] | None = None
         self._fav_ids: set[str] | None = None
         self._fav_lock = asyncio.Lock()
+        # Favourite albums / followed artists: fetched once, shared by the
+        # Albums and Artists tabs and the `i` menu, kept in sync by the toggles.
+        self._fav_albums: list[Album] | None = None
+        self._fav_artists: list[Artist] | None = None
+        self._fav_albums_lock = asyncio.Lock()  # one lock per list: they load in parallel
+        self._fav_artists_lock = asyncio.Lock()
         # Prevents two concurrent _advance_queue calls from both seeing an empty
         # queue and both fetching radio + starting playback.
         self._advance_lock = asyncio.Lock()
         # Maps track_id → last successful stream quality so _do_play tries the
         # known-good format first instead of always starting at FLAC_24_192.
         self._track_quality_cache: dict[str, str] = {}
+        # Bumped by every _play_stream call: a call whose stream resolved after
+        # a newer one started is stale and must not touch the player.
+        self._play_gen = 0
         # The stream _play_stream last started (format/rate/depth) — the Connect
         # renderer reports it to the apps.
         self._last_stream: StreamUrl | None = None
@@ -457,6 +479,10 @@ class QobitApp(App[None]):
         self.volume = get_saved_volume() if _sw_vol_on else 100
         self._fit_tab_labels(self.size.width)
         self._restore_player_state()
+        if self.now_playing is not None:
+            # The restored track's album details and artist bio for the hero
+            # (playing a track fetches them; a restore didn't).
+            self._fetch_now_playing_album(self.now_playing)
         if self._connect_wanted:
             self._start_connect()
         self.set_interval(5.0, self._connect_tick)
@@ -482,6 +508,12 @@ class QobitApp(App[None]):
         self.query_one(ContentSwitcher).current = f"view-{event.tab.id}"
         if event.tab.id == "search":
             self._focus_search_input()
+        # Tell the view directly rather than relying on its Show event: after
+        # End on a long list Textual sometimes never sent Show to the next tab,
+        # which then never loaded.
+        view = self.query_one(f"#view-{event.tab.id}")
+        if hasattr(view, "activate"):
+            self.call_after_refresh(view.activate)
 
     def on_resize(self, event: events.Resize) -> None:
         self._fit_tab_labels(event.size.width)
@@ -492,10 +524,9 @@ class QobitApp(App[None]):
             return
         self._tabs_compact = compact
         for n, (tid, name) in enumerate(_TABS, 1):
-            try:
+            # Not composed yet on the first resize; on_mount runs this again.
+            with contextlib.suppress(Exception):
                 self.query_one(f"#{tid}", Tab).label = _tab_label(n, name, compact)
-            except Exception:
-                pass  # not composed yet; on_mount runs this again
 
     def action_switch_tab(self, tab_id: str) -> None:
         self.query_one("#nav-tabs", Tabs).active = tab_id
@@ -535,10 +566,8 @@ class QobitApp(App[None]):
         self._hl_item = event.item
 
     def _focus_search_input(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.query_one("#search-input").focus()
-        except Exception:
-            pass
 
     # ── favourite tracks (heart glyph in track lists) ─────────────────────────
 
@@ -559,12 +588,14 @@ class QobitApp(App[None]):
 
     async def ensure_favorite_ids(self) -> set[str]:
         """Set of favourited track ids, derived from the shared favourites
-        cache. Degrades to an empty set if the fetch fails (no hearts)."""
+        cache. A failed fetch gives an empty set (no hearts) but isn't cached,
+        so the next call retries; caching it hid every favourite for the rest
+        of the session after one failed request at startup."""
         if self._fav_ids is None:
             try:
                 tracks = await self.ensure_favorite_tracks()
             except Exception:
-                tracks = []
+                return set()
             self._fav_ids = {t.id for t in tracks}
         return self._fav_ids
 
@@ -574,34 +605,95 @@ class QobitApp(App[None]):
         state (unchanged on API error)."""
         tid = str(track.id)
         ids = await self.ensure_favorite_ids()  # also loads _fav_tracks
+        if self._fav_ids is None:  # couldn't load them: don't guess the state
+            self._flash_status("Couldn't load favourites")
+            return False
         try:
             if tid in ids:
-                await self._client.remove_favorite_track(tid)
+                await self._client.set_favorite("track", tid, False)
                 ids.discard(tid)
                 if self._fav_tracks is not None:
                     self._fav_tracks = [t for t in self._fav_tracks if t.id != tid]
                 new_state = False
             else:
-                await self._client.add_favorite_track(tid)
+                await self._client.set_favorite("track", tid, True)
                 ids.add(tid)
                 if self._fav_tracks is not None and not any(t.id == tid for t in self._fav_tracks):
                     added = dataclasses.replace(track, favorited_at=int(time.time()))
                     self._fav_tracks.append(added)
                 new_state = True
         except Exception:
-            self.status_msg = "Couldn't update favourite"
+            self._flash_status("Couldn't update favourite")
             return tid in ids
-        try:
+        with contextlib.suppress(Exception):
             self.query_one(TracksView).favorite_changed(tid, new_state)
-        except Exception:
-            pass
         # Refresh the Queue so hearts on history/now-playing/up-next rows update.
         self.queue_version += 1
         return new_state
 
     @work
     async def _warm_favorite_ids(self) -> None:
-        await self.ensure_favorite_ids()
+        """Load the favourites caches up front: track hearts, and the album and
+        artist state the `i` menu labels its toggles with (it would otherwise
+        wait on the first fetch before opening)."""
+        await asyncio.gather(
+            self.ensure_favorite_ids(),
+            self.ensure_favorite_albums(),
+            self.ensure_favorite_artists(),
+            return_exceptions=True,  # a failed list is fetched again on first use
+        )
+
+    # ── favourite albums and followed artists ────────────────────────────────
+
+    async def ensure_favorite_albums(self) -> list[Album]:
+        """Favourite albums, fetched once. Raises on failure (nothing cached)."""
+        async with self._fav_albums_lock:
+            if self._fav_albums is None:
+                raw = await self._client.get_all_favorite_albums()
+                self._fav_albums = [Album.from_api(r) for r in raw]
+            return self._fav_albums
+
+    async def ensure_favorite_artists(self) -> list[Artist]:
+        """Followed (favourite) artists, fetched once. Raises on failure."""
+        async with self._fav_artists_lock:
+            if self._fav_artists is None:
+                raw = await self._client.get_all_favorite_artists()
+                self._fav_artists = [Artist.from_api(r) for r in raw]
+            return self._fav_artists
+
+    async def toggle_favorite_album(self, album: Album) -> None:
+        albums = await self.ensure_favorite_albums()
+        on = not any(a.id == album.id for a in albums)
+        try:
+            await self._client.set_favorite("album", album.id, on)
+        except QobuzError:
+            self._flash_status("Couldn't update favourite")
+            return
+        if on:
+            albums.append(dataclasses.replace(album, favorited_at=int(time.time())))
+            self._flash_status(f"Added to favourites: {album.title}")
+        else:
+            albums[:] = [a for a in albums if a.id != album.id]
+            self._flash_status(f"Removed from favourites: {album.title}")
+        with contextlib.suppress(Exception):
+            self.query_one(AlbumsView).favorites_changed()
+
+    async def toggle_follow_artist(self, artist: Artist) -> None:
+        artists = await self.ensure_favorite_artists()
+        on = not any(a.id == artist.id for a in artists)
+        try:
+            await self._client.set_favorite("artist", artist.id, on)
+        except QobuzError:
+            self._flash_status("Couldn't update followed artists")
+            return
+        if on:
+            artists.append(dataclasses.replace(artist, favorited_at=int(time.time())))
+            self._flash_status(f"Following {artist.name}")
+        else:
+            artists[:] = [a for a in artists if a.id != artist.id]
+            self._flash_status(f"Unfollowed {artist.name}")
+        with contextlib.suppress(Exception):
+            self.query_one(ArtistsView).favorites_changed()
 
     # ── seek from mouse click on bar ─────────────────────────────────────────
 
@@ -687,7 +779,7 @@ class QobitApp(App[None]):
     @work
     async def jump_to(self, index: int) -> None:
         """Move the cursor to any position on the timeline and play it. This is
-        how the Queue view skips back and forth without dropping tracks."""
+        how the Playback tab skips back and forth without dropping tracks."""
         await self._ctx.jump_to(index)
 
     # Timeline mutators delegate to the active play context (ui/play_context.py):
@@ -878,18 +970,18 @@ class QobitApp(App[None]):
             out.append(track)
         return out
 
-    async def generate_mix(self, kind: str) -> list[Track]:
-        """Generate a DailyQ / WeeklyQ from history + favourites via dynamic/suggest.
+    async def generate_mix(self) -> list[Track]:
+        """Generate a mix from history + favourites via dynamic/suggest. DailyQ
+        and WeeklyQ use the same recipe; MixesView only caches them for a day
+        and a week respectively.
 
         Seeds up to 50 tracks from recent history (most-recent-first) topped up
         with favourites.  A spread of up to 12 seeds is enriched with
         artist/label/genre metadata for the `track_to_analysed` payload.  Returns
         an empty list when there are no seeds or the API fails."""
         fav_tracks: list[Track] = []
-        try:
+        with contextlib.suppress(Exception):
             fav_tracks = await self.ensure_favorite_tracks()
-        except Exception:
-            pass
 
         seen: set[str] = set()
         seeds: list[Track] = []
@@ -980,14 +1072,22 @@ class QobitApp(App[None]):
 
     async def _play_stream(self, track: Track, start: float = 0.0) -> str:
         """Resolve and start ``track`` in mpv. Returns "ok", "sample" (preview
-        only — nothing started), "none" (no stream) or "auth" (session expired).
-        Shared by both play contexts; skipping policy is the caller's."""
+        only — nothing started), "none" (no stream), "auth" (session expired)
+        or "stale" (another track was requested while this one resolved; it
+        took over, nothing started). Shared by both play contexts; skipping
+        policy is the caller's."""
+        self._play_gen += 1
+        gen = self._play_gen
         self.status_msg = f"Loading {track.display_title}…"
         try:
             stream = await self._resolve_stream(str(track.id))
         except AuthExpiredError:
             self.status_msg = "Session expired — run: qobit auth"
             return "auth"
+        if gen != self._play_gen:
+            # Picking A then B quickly: if A's URL arrives last it would stop B
+            # and play A while the queue's cursor says B.
+            return "stale"
 
         if stream is None:
             self.status_msg = "No stream available"
@@ -1066,7 +1166,7 @@ class QobitApp(App[None]):
         track = self.now_playing
         if track is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             save_state(
                 _PLAYER_STATE_FILE,
                 {
@@ -1075,8 +1175,6 @@ class QobitApp(App[None]):
                     "duration": float(self.playback_dur),
                 },
             )
-        except Exception:
-            pass
 
     def _restore_player_state(self) -> None:
         """Reload the last session: the whole queue (timeline + cursor) and the
@@ -1130,7 +1228,7 @@ class QobitApp(App[None]):
     def _save_queue_state(self) -> None:
         if self._restoring:
             return
-        try:
+        with contextlib.suppress(Exception):
             save_state(
                 _QUEUE_STATE_FILE,
                 {
@@ -1138,8 +1236,6 @@ class QobitApp(App[None]):
                     "cursor": self._cursor,
                 },
             )
-        except Exception:
-            pass
 
     def watch_queue_version(self, _: int) -> None:
         # Every timeline/cursor change bumps queue_version (local edits, Connect
@@ -1150,7 +1246,7 @@ class QobitApp(App[None]):
             self._queue_save_timer.stop()  # type: ignore[union-attr]
         self._queue_save_timer = self.set_timer(_QUEUE_SAVE_DELAY, self._save_queue_state)
 
-    @work
+    @work(exclusive=True, group="_fetch_media_key_art")  # a newer request cancels a stale one
     async def _fetch_media_key_art(self, url: str) -> None:
         from ._images import fetch_image
 
@@ -1204,28 +1300,92 @@ class QobitApp(App[None]):
             return
         self.push_screen(GoToMenu(track), lambda action: self._on_track_menu(action, track))
 
-    def action_track_menu(self) -> None:
-        """Open the context menu for the track highlighted in the focused list.
-        No-op unless a ListView with a track row currently holds focus."""
-        from .screens.context_menu import TrackContextMenu
+    @work
+    async def action_track_menu(self) -> None:
+        """``i``: the menu for what's highlighted in the focused widget. A track
+        row gets the track actions; an album (a grid card or the album page on
+        show) adds its favourite toggle; an artist (a card, or the artist page
+        on show) adds follow/unfollow. Nothing to act on: no menu."""
+        from .screens.context_menu import ContextMenu, album_option, artist_option, track_options
         from .screens.queue import QueueTrackRow
 
         focused = self.focused
-        if not isinstance(focused, ListView):
+        if focused is None:
             return
-        child = focused.highlighted_child
-        if child is None or not hasattr(child, "track"):
+        row = focused.highlighted_child if isinstance(focused, ListView) else None
+        track: Track | None = getattr(row, "track", None)
+        album, artist = self._menu_subjects(focused)
+        try:
+            options = []
+            if track is not None:
+                fav = str(track.id) in await self.ensure_favorite_ids()
+                options += track_options(favorite=fav, in_queue=isinstance(row, QueueTrackRow))
+            if album is not None:
+                fav_albums = await self.ensure_favorite_albums()
+                options.append(album_option(any(a.id == album.id for a in fav_albums)))
+            if artist is not None:
+                followed = await self.ensure_favorite_artists()
+                options.append(artist_option(any(a.id == artist.id for a in followed)))
+        except QobuzError:
+            self._flash_status("Couldn't load favourites")
             return
-        track: Track = child.track
-        # "Remove from queue" only makes sense for an Up Next row.
-        in_queue = isinstance(child, QueueTrackRow)
+        if not options or self.focused is not focused:  # focus moved while loading
+            return
+        if track is not None:
+            title, subtitle = track.display_title, track.artist
+        elif album is not None:
+            title, subtitle = album.title, album.artist
+        else:
+            title, subtitle = artist.name, "Artist"  # type: ignore[union-attr]
         self.push_screen(
-            TrackContextMenu(track, in_queue=in_queue),
-            lambda action: self._on_track_menu(action, track),
+            ContextMenu(title, subtitle, options),
+            lambda action: self._on_track_menu(action, track, album, artist, row),
         )
 
-    def _on_track_menu(self, action: str | None, track: Track) -> None:
-        if action == "remove_queue":
+    @staticmethod
+    def _menu_subjects(focused: Widget) -> tuple[Album | None, Artist | None]:
+        """The album and the artist the ``i`` menu can act on: the selected
+        card or row first, then the album panel and artist page the focus
+        sits in."""
+        from .screens.album_detail import AlbumDetailPanel
+        from .screens.artist_detail import AlbumGrid, ArtistGrid
+
+        album: Album | None = None
+        artist: Artist | None = None
+        # A grid's selected card, or a Search result row.
+        item = None
+        if isinstance(focused, AlbumGrid | ArtistGrid):
+            item = focused.selected_card()
+        elif isinstance(focused, ListView):
+            item = focused.highlighted_child
+        if isinstance(getattr(item, "album", None), Album):
+            album = item.album  # type: ignore[union-attr]
+        if isinstance(getattr(item, "artist", None), Artist):
+            artist = item.artist  # type: ignore[union-attr]
+        for node in focused.ancestors_with_self:
+            if album is None and isinstance(node, AlbumDetailPanel):
+                album = node.album
+            if artist is None:
+                artist = getattr(node, "page_artist", None)
+        return album, artist
+
+    def _on_track_menu(
+        self,
+        action: str | None,
+        track: Track | None,
+        album: Album | None = None,
+        artist: Artist | None = None,
+        row: object = None,
+    ) -> None:
+        if action == "favorite_album" and album is not None:
+            self.run_worker(self.toggle_favorite_album(album))
+        elif action == "follow_artist" and artist is not None:
+            self.run_worker(self.toggle_follow_artist(artist))
+        elif track is None:
+            return
+        elif action == "favorite":
+            self._toggle_favorite_from_menu(track, row)
+        elif action == "remove_queue":
             if self.remove_from_queue(track):
                 self._flash_status(f"Removed from queue: {track.display_title}")
         elif action == "play_next":
@@ -1242,21 +1402,40 @@ class QobitApp(App[None]):
         elif action == "album":
             self._open_album(track)
 
-    def _open_album(self, track: Track) -> None:
+    @work
+    async def _toggle_favorite_from_menu(self, track: Track, row: object) -> None:
+        was = str(track.id) in await self.ensure_favorite_ids()
+        on = await self.toggle_favorite(track)
+        if on == was:
+            return  # failed; toggle_favorite said so
+        if hasattr(row, "set_favorite"):
+            row.set_favorite(on)  # the row's heart; other lists update via the caches
+        verb = "Added to" if on else "Removed from"
+        self._flash_status(f"{verb} favourites: {track.display_title}")
+
+    @work
+    async def _open_album(self, track: Track) -> None:
         from .screens.album_detail import AlbumScreen
 
-        if not track.album_id:
+        album_id, title = track.album_id, track.album
+        if not album_id:
+            # Tracks saved before album ids were backfilled (an older queue)
+            # don't carry one: look it up.
+            with contextlib.suppress(QobuzError):
+                info = (await self._client.get_track(str(track.id))).get("album") or {}
+                album_id, title = str(info.get("id") or ""), info.get("title") or title
+        if not album_id:
             self._flash_status("No album for this track")
             return
         album = Album(
-            id=track.album_id,
-            title=track.album,
+            id=album_id,
+            title=title,
             artist=track.artist,
             year=None,
             tracks_count=0,
             image_url=track.image_url,
         )
-        self.push_screen(AlbumScreen(album, source=self._current_tab()[1]))
+        self.push_screen(AlbumScreen(album, source=self._origin()[1]))
 
     @work
     async def _open_artist(self, track: Track) -> None:
@@ -1273,18 +1452,27 @@ class QobitApp(App[None]):
         if not artist_id:
             self._flash_status("Artist not available")
             return
-        tab_id, name = self._current_tab()
+        tab_id, name = self._origin()
         self.push_screen(ArtistScreen(str(artist_id), source=name, back_tab=tab_id))
 
-    def _current_tab(self) -> tuple[str, str]:
-        """``(tab id, display name)`` of the active tab — the breadcrumb text and
-        the Escape target for a detail screen opened from the context menu."""
-        try:
-            active = self.query_one("#nav-tabs", Tabs).active
-        except Exception:
-            active = ""
+    def _origin(self) -> tuple[str, str]:
+        """Where a page opened from the ``i``/``g`` menu comes from: ``(tab id,
+        breadcrumb text)``. The id is the active tab of the main screen (the
+        artist page's Escape target; pushed pages have no tab bar of their own).
+        The text names the page underneath: an album or artist page, the album
+        or artist open inside a tab, or else the tab itself."""
         names = dict(_TABS)
-        return (active, names[active]) if active in names else ("tracks", "Tracks")
+        base = self.screen_stack[0]
+        try:
+            tab = base.query_one("#nav-tabs", Tabs).active
+        except NoMatches:
+            tab = ""
+        tab = tab if tab in names else "tracks"
+        title = getattr(self.screen, "page_title", None)
+        if title is None and self.screen is base:
+            with contextlib.suppress(NoMatches):
+                title = getattr(base.query_one(f"#view-{tab}"), "page_title", None)
+        return tab, title or names[tab]
 
     def action_seek_back(self) -> None:
         if self._ctx is not self._local_ctx:
@@ -1347,12 +1535,10 @@ class QobitApp(App[None]):
         if ctx is not None and ctx.active and self.is_playing and not self.is_paused:
             ctx.renderer.report()
 
-    def action_focus_search(self) -> None:
-        self.query_one(Tabs).active = "search"
-
     def _refresh_truecolor_filter(self, theme: object) -> None:
         if not getattr(self, "_transparent", False) or self.native_ansi_color:
-            return super()._refresh_truecolor_filter(theme)  # type: ignore[misc]
+            super()._refresh_truecolor_filter(theme)  # type: ignore[misc]
+            return
         for index, flt in enumerate(self._filters):
             if isinstance(flt, _ANSIToTruecolor):
                 self._filters[index] = _TransparentANSIToTruecolor(theme, enabled=True)

@@ -380,3 +380,66 @@ def test_queue_with_nothing_played_yet_restores_without_now_playing(app, monkeyp
     restored._restore_player_state()
     assert _ids(restored._timeline) == ["r1", "r2"] and restored._cursor == -1
     assert restored.now_playing is None
+
+
+# ── overlapping play requests ───────────────────────────────────────────────
+
+
+class _FakePlayer:
+    running = False
+
+    def __init__(self):
+        self.played = []
+
+    def stop(self):
+        self.running = False
+
+    def play(self, url, start=0.0):
+        self.played.append(url)
+        self.running = True
+
+
+def test_slow_stream_resolve_does_not_override_a_newer_pick(app, monkeypatch):
+    """Pick A then B quickly; A's URL arrives last. It must not stop B and play
+    A (the cursor would say B while A plays)."""
+    from qobit.qobuz.models import StreamUrl
+
+    delays = {"A": 0.05, "B": 0.0}
+
+    async def resolve(track_id):
+        await asyncio.sleep(delays[track_id])
+        return StreamUrl(url=f"url-{track_id}", format_id=27, sampling_rate=96000, bit_depth=24)
+
+    player = _FakePlayer()
+    monkeypatch.setattr(app, "_resolve_stream", resolve)
+    monkeypatch.setattr(app, "_player", player)
+    monkeypatch.setattr(app, "_fetch_now_playing_album", lambda track: None)
+
+    async def run():
+        return await asyncio.gather(app._play_stream(_track("A")), app._play_stream(_track("B")))
+
+    results = asyncio.run(run())
+    assert results == ["stale", "ok"]
+    assert player.played == ["url-B"]
+    assert app.now_playing.id == "B"
+
+
+# ── favourites cache ────────────────────────────────────────────────────────
+
+
+def test_failed_favourites_fetch_is_retried_not_cached(app, monkeypatch):
+    """One failed fetch at startup used to cache an empty set: no hearts for
+    the whole session."""
+    from qobit.qobuz.client import QobuzError
+
+    calls = []
+
+    async def fetch():
+        calls.append(1)
+        if len(calls) == 1:
+            raise QobuzError("Network error")
+        return [{"id": 7, "title": "T"}]
+
+    monkeypatch.setattr(app._client, "get_all_favorite_tracks", fetch)
+    assert asyncio.run(app.ensure_favorite_ids()) == set()
+    assert asyncio.run(app.ensure_favorite_ids()) == {"7"}

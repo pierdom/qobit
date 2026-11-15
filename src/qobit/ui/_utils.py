@@ -45,6 +45,6 @@ DETAIL_HEADER_CSS = """
 .detail-desc  { height: auto; color: $text-muted; margin-top: 1; }
 .detail-tracklist {
     height: 1fr;
-    border-top: solid $accent 40%;
+    border-top: round $accent 40%;
 }
 """

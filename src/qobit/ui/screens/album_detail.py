@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -16,6 +17,7 @@ from textual.widgets import Footer, Label, ListItem, ListView
 from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
+from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
 from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
@@ -28,7 +30,6 @@ from .._utils import (
 )
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
-from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -49,14 +50,13 @@ class TrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        if self._is_playing:
-            text = f"{self._number:2}.  {t.display_title}  {t.duration_str}"
-        else:
-            text = f"{self._number:2}. {ICON_TRACK}  {t.display_title}  {t.duration_str}"
+        # Numbered lists show the number only (no ♪), like the Up Next queue;
+        # the ▶/⏸ marker for the playing row comes from playing_content.
+        text = f"{self._number:2}.  {t.display_title}  ·  {t.duration_str}"
         return playing_content(text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
-        yield Label(self._primary(), classes="primary")
+        yield Label(self._primary(), classes="row-title")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -95,7 +95,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     AlbumDetailPanel .ap-badges { height: auto; color: $text-muted; }
     AlbumDetailPanel .ap-awards { height: auto; color: $accent 70%; margin-top: 1; }
     AlbumDetailPanel:focus-within .detail-tracklist {
-        border-top: solid $accent;
+        border-top: round $accent;
     }
     /* Vertical-compact modes (see set_compact): halve the album art, then lay
        the tracklist out in two columns when space is tight. */
@@ -110,6 +110,9 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     }
     """
     )
+
+    album: Album | None = None
+    """The album on show: what the ``i`` menu's album favourite acts on."""
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="detail-header"):
@@ -142,6 +145,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
 
     def load(self, album: Album) -> None:
         """Populate the panel with album data and start async loading."""
+        self.album = album
         self.border_title = escape(album.title)
         year = str(album.year) if album.year else "—"
         parts: list[str] = [escape(album.artist), year]
@@ -166,30 +170,27 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         label.update(content)
         label.display = bool(content)
 
-    @work
+    @work(exclusive=True, group="_fetch_art")  # a newer request cancels a stale one
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
-            try:
+        if img is not None and self.is_attached:
+            with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
-            except NoMatches:
-                pass
 
-    @work
+    @work(exclusive=True, group="_fetch_full_album")  # a newer request cancels a stale one
     async def _fetch_full_album(self, album: Album) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         try:
             full = Album.from_api(await app._client.get_album(album.id))
         except Exception:
-            if self.is_mounted:
-                try:
+            if self.is_attached:
+                with contextlib.suppress(NoMatches):
                     self._set_optional(".detail-desc", "[dim]Failed to load album details.[/dim]")
-                except NoMatches:
-                    pass
             return
 
-        if not self.is_mounted:
+        if not self.is_attached or self.album is None or self.album.id != full.id:
             return
+        self.album = full
 
         try:
             self._set_optional(
@@ -229,7 +230,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
 
         fav_ids = await app.ensure_favorite_ids()
 
-        if not self.is_mounted:
+        if not self.is_attached:
             return
 
         try:
@@ -273,13 +274,21 @@ class AlbumScreen(Screen):
         background: $boost;
     }
     AlbumScreen #breadcrumb:hover { color: $text; background: $panel; }
-    AlbumScreen AlbumDetailPanel { height: 1fr; margin: 0 1 1 1; }
+    /* Bottom margin only: the app's horizontal inset is the Screen's padding
+       (see QobitApp.CSS). A left/right margin here put the panel one column
+       inside the header and transport bar above and below it. */
+    AlbumScreen AlbumDetailPanel { height: 1fr; margin: 0 0 1 0; }
     """
 
     def __init__(self, album: Album, source: str = "Search results") -> None:
         super().__init__()
         self._album = album
         self._source = source
+
+    @property
+    def page_title(self) -> str:
+        """Breadcrumb text for a page opened from this one."""
+        return self._album.title
 
     def compose(self) -> ComposeResult:
         # Lazy import avoids a circular dependency: artist_detail imports
@@ -300,8 +309,10 @@ class AlbumScreen(Screen):
         panel.load(self._album)
         header = self.query_one(ArtistHeader)
         header.set_loading(self._album.artist or "Artist")
-        if self._album.artist_id:
-            self._load_artist_info(self._album.artist_id)
+        # An album built from a track ("Go to album", `g`) has no artist id
+        # (Track doesn't carry one), so the header would stay empty. Resolve it
+        # from the full album; the client caches it for the panel's own fetch.
+        self._load_artist_info(self._album.artist_id)
         self.call_after_refresh(panel.focus_tracklist)
 
     def on_resize(self, event: events.Resize) -> None:
@@ -315,16 +326,22 @@ class AlbumScreen(Screen):
         )
 
     @work
-    async def _load_artist_info(self, artist_id: str) -> None:
+    async def _load_artist_info(self, artist_id: str | None) -> None:
         from .artist_detail import ArtistHeader
 
         app: QobitApp = self.app  # type: ignore[assignment]
-        artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
-        if self.is_mounted:
-            try:
+        try:
+            if not artist_id:
+                full = Album.from_api(await app._client.get_album(self._album.id))
+                artist_id = full.artist_id
+            if not artist_id:
+                return
+            artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
+        except QobuzError:
+            return
+        if self.is_attached:
+            with contextlib.suppress(NoMatches):
                 self.query_one(ArtistHeader).populate(artist)
-            except NoMatches:
-                pass
 
     @on(events.Click, "#breadcrumb")
     def _on_breadcrumb_click(self) -> None:

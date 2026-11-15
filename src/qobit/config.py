@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -25,10 +26,8 @@ def save(data: dict[str, Any]) -> None:
     tmp = CONFIG_FILE.with_name(f"{CONFIG_FILE.name}.tmp")
     tmp.write_text(json.dumps(data, indent=2))
     os.replace(tmp, CONFIG_FILE)
-    try:
+    with contextlib.suppress(Exception):
         CONFIG_FILE.chmod(0o600)
-    except Exception:
-        pass
 
 
 def get_credentials() -> tuple[str, str]:

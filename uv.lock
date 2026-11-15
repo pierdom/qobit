@@ -1109,7 +1109,7 @@ wheels = [
 
 [[package]]
 name = "qobit"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -1133,14 +1133,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "pillow", specifier = ">=10.0" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "pillow", specifier = ">=11.0" },
     { name = "protobuf", specifier = ">=7.36.1" },
     { name = "pydbus", marker = "sys_platform == 'linux'", specifier = ">=0.6" },
     { name = "pygobject", marker = "sys_platform == 'linux'", specifier = ">=3.50" },
     { name = "pyobjc-framework-mediaplayer", marker = "sys_platform == 'darwin'", specifier = ">=10.0" },
-    { name = "textual", specifier = ">=0.80" },
-    { name = "textual-image", specifier = ">=0.7" },
+    { name = "textual", specifier = ">=8.2" },
+    { name = "textual-image", specifier = ">=0.12" },
     { name = "websockets", specifier = ">=14.0" },
 ]
 
@@ -1148,7 +1148,7 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.4" },
-    { name = "textual-dev", specifier = ">=0.80" },
+    { name = "textual-dev", specifier = ">=1.7" },
 ]
 
 [[package]]

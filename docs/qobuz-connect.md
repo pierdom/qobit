@@ -1,12 +1,12 @@
-# Qobuz Connect — how it works and how qobit can speak it
+# Qobuz Connect: how it works and how qobit uses it
 
 > **Implemented.** This is the protocol reference, written while reverse-
 > engineering it with a throwaway spike. The real implementation lives in
 > `src/qobit/connect/` (shipped in qobit 0.2–0.3: renderer, queue mirror and
 > queue edits from qobit); how it's put together is in
 > [qobuz-connect-design.md](qobuz-connect-design.md). The "Not covered by the
-> spike" and "Integration notes" sections below are kept as the original
-> analysis — most of them are now done.
+> spike" and "Integration notes" sections below are the original analysis;
+> most of it is now done.
 
 Status: **spike verified 2026-11-14** (`spikes/qobuz_connect/connect_spike.py`).
 qobit's existing OAuth session is enough to join the user's Connect session as a
@@ -31,9 +31,9 @@ bit-perfect `MpvPlayer`.
                                        (renderer fetches the FLAC itself)
 ```
 
-Connect only moves **commands and state**. The renderer still resolves the
-stream URL with its own credentials and plays the file itself, so qobit's
-bit-perfect invariant is untouched: mpv still gets the FLAC bits directly.
+Connect only carries commands and state. The renderer gets the stream URL with
+its own credentials and plays the file itself, so mpv still receives the FLAC
+bits directly and output stays bit-perfect.
 
 ## Step by step (what the spike does)
 
@@ -141,22 +141,25 @@ Fields left out are unchanged. Observed:
 | `current_track.queue_item_id < 0` | stop |
 | `next_track` | preload hint (gapless) |
 
-**Gotchas (both bit the spike):**
+Two things caused bugs in the spike:
 
-- **`current_track` always means "jump to it", even when nothing seems to
-  change.** `queue_item_id`s restart at 0 for every new queue, and proto3 omits
-  the zero value, so `{"track_id": X}` with no item id means item 0. Re-picking
-  the song that's playing also arrives as the same item. Never compare item ids
-  to decide whether to reload. Reload whenever `current_track` is present.
-- **Picking a new song or album in the app sends no play command.** The
-  app sends `CTRL_SRVR_QUEUE_LOAD_TRACKS`, and the server broadcasts
+- **Item ids alone don't tell you whether to reload.** `queue_item_id`s restart
+  at 0 for every new queue, and proto3 omits the zero value, so
+  `{"track_id": X}` with no item id means item 0. Comparing only the item id
+  makes a new queue's first track look like the one already playing. qobit
+  reloads unless `current_track` names the item it already holds *in the same
+  queue version*. (Since 0.2.1. Reloading on every `current_track` broke a
+  different case: the server's activation handover can arrive after a queue
+  load has already started item 0, and reloading then restarted and paused it.)
+- **Picking a new song or album in the app sends no play command.** The app
+  sends `CTRL_SRVR_QUEUE_LOAD_TRACKS`, and the server broadcasts
   `SRVR_CTRL_QUEUE_TRACKS_LOADED{queue_version (major bumps), tracks:
-  [{queue_item_id, track_id}], queue_position, shuffle_mode?}`. That's all.
-  Verified against the real iOS app: no `SET_STATE` follows. The **active
-  renderer must itself** jump to `tracks[queue_position]`, start playing, and
-  report. Subsequent play/pause arrive as bare `SET_STATE{playing_state}`, so if
-  you ignore the load you end up resuming the *old* track. Keep the track list:
-  it's also how you know what comes next when `SET_STATE` didn't say.
+  [{queue_item_id, track_id}], queue_position, shuffle_mode?}`. No `SET_STATE`
+  follows (verified with the iOS app). The active renderer has to jump to
+  `tracks[queue_position]`, start playing and report. Later play/pause commands
+  arrive as bare `SET_STATE{playing_state}`, so a renderer that ignores the load
+  resumes the old track. Keep the track list: it also tells you what comes next
+  when `SET_STATE` doesn't.
 
 `track_id` is a normal Qobuz track id, so qobit's `get_track` / `get_file_url`
 apply unchanged.
@@ -177,17 +180,19 @@ Controllers extrapolate the position from `timestamp`. A renderer that says
 it's playing without a current track gets paused by the server.
 
 Also answer `SRVR_RNDR_SET_MAX_AUDIO_QUALITY` with
-`RNDR_SRVR_MAX_AUDIO_QUALITY_CHANGED`. It's worth sending
-`RNDR_SRVR_FILE_AUDIO_QUALITY_CHANGED{sampling_rate, bit_depth, nb_channels}`
-once mpv reports the real format, so the apps show the right badge. That
-dovetails with `audio/verify.py`.
+`RNDR_SRVR_MAX_AUDIO_QUALITY_CHANGED`. When a track starts, send
+`RNDR_SRVR_FILE_AUDIO_QUALITY_CHANGED{sampling_rate (Hz), bit_depth,
+nb_channels, audio_quality}` and `RNDR_SRVR_DEVICE_AUDIO_QUALITY_CHANGED`;
+without them the apps show "unknown quality". qobit sends both from the
+stream's format (since 0.2.2), mapping Qobuz format ids 5/6/7/27 to
+MP3/CD/HIRES_LEVEL1/HIRES_LEVEL2.
 
 ### 8. Keepalive / reconnect
 
 Send a websocket ping every 30 s. Treat about 60 s without a frame as a dead
 connection. On reconnect, mint a **new** token and rejoin: renderer id and
 active flag are lost until the server re-registers. `DISCONNECT{reconnect}`
-says whether retrying is welcome. The web player backs off with delays of
+says whether to retry. The web player backs off with delays of
 100 ms, 200 ms, 500 ms, 1 s, 2 s, 5 s, 10 s, then 20 s for every later attempt.
 
 ## Observed trace (abridged, real run)
@@ -244,13 +249,12 @@ cd spikes/qobuz_connect
 uv run --with protobuf --with websockets python connect_spike.py --audio
 ```
 
-Runs inside the project so it can import qobit's own `QobuzClient` +
-`MpvPlayer`: same bit-perfect mpv flags and the device saved by
-`qobit devices`/the TUI. The simulated clock stays the source of truth.
-mpv starts only when told to PLAY (a paused handover doesn't blip), seek and
-pause go through IPC, the reported position is read back from mpv `time-pos`,
-and when mpv exits naturally the spike advances to `next_track` itself and
-reports it. Don't run it alongside the qobit TUI: both use the same mpv IPC
+This runs inside the project so it can import qobit's `QobuzClient` and
+`MpvPlayer`, with the same bit-perfect mpv flags and the device saved by
+`qobit set-device`. The simulated clock stays the source of truth. mpv starts
+only on PLAY (so a paused handover makes no sound), seek and pause go through
+IPC, the reported position comes from mpv's `time-pos`, and when mpv reaches the
+end of a track the spike moves to `next_track` and reports it. Don't run it alongside the qobit TUI: both use the same mpv IPC
 socket.
 
 It reads `~/.config/qobit/config.json` (`oauth_session.app_id/token`), so run

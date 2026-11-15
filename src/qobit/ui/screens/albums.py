@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from textual import events, on, work
@@ -13,7 +14,7 @@ from textual.widgets import ContentSwitcher, Label
 from ...qobuz.models import Album, Artist
 from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW
 from .album_detail import AlbumDetailPanel
-from .artist_detail import AlbumCard, AlbumGrid, ArtistHeader
+from .artist_detail import LIBRARY_TILE_MIN_W, AlbumCard, AlbumGrid, ArtistHeader
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -25,13 +26,6 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
     ("year", "Year"),
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
-
-# Only mount this many cards at once.  The layout pass Textual runs when
-# switching to this tab is O(mounted widgets); keeping the tree small keeps
-# transitions snappy.  Mount in batches so the event loop stays responsive
-# during the initial load.
-_MAX_GRID = 200
-_BATCH = 50
 
 
 class AlbumsView(Widget):
@@ -50,8 +44,8 @@ class AlbumsView(Widget):
     AlbumsView #albums-grid-view { height: 1fr; }
     AlbumsView AlbumGrid {
         height: 1fr;
-        grid-rows: 6;
-        grid-gutter: 1 4;
+        grid-rows: 5;  /* GRID_CARD_IMG_H */
+        grid-gutter: 1 2;  /* same gaps as the Artists and Playlists grids */
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;
@@ -93,7 +87,7 @@ class AlbumsView(Widget):
     def compose(self) -> ComposeResult:
         with ContentSwitcher(initial="albums-grid-view", id="albums-switcher"):
             with Vertical(id="albums-grid-view"):
-                yield AlbumGrid(id="fav-albums-grid", tile_min_width=42)
+                yield AlbumGrid(id="fav-albums-grid", tile_min_width=LIBRARY_TILE_MIN_W)
             with Vertical(id="albums-album-view"):
                 yield Label("← Favourite Albums", id="album-breadcrumb")
                 yield ArtistHeader()
@@ -104,7 +98,16 @@ class AlbumsView(Widget):
         grid.border_title = "Favourite Albums"
         self._update_subtitle()
 
-    def on_show(self) -> None:
+    @property
+    def page_title(self) -> str | None:
+        """Breadcrumb text for a page opened from this tab (``None``: the tab name)."""
+        if not self._album_view_active:
+            return None
+        album = self.query_one("#album-panel", AlbumDetailPanel).album
+        return album.title if album else None
+
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         if not self._loaded:
             self._loaded = True
             self._load()
@@ -188,8 +191,7 @@ class AlbumsView(Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            suffix = f"  ·  {_MAX_GRID} of {total}" if total > _MAX_GRID else ""
-            grid.border_subtitle = f"{arrow} {label}{suffix}"
+            grid.border_subtitle = f"{arrow} {label}  ·  {total}"
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -255,18 +257,13 @@ class AlbumsView(Widget):
         if version != self._render_version:
             return
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
-        await grid.remove_children()
+        await grid.clear_cards()
         if version != self._render_version:
             return
         if not albums:
             await grid.mount(Label("[dim]No favourite albums yet.[/dim]", markup=True))
             return
-        shown = albums[:_MAX_GRID]
-        for i in range(0, len(shown), _BATCH):
-            if version != self._render_version:
-                return
-            await grid.mount(*[AlbumCard(a, show_artist=True) for a in shown[i : i + _BATCH]])
-            grid.sync_visible_art()
+        await grid.set_cards([AlbumCard(a, show_artist=True) for a in albums])
         self._apply_filter()
 
     @work
@@ -274,26 +271,34 @@ class AlbumsView(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
         try:
-            items = await app._client.get_all_favorite_albums()
+            self._albums = list(await app.ensure_favorite_albums())
         except Exception as e:
             await grid.mount(Label(f"[red]{e}[/red]", markup=True))
             return
-        self._albums = [Album.from_api(raw) for raw in items]
+        self._update_subtitle()
         self._render_grid()
 
-    @work
+    def favorites_changed(self) -> None:
+        """A album was added or removed elsewhere (the ``i`` menu): redraw
+        the grid from the app's cache. Before the first load there's nothing
+        to redraw; the load reads the cache anyway."""
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if self._loaded and app._fav_albums is not None:
+            self._albums = list(app._fav_albums)
+            self._update_subtitle()
+            self._render_grid()
+
+    @work(exclusive=True, group="_load_artist_info")  # a newer request cancels a stale one
     async def _load_artist_info(self, artist_id: str) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         try:
             artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
         except Exception:
             return
-        if not self.is_mounted:
+        if not self.is_attached:
             return
-        try:
+        with contextlib.suppress(Exception):
             self.query_one(ArtistHeader).populate(artist)
-        except Exception:
-            pass
 
     # ── navigation ───────────────────────────────────────────────────────────
 

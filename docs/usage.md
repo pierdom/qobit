@@ -1,6 +1,6 @@
 # Using qobit
 
-Every key, and how each tab behaves. The README has the short version.
+All keys, and how each tab works. The README has a short version.
 
 ## Global keys
 
@@ -10,7 +10,7 @@ Every key, and how each tab behaves. The README has the short version.
 | `Space` | Pause / resume |
 | `[` / `]` | Seek back / forward 10 s (or click the progress bar) |
 | `g` | Go to the artist or album of the track that's playing (`1` artist, `2` album) |
-| `i` | Context menu for the highlighted track: Play next, Add to queue, Play radio, Go to artist, Go to album (+ Remove from queue on Up Next rows) |
+| `i` | Menu for what's highlighted. A track: Play next, Add to queue, Play radio, add/remove from favourites, Go to artist, Go to album (+ Remove from queue on Up Next rows). An album (a card, or the album page): add/remove from favourites. An artist (a card, or the artist page): follow/unfollow |
 | `f` | Favourite / unfavourite the highlighted track |
 | `R` | Song radio from the current track |
 | `Enter` | Open the selected item, or play the selected track |
@@ -19,21 +19,25 @@ Every key, and how each tab behaves. The README has the short version.
 | `Home` / `End` | First / last item |
 | `Escape` | Back / close filter / focus the tab bar |
 | `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Qobuz Connect, software volume |
+
+Themes: qobit's own `qobit-cyberdeck`, `ayu-dark`, `ayu-mirage` and `ayu-light`
+(colours from the official [ayu palette](https://github.com/ayu-theme/ayu-colors)),
+plus Textual's built-in themes. `Ctrl+P` → *Theme*; the choice is saved.
 | `q` | Quit |
 
 ## Playback (`1`)
 
-qobit opens here, on the same queue you had when you last closed it, paused on
-the last track — `Space` resumes from where you left off.
+qobit opens here, on the queue you had when you last closed it, paused on the
+last track. `Space` resumes from where you left off.
 
-On the **left** is one timeline: **Recently Played** (`↺`) flows into the
-**now-playing** track (▶/⏸) and on into **Up Next**. Selecting any row just moves
-the cursor there; nothing is dropped. Skip ahead and the skipped tracks stay
-under Recently Played; jump back and the tracks in between return to Up Next.
+The **left** side is one list: **Recently Played** (`↺`), then the
+**now-playing** track (▶/⏸), then **Up Next**. Selecting a row moves playback
+there without removing anything. Tracks you skip stay under Recently Played; if
+you jump back, the tracks in between return to Up Next.
 Playing an album or playlist from the library replaces Up Next and keeps your
 history.
 
-On the **right**, the **Now Playing** panel: large cover art, title and artist,
+The **right** side is the **Now Playing** panel: cover art, title and artist,
 `album · year`, `genre · label`, the stream's resolution, and the artist's
 biography (scroll with the mouse wheel). Below ~100 columns the panel is hidden
 and the timeline takes the full width.
@@ -53,7 +57,7 @@ steps back in history after that.
 |-----|--------|
 | `s` | Cycle the sort key (Date Added → Artist/Name → Title/Album → Year → …) |
 | `r` | Reverse the sort |
-| `/` | Live filter — type to narrow the list |
+| `/` | Live filter: type to narrow the list |
 | `Escape` | Close the filter, then clear it |
 
 The border shows the filter: `/ query_` while typing, `⌕ query` while results
@@ -68,8 +72,9 @@ current track and what you've recently heard. **Endless radio** (`Ctrl+P` →
 persists.
 
 **Mixes** (`6`) builds a personal **DailyQ** (`d`) and **WeeklyQ** (`w`) from
-your listening history and favourites, cached for a day and a week. A brand-new
-account needs some listening first.
+your listening history and favourites, cached for a day and a week. You can also
+pick a card with `Tab` or `←` `→` and open it with `Enter`; `↓` moves to its
+tracks. A brand-new account needs some listening first.
 
 ## Search (`7`)
 
@@ -80,13 +85,14 @@ Type and press `Enter`; results are split into tracks, albums and artists.
 
 Turn it on from `Ctrl+P` → *Qobuz Connect* (saved) or with
 `qobit --connect-on` (this run only). qobit then appears in the Qobuz apps'
-device picker; pick it and the app becomes the remote. While active:
+device picker. Pick it there to control qobit from the app. While qobit is
+the active device:
 
-- Play, pause, seek, skip and picking music work from the app; the Playback tab
-  mirrors the app's queue.
-- Everything also works from qobit — transport keys, selecting a row, play from
-  the library, play next, add, remove, clear, song radio — and shows up in the
-  app within about a second.
+- You can play, pause, seek, skip and pick music in the app. The Playback tab
+  shows the app's queue.
+- The same actions work in qobit (transport keys, selecting a row, playing from
+  the library, play next, add, remove, clear, song radio). Changes show up in
+  the app within about a second.
 - The app's volume slider is ignored on purpose: software volume would change
   the bits the DAC receives.
 - Autoplay suggestions added by the app can't be removed from qobit yet, and

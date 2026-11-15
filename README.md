@@ -5,7 +5,7 @@
 # qobit
 
 [![CI](https://github.com/pierdom/qobit/actions/workflows/ci.yml/badge.svg)](https://github.com/pierdom/qobit/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/pierdom/qobit?sort=semver&color=F9BD2F)](https://github.com/pierdom/qobit/releases)
+[![Release](https://img.shields.io/github/v/release/pierdom/qobit?sort=semver&color=E6B450)](https://github.com/pierdom/qobit/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fpierdom%2Fqobit%2Fmain%2Fpyproject.toml)](pyproject.toml)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
@@ -17,10 +17,14 @@ A bit-perfect Qobuz client with a terminal UI, for Linux and macOS.
 
 </div>
 
-qobit plays hi-res FLAC from Qobuz through mpv with no resampling and no DSP:
-the output device gets each track's own sample rate and bit depth, and the DAC
-receives exactly the bits from the file. The library, queue and now-playing
-view live in a keyboard-driven terminal UI with cover art.
+> [!NOTE]
+> qobit is an unofficial project. It is not affiliated with, endorsed by or
+> sponsored by Qobuz. See [Disclaimer](#disclaimer).
+
+qobit plays hi-res FLAC from Qobuz through mpv with no resampling and no DSP.
+The output device runs at each track's own sample rate and bit depth, and the
+DAC receives exactly the bits from the file. You browse your library and
+control playback from a keyboard-driven terminal UI with cover art.
 
 <div align="center">
 
@@ -31,23 +35,25 @@ view live in a keyboard-driven terminal UI with cover art.
 ## Features
 
 - Bit-perfect output through PipeWire rate-following or exclusive ALSA `hw:` /
-  CoreAudio devices. Tracks your account can only preview are skipped, not
-  played as 30-second MP3s.
-- Your favourite tracks, artists and albums, and your playlists, with sorting
-  and a live filter.
+  CoreAudio devices. Tracks your account can only preview (30-second MP3s) are
+  skipped.
+- Favourite tracks, artists and albums, and your playlists, with sorting and a
+  live filter.
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
-- Cover art and artist bios, using the Kitty graphics protocol.
+- Cover art and artist bios, drawn with the Kitty graphics protocol (see
+  [Terminal](#terminal)).
+- Themes, including Ayu Dark, Mirage and Light.
 - OS media keys and now-playing widgets (MPRIS on Linux, Now Playing on macOS).
-- Qobuz Connect: qobit can appear as a device in the Qobuz apps and be
-  controlled from them. Off by default.
+- Qobuz Connect (off by default): qobit shows up as a device in the Qobuz apps,
+  and you can control it from there.
 
 ## Install
 
 Requirements: a Qobuz subscription (Hi-Res for 24-bit), Python 3.11+,
 [uv](https://docs.astral.sh/uv/), [mpv](https://mpv.io/), and a terminal that
-supports the Kitty graphics protocol (kitty, Ghostty, iTerm2 3.5+).
+supports the Kitty graphics protocol (see [Terminal](#terminal)).
 
 On Linux, the media-key support builds against system headers. Install them
 first:
@@ -74,6 +80,25 @@ qobit               # start the TUI
 For bit-perfect output, choose the device as described in
 [docs/audio.md](docs/audio.md).
 
+## Terminal
+
+qobit draws all images (cover art, artist photos) with the
+[Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
+There is no fallback for other terminals.
+
+| Terminal | Images |
+|---|---|
+| [kitty](https://sw.kovidgoyal.net/kitty/) | works |
+| [Ghostty](https://ghostty.org) | works |
+| [WezTerm](https://wezterm.org), Konsole | implement the protocol; not tested with qobit |
+| Inside tmux | needs `set -g allow-passthrough on`; not tested with qobit |
+
+> [!WARNING]
+> In other terminals (GNOME Terminal, iTerm2, macOS Terminal, Alacritty,
+> Windows Terminal, VS Code, …) every image shows up as blocks of garbled
+> characters, so qobit looks very bad. Playback still works, but use one of the
+> terminals above.
+
 ## Usage
 
 | Key | Action | Key | Action |
@@ -81,11 +106,11 @@ For bit-perfect output, choose the device as described in
 | `1`–`7` | switch tab | `Space` | pause / resume |
 | `/` | filter | `[` `]` | seek 10 s |
 | `s` `r` | sort, reverse | `R` | song radio |
-| `i` | track menu | `g` | go to artist / album |
+| `i` | menu: queue, favourite, follow | `g` | go to artist / album |
 | `f` | favourite | `Ctrl+P` | command palette |
 
-The full list of keys and how each tab works is in
-[docs/usage.md](docs/usage.md). From the command line:
+All keys, and how each tab works, are in [docs/usage.md](docs/usage.md).
+From the command line:
 
 ```bash
 qobit play "Kind of Blue"   # search, play the first result, check the output format
@@ -103,6 +128,7 @@ qobit --connect-on          # start with Qobuz Connect enabled for this run
 | Qobuz Connect protocol notes | [docs/qobuz-connect.md](docs/qobuz-connect.md) |
 | Qobuz Connect implementation | [docs/qobuz-connect-design.md](docs/qobuz-connect-design.md) |
 | Changes | [CHANGELOG.md](CHANGELOG.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Notes for working on the code | [CLAUDE.md](CLAUDE.md) |
 
 ## Development
@@ -127,10 +153,22 @@ The Qobuz Connect support is based on the protocol work in
 
 ## Disclaimer
 
-qobit is not affiliated with or endorsed by Qobuz. It uses the same API as the
-Qobuz web player, requires your own subscription, and only plays what your
-account can stream. It is an early-stage project. Use it at your own risk and
-within Qobuz's terms of service.
+qobit is an independent, unofficial project. It is not affiliated with Qobuz in
+any way, and Qobuz does not endorse or sponsor it. The Qobuz name is only used
+to say which service qobit works with.
+
+qobit is not a replacement for the official Qobuz apps. It is a small terminal
+player for a narrow audience: people who want bit-perfect playback from a
+keyboard-driven terminal UI. Many things the official apps do, qobit doesn't.
+If you want the full Qobuz experience, use the official apps.
+
+It talks to the same API as the Qobuz web player. You need your own Qobuz
+subscription, qobit only plays what your account can stream, and you are
+responsible for using it within Qobuz's terms of service.
+
+qobit is free software, provided as is, without any warranty. See sections 15
+and 16 of the [GPL-3.0 license](LICENSE). It is an early-stage personal
+project: use it at your own risk.
 
 ## License
 

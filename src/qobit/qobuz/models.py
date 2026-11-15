@@ -14,10 +14,8 @@ def _khz_str(khz: float) -> str:
 class StreamUrl:
     url: str
     format_id: int
-    mime_type: str
-    sampling_rate: float
+    sampling_rate: float  # Hz
     bit_depth: int | None
-    file_size: int | None = None
     # True when Qobuz answered with a ~30 s MP3 preview instead of the real file
     # (e.g. restriction TrackRestrictedByPurchaseCredentials). It's returned at
     # *every* requested quality, so a quality fallback never escapes it — and
@@ -29,17 +27,10 @@ class StreamUrl:
         return cls(
             url=data["url"],
             format_id=data.get("format_id", 6),
-            mime_type=data.get("mime_type", "audio/flac"),
             sampling_rate=float(data.get("sampling_rate", 44.1)) * 1000,
             bit_depth=data.get("bit_depth"),
-            file_size=data.get("file_size"),
             sample=bool(data.get("sample", False)),
         )
-
-    @property
-    def quality_label(self) -> str:
-        bd = self.bit_depth or 16
-        return f"{bd}/{_khz_str(self.sampling_rate / 1000)}"
 
     @property
     def quality_badge(self) -> str:
@@ -141,14 +132,16 @@ class Album:
         tracks = [Track.from_api(t) for t in data.get("tracks", {}).get("items", [])]
         image = data.get("image", {})
         img_url = image.get("large") or image.get("small") or None
-        # Track items nested under an album carry no album image of their own,
-        # so Track.from_api leaves image_url unset. Backfill from the album so
-        # the now-playing art (transport bar, OS media controls) works when a
-        # track is played straight from the album view or its play queue.
-        if img_url:
-            for t in tracks:
-                if not t.image_url:
-                    t.image_url = img_url
+        # Track items nested under an album carry no album of their own, so
+        # Track.from_api leaves image_url, album and album_id unset. Backfill
+        # them from the album: the now-playing art (transport bar, OS media
+        # controls) and "Go to album" need them when a track is played
+        # straight from the album view or its play queue.
+        album_id = str(data["id"])
+        for t in tracks:
+            t.image_url = t.image_url or img_url
+            t.album = t.album or data.get("title", "")
+            t.album_id = t.album_id or album_id
         release = data.get("release_date_original", "") or ""
         year = int(release[:4]) if len(release) >= 4 and release[:4].isdigit() else None
         awards = [
@@ -158,7 +151,7 @@ class Album:
         ]
         artist_data = data.get("artist", {})
         return cls(
-            id=str(data["id"]),
+            id=album_id,
             title=data.get("title", ""),
             artist=artist_data.get("name", ""),
             artist_id=str(artist_data["id"]) if artist_data.get("id") else None,

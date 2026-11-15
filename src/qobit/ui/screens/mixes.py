@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 from datetime import date
 from typing import TYPE_CHECKING, Literal
@@ -34,7 +35,17 @@ def _cache_key(kind: str) -> str:
     return str(today)
 
 
-class MixCard(Widget):
+class MixCard(Widget, can_focus=True):
+    """One of the two mix tiles. Focusable, so the keyboard reaches it (Tab,
+    ←/→ between the two); Enter or Space opens it, ↓ goes to the track list."""
+
+    BINDINGS = [
+        Binding("enter,space", "open", "Open mix", show=False),
+        Binding("left", "sibling(-1)", show=False),
+        Binding("right", "sibling(1)", show=False),
+        Binding("down", "to_list", show=False),
+    ]
+
     class Selected(Message):
         def __init__(self, kind: MixKind) -> None:
             super().__init__()
@@ -53,6 +64,7 @@ class MixCard(Widget):
     }
     MixCard .mix-name { text-style: bold; height: 2; }
     MixCard.-selected .mix-name { color: $accent; }
+    MixCard:focus { border: round $accent; }
     MixCard .mix-desc { color: $text-muted; height: 1; }
     MixCard .mix-status { color: $text-disabled; height: 1; }
     """
@@ -70,21 +82,31 @@ class MixCard(Widget):
         yield Label("", classes="mix-status")
 
     def update_status(self, track_count: int) -> None:
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one(".mix-status", Label).update(f"{track_count} tracks")
-        except NoMatches:
-            pass
 
     def on_click(self) -> None:
         self.post_message(MixCard.Selected(self._kind))
+
+    def action_open(self) -> None:
+        self.post_message(MixCard.Selected(self._kind))
+
+    def action_sibling(self, step: int) -> None:
+        cards = list(self.parent.query(MixCard)) if self.parent else []
+        if self in cards:
+            cards[(cards.index(self) + step) % len(cards)].focus()
+
+    def action_to_list(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.screen.query_one("#mix-track-list").focus()
 
 
 class MixTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     MixTrackRow { height: 2; padding: 0 1; }
     MixTrackRow Label { width: 1fr; }
-    MixTrackRow .primary { text-style: bold; }
-    MixTrackRow .secondary { color: $text-muted; }
+    MixTrackRow .row-title { text-style: bold; }
+    MixTrackRow .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -101,8 +123,8 @@ class MixTrackRow(NowPlayingRowMixin, ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -169,9 +191,12 @@ class MixesView(NowPlayingViewMixin, Widget):
         self._refresh_card_statuses()
         self._wire_now_playing(MixTrackRow, "#mix-track-list")
 
-    def on_show(self) -> None:
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         if self._tracks:
             self.call_after_refresh(self.query_one("#mix-track-list", TrackListView).focus)
+        else:  # nothing open yet: start on the DailyQ card
+            self.call_after_refresh(self.query(MixCard).first().focus)
 
     def _refresh_card_statuses(self) -> None:
         cache = load_state("mixes_cache.json")
@@ -236,9 +261,9 @@ class MixesView(NowPlayingViewMixin, Widget):
             return
 
         app: QobitApp = self.app  # type: ignore[assignment]
-        tracks = await app.generate_mix(kind)
+        tracks = await app.generate_mix()
 
-        if version != self._render_version or not self.is_mounted:
+        if version != self._render_version or not self.is_attached:
             return
 
         if not tracks:
@@ -266,7 +291,7 @@ class MixesView(NowPlayingViewMixin, Widget):
     async def _mount_tracks(
         self, tl: TrackListView, tracks: list[Track], kind: str, version: int
     ) -> None:
-        if version != self._render_version or not self.is_mounted:
+        if version != self._render_version or not self.is_attached:
             return
         name = "DailyQ" if kind == "daily" else "WeeklyQ"
         refreshed = "today" if kind == "daily" else "this week"
@@ -274,12 +299,10 @@ class MixesView(NowPlayingViewMixin, Widget):
         tl.border_subtitle = f"refreshed {refreshed}"
 
         fav_ids: set[str] = set()
-        try:
+        with contextlib.suppress(Exception):
             fav_ids = await self.app.ensure_favorite_ids()  # type: ignore[attr-defined]
-        except Exception:
-            pass
 
-        if version != self._render_version or not self.is_mounted:
+        if version != self._render_version or not self.is_attached:
             return
 
         rows = [MixTrackRow(t, i, favorite=t.id in fav_ids) for i, t in enumerate(tracks, 1)]
@@ -289,7 +312,7 @@ class MixesView(NowPlayingViewMixin, Widget):
         except Exception:
             return
 
-        if self.is_mounted:
+        if self.is_attached:
             self.call_after_refresh(tl.focus)
 
     # ── track play ───────────────────────────────────────────────────────────

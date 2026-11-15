@@ -121,7 +121,7 @@ class ConnectSession:
                 writer.cancel()
         return False
 
-    async def _writer(self, ws) -> None:  # noqa: ANN001 — websockets connection
+    async def _writer(self, ws) -> None:
         while True:
             batch = await self._outbox.get()
             self._batch_id += 1

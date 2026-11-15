@@ -13,7 +13,9 @@ from .search import ICON_ALBUM, ICON_ARTIST
 # (action id, icon, label). Icons are all single-width, monochrome BMP glyphs of
 # the same geometric weight (matching the app's ⊙/◎) — no emoji, which render
 # double-width and coloured and break column alignment.
-_OPTIONS: list[tuple[str, str, str]] = [
+Option = tuple[str, str, str]
+
+_TRACK_OPTIONS: list[Option] = [
     ("play_next", "▸", "Play next"),
     ("add_queue", "⊕", "Add to queue"),
     ("radio", "◈", "Play radio"),
@@ -22,10 +24,34 @@ _OPTIONS: list[tuple[str, str, str]] = [
 ]
 # Shown only when the menu is opened from an Up Next row (circled minus mirrors
 # the circled plus of "Add to queue").
-_REMOVE_OPTION: tuple[str, str, str] = ("remove_queue", "⊖", "Remove from queue")
+_REMOVE_OPTION: Option = ("remove_queue", "⊖", "Remove from queue")
 
-# Enough digit bindings to cover the base options plus the optional remove row.
-_MAX_OPTIONS = len(_OPTIONS) + 1
+# Enough digit bindings for the longest menu: track options, favourite,
+# remove from queue, album favourite, follow artist.
+_MAX_OPTIONS = 9
+
+
+def _heart(on: bool) -> str:
+    """Filled when the item already is a favourite (the action removes it)."""
+    return "♥" if on else "♡"
+
+
+def track_options(*, favorite: bool, in_queue: bool = False) -> list[Option]:
+    fav: Option = (
+        "favorite",
+        _heart(favorite),
+        "Remove from favourites" if favorite else "Add to favourites",
+    )
+    return [*_TRACK_OPTIONS[:3], fav, *_TRACK_OPTIONS[3:]] + ([_REMOVE_OPTION] if in_queue else [])
+
+
+def album_option(favorite: bool) -> Option:
+    label = "Remove album from favourites" if favorite else "Add album to favourites"
+    return ("favorite_album", _heart(favorite), label)
+
+
+def artist_option(following: bool) -> Option:
+    return ("follow_artist", _heart(following), "Unfollow artist" if following else "Follow artist")
 
 
 class MenuOption(ListItem):
@@ -47,12 +73,10 @@ class MenuOption(ListItem):
         )
 
 
-class TrackContextMenu(ModalScreen[str | None]):
-    """Popup action menu for a single track. Dismisses with the chosen action
-    id (or None on escape). The caller — QobitApp — dispatches the action.
-
-    ``in_queue`` adds a "Remove from queue" row; it's meant only for tracks
-    opened from an Up Next row."""
+class ContextMenu(ModalScreen[str | None]):
+    """Popup action menu (``i``) for a track, album or artist. Dismisses with
+    the chosen action id (or None on escape); the caller, QobitApp, builds the
+    options and dispatches the action."""
 
     BINDINGS = [
         Binding("escape", "close", "Close", show=False),
@@ -61,11 +85,11 @@ class TrackContextMenu(ModalScreen[str | None]):
     ]
 
     DEFAULT_CSS = """
-    TrackContextMenu {
+    ContextMenu {
         align: center middle;
         background: $background 55%;
     }
-    TrackContextMenu #menu {
+    ContextMenu #menu {
         width: 42;
         height: auto;
         max-height: 80%;
@@ -73,47 +97,42 @@ class TrackContextMenu(ModalScreen[str | None]):
         background: $surface;
         padding: 0;
     }
-    TrackContextMenu #menu-header {
+    ContextMenu #menu-header {
         width: 1fr;
         height: auto;
-        padding: 1 2;
+        padding: 1 2 0 2;  /* title and artist on consecutive lines */
         background: $boost;
         color: $accent;
         text-style: bold;
     }
-    TrackContextMenu #menu-sub {
+    ContextMenu #menu-sub {
         width: 1fr;
         padding: 0 2 1 2;
         background: $boost;
         color: $text-muted;
     }
-    TrackContextMenu ListView {
+    ContextMenu ListView {
         height: auto;
         background: $surface;
     }
-    TrackContextMenu MenuOption {
+    ContextMenu MenuOption {
         height: 1;
         padding: 0 2;
     }
-    TrackContextMenu MenuOption Label { width: 1fr; }
+    ContextMenu MenuOption Label { width: 1fr; }
     """
 
-    def __init__(
-        self,
-        track: Track,
-        in_queue: bool = False,
-        options: list[tuple[str, str, str]] | None = None,
-    ) -> None:
+    def __init__(self, title: str, subtitle: str, options: list[Option]) -> None:
         super().__init__()
-        self._track = track
-        base = _OPTIONS if options is None else options
-        self._options = base + ([_REMOVE_OPTION] if in_queue else [])
+        self._title = title
+        self._subtitle = subtitle
+        self._options = options
         self._label_w = max(len(label) for _, _, label in self._options) + 2
 
     def compose(self) -> ComposeResult:
         with Vertical(id="menu"):
-            yield Label(self._track.display_title, id="menu-header")
-            yield Label(self._track.artist, id="menu-sub")
+            yield Label(self._title, id="menu-header", markup=False)
+            yield Label(self._subtitle, id="menu-sub", markup=False)
             with ListView(id="menu-options"):
                 for i, (action, icon, label) in enumerate(self._options, 1):
                     yield MenuOption(action, icon, label, i, self._label_w)
@@ -133,7 +152,7 @@ class TrackContextMenu(ModalScreen[str | None]):
             self.dismiss(event.item.action_id)
 
 
-class GoToMenu(TrackContextMenu):
+class GoToMenu(ContextMenu):
     """The "go to" popup (``g``): jump to the artist or album of the track
     that's playing. Same look and dispatch as the track menu (the caller routes
     "artist"/"album" through QobitApp._on_track_menu); ``g`` closes it again."""
@@ -141,4 +160,5 @@ class GoToMenu(TrackContextMenu):
     BINDINGS = [Binding("g", "close", "Close", show=False)]
 
     def __init__(self, track: Track) -> None:
-        super().__init__(track, options=[o for o in _OPTIONS if o[0] in ("artist", "album")])
+        options = [o for o in _TRACK_OPTIONS if o[0] in ("artist", "album")]
+        super().__init__(track.display_title, track.artist, options)

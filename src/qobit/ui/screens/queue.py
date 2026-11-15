@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.text import Text
@@ -63,20 +64,20 @@ class SectionHeader(ListItem):
         # distinct from the single-line rules used for plain list dividers
         # elsewhere (there are none elsewhere; this is the only divider in
         # the app, which is exactly why it gets the distinct treatment).
-        left = f"══ {self._title.upper()} "
-        right = f" {self._count} ══" if self._count is not None else "══"
+        left = f"── {self._title.upper()} "
+        right = f" {self._count} ──" if self._count is not None else "──"
         # `width` is the Label's content width; -1 leaves slack for the list's
         # scrollbar gutter so the rule never wraps onto a second line.
         fill = max(2, width - len(left) - len(right) - 1)
-        return Text(left + "═" * fill + right, no_wrap=True, overflow="crop")
+        return Text(left + "─" * fill + right, no_wrap=True, overflow="crop")
 
 
 class QueueTrackRow(ListItem):
     DEFAULT_CSS = """
     QueueTrackRow { height: 2; padding: 0 1; }
     QueueTrackRow Label { width: 1fr; }
-    QueueTrackRow .primary { text-style: bold; }
-    QueueTrackRow .secondary { color: $text-muted; }
+    QueueTrackRow .row-title { text-style: bold; }
+    QueueTrackRow .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -92,12 +93,12 @@ class QueueTrackRow(ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
-        self.query_one(".primary", Label).update(self._primary())
+        self.query_one(".row-title", Label).update(self._primary())
 
 
 class HistoryTrackRow(ListItem):
@@ -107,8 +108,8 @@ class HistoryTrackRow(ListItem):
     DEFAULT_CSS = """
     HistoryTrackRow { height: 2; padding: 0 1; }
     HistoryTrackRow Label { width: 1fr; }
-    HistoryTrackRow .primary { color: $text-muted; }
-    HistoryTrackRow .secondary { color: $text-muted 60%; }
+    HistoryTrackRow .row-title { color: $text-muted; }
+    HistoryTrackRow .row-meta { color: $text-muted 60%; }
     """
 
     def __init__(self, track: Track, favorite: bool = False) -> None:
@@ -123,12 +124,12 @@ class HistoryTrackRow(ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
-        self.query_one(".primary", Label).update(self._primary())
+        self.query_one(".row-title", Label).update(self._primary())
 
 
 class NowPlayingListRow(ListItem):
@@ -139,8 +140,8 @@ class NowPlayingListRow(ListItem):
     DEFAULT_CSS = """
     NowPlayingListRow { height: 2; padding: 0 1; background: $accent 8%; }
     NowPlayingListRow Label { width: 1fr; }
-    NowPlayingListRow .primary { text-style: bold; color: $accent; }
-    NowPlayingListRow .secondary { color: $accent 60%; }
+    NowPlayingListRow .row-title { text-style: bold; color: $accent; }
+    NowPlayingListRow .row-meta { color: $accent 60%; }
     """
 
     def __init__(self, track: Track, is_paused: bool = False, favorite: bool = False) -> None:
@@ -157,16 +158,16 @@ class NowPlayingListRow(ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_paused(self, paused: bool) -> None:
         self._is_paused = paused
-        self.query_one(".primary", Label).update(self._primary())
+        self.query_one(".row-title", Label).update(self._primary())
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
-        self.query_one(".primary", Label).update(self._primary())
+        self.query_one(".row-title", Label).update(self._primary())
 
 
 class NowPlayingHero(Widget):
@@ -194,16 +195,14 @@ class NowPlayingHero(Widget):
         width: 2fr;
         max-width: 66;
         height: 1fr;
-        /* heavy, not round — the console-readout treatment, matching
-           TransportBar (same now-playing information), distinct from the
-           round library panel it sits next to. */
-        border: heavy $accent 40%;
+        /* Round like every other panel in qobit. */
+        border: round $accent 40%;
         layout: vertical;
         align-horizontal: center;
         padding: 1 2;
     }
     NowPlayingHero:focus {
-        border: heavy $accent;
+        border: round $accent;
     }
     NowPlayingHero #hero-art-row {
         width: 1fr;
@@ -213,7 +212,8 @@ class NowPlayingHero(Widget):
         display: none;
     }
     NowPlayingHero #hero-art { width: 32; height: 16; }
-    NowPlayingHero.-playing #hero-art-row { display: block; }
+    /* Whenever a track is loaded, also paused or restored after a restart. */
+    NowPlayingHero.-has-track #hero-art-row { display: block; }
     NowPlayingHero .hero-title {
         width: 1fr; text-align: center; text-style: bold; color: $accent;
     }
@@ -253,10 +253,14 @@ class NowPlayingHero(Widget):
         self.watch(app, "is_playing", self._on_is_playing, init=True)
         self.watch(app, "now_playing_album", self._on_details, init=True)
         self.watch(app, "now_playing_bio", self._on_bio, init=True)
+        # toggle_favorite bumps queue_version: keeps the heart right when the
+        # track is (un)favourited from a list or the `i` menu.
+        self.watch(app, "queue_version", lambda _: self._refresh_favorite(), init=False)
 
     # ── reactive watchers ─────────────────────────────────────────────────────
 
     def _on_now_playing(self, track: object) -> None:
+        self.set_class(bool(track), "-has-track")
         if track and getattr(track, "image_url", None):
             self._fetch_art(track.image_url)  # type: ignore[union-attr]
         self._refresh_favorite()
@@ -303,7 +307,7 @@ class NowPlayingHero(Widget):
         if not t:
             return
         ids = await app.ensure_favorite_ids()
-        if self.is_mounted and app.now_playing is t:
+        if self.is_attached and app.now_playing is t:
             self._favorite = str(t.id) in ids
             self._render_meta()
 
@@ -325,17 +329,15 @@ class NowPlayingHero(Widget):
         if not t:
             return
         self._favorite = await app.toggle_favorite(t)
-        if self.is_mounted:
+        if self.is_attached:
             self._render_meta()
 
-    @work
+    @work(exclusive=True, group="_fetch_art")  # a newer request cancels a stale one
     async def _fetch_art(self, url: str) -> None:
         img = await fetch_image(url)
-        if img is not None and self.is_mounted:
-            try:
+        if img is not None and self.is_attached:
+            with contextlib.suppress(NoMatches):
                 self.query_one(TGPImage).image = img
-            except NoMatches:
-                pass
 
 
 class QueueView(Widget):
@@ -386,7 +388,8 @@ class QueueView(Widget):
     def on_resize(self, event: Resize) -> None:
         self.set_class(event.size.width < self._NARROW_BELOW, "-narrow")
 
-    def on_show(self) -> None:
+    def activate(self) -> None:
+        """Called by QobitApp when this tab becomes active: first load, focus."""
         self.call_after_refresh(self.query_one("#queue-list", ListView).focus)
 
     def _on_queue_changed(self, _: int) -> None:
@@ -399,10 +402,8 @@ class QueueView(Widget):
 
     def _on_paused_changed(self, paused: bool) -> None:
         # Flip the now-playing row's ▶/⏸ icon in place (no list re-render).
-        try:
+        with contextlib.suppress(NoMatches):
             self.query_one(NowPlayingListRow).set_paused(paused)
-        except NoMatches:
-            pass
 
     def action_clear_queue(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
@@ -430,7 +431,7 @@ class QueueView(Widget):
         # Only the list should re-grab focus after a rebuild — and only if it
         # already had it. Otherwise a refresh triggered by favouriting the
         # now-playing track (f on the hero) would yank focus off the hero.
-        # Tab-entry focus is handled separately by on_show.
+        # Tab-entry focus is handled separately by activate().
         keep_focus = self.app.focused is lv
         await lv.clear()
         if version != self._render_version:

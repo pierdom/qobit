@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.widgets import Label, ListView
@@ -30,7 +32,7 @@ def heart_suffix(favorite: bool, pad: str = "  ") -> tuple[str, str] | str:
 class NowPlayingRowMixin:
     """Mixin for ListItem subclasses that show a ▶/⏸ now-playing indicator.
 
-    Subclasses must implement ``_primary() -> Content`` and have a ``.primary``
+    Subclasses must implement ``_primary() -> Content`` and have a ``.row-title``
     CSS class on their primary Label.
     """
 
@@ -45,10 +47,8 @@ class NowPlayingRowMixin:
         self._refresh_primary()
 
     def _refresh_primary(self) -> None:
-        try:
-            self.query_one(".primary", Label).update(self._primary())  # type: ignore[attr-defined]
-        except NoMatches:
-            pass
+        with contextlib.suppress(NoMatches):
+            self.query_one(".row-title", Label).update(self._primary())  # type: ignore[attr-defined]
 
 
 class NowPlayingViewMixin:
@@ -78,10 +78,8 @@ class NowPlayingViewMixin:
         # O(1): clear the previously-playing row via stored reference.
         prev = self._np_playing_row
         if prev is not None:
-            try:
+            with contextlib.suppress(Exception):
                 prev.set_playing(False)  # type: ignore[attr-defined]
-            except Exception:
-                pass
             self._np_playing_row = None
 
         if now_id is None:
@@ -91,11 +89,16 @@ class NowPlayingViewMixin:
         if self._np_list_sel is not None:
             try:
                 lv = self.query_one(self._np_list_sel, ListView)  # type: ignore[attr-defined]
-                for idx, row in enumerate(lv.query(self._np_row_cls)):
-                    if row.track.id == now_id:
+                # A PagedListView's `rows` includes rows not mounted yet: mark
+                # those too (they render marked), but only move the cursor to
+                # a mounted one.
+                rows = getattr(lv, "rows", None) or list(lv.query(self._np_row_cls))
+                for idx, row in enumerate(rows):
+                    if isinstance(row, self._np_row_cls) and row.track.id == now_id:
                         row.set_playing(True, paused=paused)
                         self._np_playing_row = row
-                        lv.index = idx
+                        if idx < len(lv.children):
+                            lv.index = idx
                         break
                 return
             except NoMatches:

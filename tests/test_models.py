@@ -283,20 +283,19 @@ def test_stream_url_from_api_converts_khz_to_hz():
     assert s.sampling_rate == 192000.0
 
 
-def test_stream_url_quality_label_and_badge():
+def test_stream_url_quality_badge():
     s = StreamUrl.from_api({"url": "u", "sampling_rate": 192, "bit_depth": 24})
-    assert s.quality_label == "24/192"
     assert s.quality_badge == "[ 24-BIT · 192 kHz ]"
 
 
 def test_stream_url_quality_formats_non_integer_khz_with_one_decimal():
     s = StreamUrl.from_api({"url": "u", "sampling_rate": 44.1, "bit_depth": 16})
-    assert s.quality_label == "16/44.1"
+    assert s.quality_badge == "[ 16-BIT · 44.1 kHz ]"
 
 
 def test_stream_url_defaults_bit_depth_to_16_when_missing():
     s = StreamUrl.from_api({"url": "u", "sampling_rate": 44.1})
-    assert s.quality_label == "16/44.1"
+    assert s.quality_badge == "[ 16-BIT · 44.1 kHz ]"
 
 
 def test_stream_url_sample_flag_defaults_false():
@@ -340,3 +339,22 @@ def test_playlist_falls_back_to_150_then_50px():
     p150 = Playlist.from_api({**base, "images": ["a_50"], "images150": ["a_150"]})
     assert p150.image_url == "a_150"
     assert Playlist.from_api({**base, "images": ["a_50"]}).image_url == "a_50"
+
+
+def test_album_backfills_its_identity_onto_nested_tracks():
+    """album/get's nested tracks carry no album: without the backfill a track
+    played from an album page had no album id, and "Go to album" failed."""
+    album = Album.from_api(
+        {
+            "id": "abc123",
+            "title": "The Axeman Cometh",
+            "image": {"large": "https://img/cover.jpg"},
+            "tracks": {"items": [{"id": 1, "title": "Out of the Dark"}]},
+        }
+    )
+    t = album.tracks[0]
+    assert (t.album_id, t.album, t.image_url) == (
+        "abc123",
+        "The Axeman Cometh",
+        "https://img/cover.jpg",
+    )
