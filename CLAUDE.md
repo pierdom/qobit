@@ -53,6 +53,9 @@ src/qobit/
     │                        (pre-Connect logic, moved verbatim) and
     │                        ConnectPlayContext (Connect-active: mirror +
     │                        PlayerPort adapter; edits → server commands)
+    ├── themes.py            qobit's themes (cyberdeck, ayu-dark/-mirage/-light),
+    │                        all registered in QobitApp.__init__; colours only —
+    │                        the UI has no hard-coded colours, $accent is ours
     ├── _images.py           Shared image fetch layer: asyncio.Semaphore(6) caps
     │                        concurrent HTTP fetches; module-level URL→PIL cache
     │                        prevents re-downloading the same image within a session

@@ -15,7 +15,6 @@ from textual.command import Hit, Hits, Provider
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
-from textual.theme import Theme
 from textual.widgets import ContentSwitcher, Footer, Label, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
@@ -49,6 +48,7 @@ from .screens.playlists import PlaylistsView
 from .screens.queue import QueueView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
+from .themes import CYBERDECK_THEME, QOBIT_THEMES
 from .widgets.transport import TransportBar
 
 
@@ -139,22 +139,6 @@ class QobitCommands(Provider):
 # focus) for a two-tone neon identity rather than a single accent colour.
 # Registered in __init__ and set as the default in on_mount; still an
 # ordinary theme choice a user can switch away from via the command palette.
-CYBERDECK_THEME = Theme(
-    name="qobit-cyberdeck",
-    primary="#ff2ec4",  # hot magenta — Textual's own chrome (palette, focus)
-    secondary="#6e3bff",  # electric violet — secondary emphasis
-    accent="#00e5ff",  # electric cyan — qobit's own $accent: borders, now-playing,
-    # selection, hearts
-    warning="#ffb000",  # amber — CRT-terminal warning colour
-    error="#ff2965",  # hot red
-    success="#39ff88",  # acid green
-    foreground="#d6faff",  # pale cyan-white body text
-    background="#0a0612",  # near-black with a violet undertone
-    surface="#140d24",
-    panel="#2f2252",
-    boost="#231a3d",
-    dark=True,
-)
 
 _PLAYER_STATE_FILE = "player_state.json"
 # The whole play context (timeline + cursor), so the Playback tab shows the same
@@ -366,7 +350,8 @@ class QobitApp(App[None]):
         """``connect`` overrides the saved Qobuz Connect setting for this run
         (``qobit --connect-on``); None = use the saved setting."""
         super().__init__()
-        self.register_theme(CYBERDECK_THEME)
+        for theme in QOBIT_THEMES:
+            self.register_theme(theme)
         self._connect_wanted = get_connect_enabled() if connect is None else connect
         self._connect: ConnectPlayContext | None = None
         self._connect_lock: object | None = None  # flock'd file while Connect is on

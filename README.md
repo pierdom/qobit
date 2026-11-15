@@ -39,6 +39,7 @@ view live in a keyboard-driven terminal UI with cover art.
   when you restart qobit.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
 - Cover art and artist bios, using the Kitty graphics protocol.
+- Themes, including Ayu Dark, Mirage and Light.
 - OS media keys and now-playing widgets (MPRIS on Linux, Now Playing on macOS).
 - Qobuz Connect: qobit can appear as a device in the Qobuz apps and be
   controlled from them. Off by default.
