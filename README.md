@@ -11,68 +11,54 @@
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Textual](https://img.shields.io/badge/TUI-Textual-5A4FCF)](https://textual.textualize.io)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-555)](#quick-start)
-[![Qobuz Connect](https://img.shields.io/badge/Qobuz%20Connect-renderer-F9BD2F)](#qobuz-connect)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-555)](#install)
 
-**Bit-perfect Qobuz in the terminal: hi-res FLAC straight to your DAC, a keyboard-driven library with big cover art, and Qobuz Connect so the Qobuz app — or an AI agent — can drive it.**
+A bit-perfect Qobuz client with a terminal UI, for Linux and macOS.
 
 </div>
 
-qobit plays your Qobuz library through mpv with no resampling and no DSP: the
-DAC receives exactly the bits from the file, at each track's own sample rate.
-Around that sits a Textual TUI built for a cyberdeck — Kitty-protocol cover
-art, a rich now-playing panel, song radio and personal mixes — and a Qobuz
-Connect renderer that puts it in the official apps' device picker.
+qobit plays hi-res FLAC from Qobuz through mpv with no resampling and no DSP:
+the output device gets each track's own sample rate and bit depth, and the DAC
+receives exactly the bits from the file. The library, queue and now-playing
+view live in a keyboard-driven terminal UI with cover art.
 
 <div align="center">
 
-<img src="screenshots/queue_page.png" width="49%" alt="Playback tab: queue timeline and Now Playing panel"> <img src="screenshots/artist_view.png" width="49%" alt="Artist page: bio, top tracks, discography">
-
-<sub>Playback tab &nbsp;·&nbsp; artist page &nbsp;·&nbsp; more in <a href="screenshots/">screenshots/</a></sub>
+<img src="screenshots/queue_page.png" width="49%" alt="Playback tab with the queue and the now-playing panel"> <img src="screenshots/artist_view.png" width="49%" alt="Artist page with bio, top tracks and albums">
 
 </div>
 
-## Why qobit
+## Features
 
-**Bit-perfect by design.** PipeWire rate-following or exclusive
-`hw:`/CoreAudio output, no software gain unless you ask for it, previews never
-played in place of the real file, and `qobit play` checks mpv's actual output
-format against the stream. → [Audio setup](docs/audio.md)
+- Bit-perfect output through PipeWire rate-following or exclusive ALSA `hw:` /
+  CoreAudio devices. Tracks your account can only preview are skipped, not
+  played as 30-second MP3s.
+- Your favourite tracks, artists and albums, and your playlists, with sorting
+  and a live filter.
+- A queue you can move back and forth in without losing tracks. It's restored
+  when you restart qobit.
+- Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
+- Cover art and artist bios, using the Kitty graphics protocol.
+- OS media keys and now-playing widgets (MPRIS on Linux, Now Playing on macOS).
+- Qobuz Connect: qobit can appear as a device in the Qobuz apps and be
+  controlled from them. Off by default.
 
-**Qobuz Connect.** qobit shows up next to your phone and speakers in the Qobuz
-apps. Pick it there and the app is the remote; edit the queue from either side
-and both stay in sync, through Qobuz's own servers.
+## Install
 
-**A library you drive from the keyboard.** Favourite tracks, artists, albums
-and playlists with live filters and sorting, a timeline queue you can walk back
-and forth without losing tracks, song radio, DailyQ/WeeklyQ mixes, and a queue
-that survives restarts.
+Requirements: a Qobuz subscription (Hi-Res for 24-bit), Python 3.11+,
+[uv](https://docs.astral.sh/uv/), [mpv](https://mpv.io/), and a terminal that
+supports the Kitty graphics protocol (kitty, Ghostty, iTerm2 3.5+).
 
-## How it works
-
-```
-  Qobuz app / AI agent ──Connect──►  Qobuz cloud  ──commands──►  qobit (TUI)
-                                                                     │ getFileUrl
-                                                                     ▼
-                                  hi-res FLAC ─────────────────►  mpv ──► DAC
-                                                       (no resampling, no DSP)
-```
-
-Connect carries only commands and queue state; qobit fetches and plays the
-stream itself, so remote control never touches the signal path.
-
-## Quick start
-
-You need a Qobuz subscription (Hi-Res tier for 24-bit), Python 3.11+,
-[uv](https://docs.astral.sh/uv/), [mpv](https://mpv.io/), and a terminal with
-the [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/)
-(kitty, Ghostty, iTerm2 3.5+). On Linux, media-key support (MPRIS) compiles
-against system headers, so install those first:
+On Linux, the media-key support builds against system headers. Install them
+first:
 
 ```bash
-sudo apt install mpv build-essential pkg-config python3-dev libcairo2-dev libgirepository-2.0-dev  # Debian/Ubuntu 24.04+
-sudo dnf install mpv gcc pkgconf-pkg-config python3-devel cairo-devel cairo-gobject-devel gobject-introspection-devel  # Fedora 40+
-sudo pacman -S --needed mpv base-devel pkgconf cairo gobject-introspection  # Arch
+# Debian / Ubuntu 24.04+
+sudo apt install mpv build-essential pkg-config python3-dev libcairo2-dev libgirepository-2.0-dev
+# Fedora 40+
+sudo dnf install mpv gcc pkgconf-pkg-config python3-devel cairo-devel cairo-gobject-devel gobject-introspection-devel
+# Arch
+sudo pacman -S --needed mpv base-devel pkgconf cairo gobject-introspection
 ```
 
 Then:
@@ -80,58 +66,44 @@ Then:
 ```bash
 git clone https://github.com/pierdom/qobit && cd qobit
 uv tool install .
-qobit auth          # log in once (opens the browser)
-qobit set-device    # pick the output — see docs/audio.md for the bit-perfect options
-qobit               # launch the TUI
+qobit auth          # log in once; opens the browser
+qobit set-device    # choose the audio output
+qobit               # start the TUI
 ```
 
-## Qobuz Connect
+For bit-perfect output, choose the device as described in
+[docs/audio.md](docs/audio.md).
 
-Turn it on from the command palette (`Ctrl+P` → *Qobuz Connect*) or for one run
-with `qobit --connect-on`. qobit appears in the device picker of the Qobuz apps;
-the transport bar shows `[ ⇄ CONNECT · ACTIVE ]` once it's the playing device.
+## Usage
 
-- Play, pause, seek, skip and pick music from the app — or from qobit, including
-  play next, add to queue, remove and song radio. Both show the same queue.
-- The app's volume slider is ignored on purpose: software gain would alter the
-  bits.
-- With [qobuz-mcp](https://github.com/pierdom/qobuz-mcp), an AI agent can do the
-  same — *"play Mezzanine on qobit and queue three similar tracks"*.
-
-Unofficial: Qobuz licenses Connect to hardware makers only; qobit speaks the
-community-documented protocol. More in [docs/usage.md](docs/usage.md#qobuz-connect).
-
-## Keys
-
-| | | | |
+| Key | Action | Key | Action |
 |---|---|---|---|
-| `1`–`7` | tabs | `Space` | pause / resume |
-| `/` | filter | `[` `]` | seek ∓10 s |
-| `s` `r` | sort / reverse | `R` | song radio |
+| `1`–`7` | switch tab | `Space` | pause / resume |
+| `/` | filter | `[` `]` | seek 10 s |
+| `s` `r` | sort, reverse | `R` | song radio |
 | `i` | track menu | `g` | go to artist / album |
 | `f` | favourite | `Ctrl+P` | command palette |
 
-Everything else, tab by tab: [docs/usage.md](docs/usage.md).
-
-## CLI
+The full list of keys and how each tab works is in
+[docs/usage.md](docs/usage.md). From the command line:
 
 ```bash
-qobit play "Kind of Blue" --quality FLAC_24_96   # search, play, verify bit-perfect
-qobit devices | set-device | auth | clear-cache
-qobit --connect-on                                # TUI with Qobuz Connect for this run
+qobit play "Kind of Blue"   # search, play the first result, check the output format
+qobit devices               # list audio outputs
+qobit --connect-on          # start with Qobuz Connect enabled for this run
 ```
 
-## Docs
+## Documentation
 
 | | |
 |---|---|
-| Every key, each tab, radio, mixes, Connect, files | [docs/usage.md](docs/usage.md) |
-| Bit-perfect output: PipeWire, exclusive `hw:`/CoreAudio, quality, verification | [docs/audio.md](docs/audio.md) |
-| PipeWire rate-following drop-in | [contrib/pipewire](contrib/pipewire/README.md) |
-| Qobuz Connect protocol, reverse-engineered and verified | [docs/qobuz-connect.md](docs/qobuz-connect.md) |
-| How qobit shares the queue with the Connect server | [docs/qobuz-connect-design.md](docs/qobuz-connect-design.md) |
-| Release notes | [CHANGELOG.md](CHANGELOG.md) |
-| Guide for AI coding agents working on this repo | [CLAUDE.md](CLAUDE.md) |
+| Keys, tabs, radio, mixes, Qobuz Connect, files | [docs/usage.md](docs/usage.md) |
+| Audio setup and bit-perfect output | [docs/audio.md](docs/audio.md) |
+| PipeWire configuration | [contrib/pipewire](contrib/pipewire/README.md) |
+| Qobuz Connect protocol notes | [docs/qobuz-connect.md](docs/qobuz-connect.md) |
+| Qobuz Connect implementation | [docs/qobuz-connect-design.md](docs/qobuz-connect-design.md) |
+| Changes | [CHANGELOG.md](CHANGELOG.md) |
+| Notes for working on the code | [CLAUDE.md](CLAUDE.md) |
 
 ## Development
 
@@ -141,28 +113,25 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
 
-CI runs lint and tests on every push and pull request.
+## Why this exists
 
-## Technologies
+This is a personal project. [qbz](https://github.com/vicrodh/qbz) by vicrodh is
+a more complete Qobuz player with a graphical UI, and qobit borrows its
+bit-perfect approach. [qobine](https://github.com/SofusA/qobine) is a lighter
+terminal client. I wanted a Qobuz client that looks good on a cyberdeck build,
+with large cover art and a terminal UI.
 
-- **Python 3.11+**, **[Textual](https://textual.textualize.io)** and
-  **textual-image** (Kitty graphics protocol) for the TUI
-- **[mpv](https://mpv.io/)** over JSON IPC for playback
-- **httpx** for the Qobuz API; **websockets** + **protobuf** for Qobuz Connect
-- **MPRIS** (pydbus) on Linux, **MPNowPlayingInfoCenter** (PyObjC) on macOS
-- **uv**, **ruff**, **pytest**
-
-## Credits and disclaimer
-
-[qbz](https://github.com/vicrodh/qbz) by vicrodh pioneered the bit-perfect
-strategy qobit uses; [qobine](https://github.com/SofusA/qobine) is a leaner
-terminal client. The Connect work builds on
+The Qobuz Connect support is based on the protocol work in
 [qobuz-connect](https://github.com/ciaens/qobuz-connect) and
 [qobuz-proxy](https://github.com/leolobato/qobuz-proxy).
 
-qobit is unofficial and not affiliated with Qobuz. It uses the API the Qobuz
-web player uses, needs your own subscription, and plays only what your account
-is entitled to. Early-stage: expect rough edges. Use at your own risk and within
-Qobuz's terms of service.
+## Disclaimer
 
-GPL-3.0 — see [LICENSE](LICENSE).
+qobit is not affiliated with or endorsed by Qobuz. It uses the same API as the
+Qobuz web player, requires your own subscription, and only plays what your
+account can stream. It is an early-stage project. Use it at your own risk and
+within Qobuz's terms of service.
+
+## License
+
+GPL-3.0. See [LICENSE](LICENSE).
