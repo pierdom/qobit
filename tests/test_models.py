@@ -391,3 +391,24 @@ def test_artist_photo_wins_over_album_cover():
         }
     )
     assert artist.image_url == "photo.jpg"
+
+
+def test_track_matches_performer_or_album_artist():
+    """A soundtrack track performed by Aimer on a Kajiura Yuki album counts
+    as a favourite on both artists' pages."""
+    t = Track.from_api(
+        {
+            "id": 1,
+            "title": "Zankyou Sanka",
+            "performer": {"id": 11, "name": "Aimer"},
+            "album": {"id": "a", "title": "OST", "artist": {"id": 22, "name": "Kajiura Yuki"}},
+        }
+    )
+    assert (t.artist_id, t.album_artist_id) == ("11", "22")
+    assert t.by_artist("11") and t.by_artist("22") and not t.by_artist("33")
+
+
+def test_saved_tracks_without_artist_ids_still_load():
+    """queue_state.json written before artist ids existed must still restore."""
+    t = Track(id="1", title="T", artist="A", album="B", album_id="b", duration=1)
+    assert t.artist_id is None and not t.by_artist("1")

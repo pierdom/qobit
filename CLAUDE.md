@@ -51,8 +51,9 @@ src/qobit/
         mixes.py         DailyQ/WeeklyQ cards (d/w or Tab/←→/Enter) + tracks
         search.py        SearchView + TrackItem/AlbumItem/ArtistItem/PlaylistItem
         album_detail.py  AlbumDetailPanel (shared) + AlbumScreen
-        artist_detail.py ArtistHeader, AlbumCard/AlbumGrid, ArtistCard/
-                         ArtistGrid, _GridNav (shared), ArtistScreen
+        artist_detail.py ArtistHeader, ArtistTracks (Top Tracks + the
+                         user's favourites by the artist), AlbumCard/AlbumGrid,
+                         ArtistCard/ArtistGrid, _GridNav (all shared), ArtistScreen
         playlist_detail.py PlaylistScreen
         context_menu.py  ContextMenu (`i`), GoToMenu (`g`)
 ```
@@ -171,6 +172,15 @@ and `_on_track_menu` dispatches. "Remove from queue" appears only on Up Next
 rows (removes by identity). **`g`** opens `GoToMenu` for the playing (or
 restored) track through the same dispatch. "Go to artist" needs `get_track`
 (Track has no artist id); "Go to album" passes a lean `Album`.
+
+**Artist tracks.** `ArtistTracks` is shared by ArtistScreen and the Artists
+tab: Top Tracks plus "Your favourites" (favourite tracks where
+`Track.by_artist(id)` matches the performer or the album artist; they differ
+on compilations and soundtracks). Two columns from
+`ARTIST_TRACKS_COLUMNS_MIN_W` (120) of panel width, else one panel with `t`
+switching; no favourites, no second list. It refreshes on `queue_version`
+(bumped by every favourite toggle). Border titles take `[dim]` markup but don't
+resolve `$variables`.
 
 **Breadcrumbs.** Pages opened from `g`/`i` get `_origin()`: the main screen's
 active tab id (`screen_stack[0]`, the artist page's Escape target) and the text

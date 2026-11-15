@@ -64,6 +64,11 @@ The border shows the filter: `/ query_` while typing, `⌕ query` while results
 are still narrowed. Favourite tracks show a `♥` in every track list except
 Tracks (where everything is one).
 
+An artist's page (from the Artists tab, Search, `g` or `i`) shows their **Top
+Tracks** and, if you have favourited any of their songs, **Your favourites**.
+On a wide terminal the two lists sit side by side and `←` `→` move between
+them; on a narrower one they share a panel and `t` (or `←` `→`) switches.
+
 ## Radio and mixes
 
 **Song radio** (`R`) fills Up Next with ~50 Qobuz suggestions seeded from the

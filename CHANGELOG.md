@@ -9,6 +9,12 @@ release from this entry.
 
 ## [Unreleased]
 
+### Added
+
+- The artist page shows **Your favourites**: your favourite tracks by that
+  artist, next to Top Tracks. Side by side on wide terminals; on narrower ones
+  they share a panel and `t` switches. Hidden when you have none.
+
 ### Fixed
 
 - Artists Qobuz has no photo for (about 1 in 10, e.g. Besso0) showed an empty

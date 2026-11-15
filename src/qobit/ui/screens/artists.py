@@ -8,10 +8,9 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.timer import Timer
 from textual.widget import Widget
-from textual.widgets import ContentSwitcher, Label, ListView
+from textual.widgets import ContentSwitcher, Label
 
-from ...qobuz.models import Album, Artist, Track
-from ..widgets.lists import TrackListView
+from ...qobuz.models import Album, Artist
 from .album_detail import AlbumDetailPanel
 from .artist_detail import (
     LIBRARY_TILE_MIN_W,
@@ -20,7 +19,7 @@ from .artist_detail import (
     ArtistCard,
     ArtistGrid,
     ArtistHeader,
-    ArtistTrackRow,
+    ArtistTracks,
 )
 
 if TYPE_CHECKING:
@@ -74,16 +73,6 @@ class ArtistsView(Widget):
     }
     ArtistsView #artist-detail-view { height: 1fr; }
     ArtistsView #artist-content-switcher { height: 1fr; }
-    ArtistsView #top-tracks {
-        height: 1fr;
-        border: round $accent 40%;
-        border-title-color: $accent 40%;
-        border-title-style: bold;
-    }
-    ArtistsView #top-tracks:focus {
-        border: round $accent;
-        border-title-color: $accent;
-    }
     ArtistsView #artist-albums-grid {
         height: 1fr;
         grid-rows: 4;
@@ -135,7 +124,7 @@ class ArtistsView(Widget):
                     initial="artist-tracks-albums-view", id="artist-content-switcher"
                 ):
                     with Vertical(id="artist-tracks-albums-view"):
-                        yield TrackListView(id="top-tracks")
+                        yield ArtistTracks()
                         yield AlbumGrid(id="artist-albums-grid")
                     with Vertical(id="artist-album-detail-view"):
                         yield Label("", id="album-breadcrumb")
@@ -144,7 +133,6 @@ class ArtistsView(Widget):
     def on_mount(self) -> None:
         self.query_one("#fav-artists-grid", ArtistGrid).border_title = "Favourite Artists"
         self._update_subtitle()
-        self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
         self.query_one("#artist-albums-grid", AlbumGrid).border_title = "Albums & EPs"
 
     @property
@@ -332,9 +320,7 @@ class ArtistsView(Widget):
         self._filter_active = False  # exit typing mode; query persists for return
         self.query_one(ArtistHeader).set_loading(artist.name)
 
-        lv = self.query_one("#top-tracks", ListView)
         grid = self.query_one("#artist-albums-grid", AlbumGrid)
-        await lv.clear()
         grid._cursor = -1
         await grid.clear_cards()
 
@@ -345,7 +331,7 @@ class ArtistsView(Widget):
         self.call_after_refresh(grid.focus)
 
         self._load_artist_detail(artist.id)
-        self._load_artist_tracks(artist.id)
+        self.query_one(ArtistTracks).load(artist.id)
 
     def _open_album(self, album: Album) -> None:
         panel = self.query_one("#album-panel", AlbumDetailPanel)
@@ -385,28 +371,6 @@ class ArtistsView(Widget):
         except Exception:
             pass
 
-    @work(exclusive=True, group="_load_artist_tracks")  # a newer request cancels a stale one
-    async def _load_artist_tracks(self, artist_id: str) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
-        try:
-            items = await app._client.get_artist_top_tracks(artist_id)
-        except Exception:
-            return
-        if not items or not self.is_attached:
-            return
-        fav_ids = await app.ensure_favorite_ids()
-        if not self.is_attached:
-            return
-        try:
-            lv = self.query_one("#top-tracks", ListView)
-            rows = [
-                ArtistTrackRow(t := Track.from_api(raw), i, str(t.id) in fav_ids)
-                for i, raw in enumerate(items, 1)
-            ]
-            await lv.mount(*rows)
-        except Exception:
-            pass
-
     @on(ArtistCard.Selected)
     def _on_artist_selected(self, event: ArtistCard.Selected) -> None:
         self._open_artist(event.artist)
@@ -419,17 +383,6 @@ class ArtistsView(Widget):
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         app.play_track(event.track, queue=event.queue)
-
-    @on(ListView.Selected, "#top-tracks")
-    def _on_top_track_selected(self, event: ListView.Selected) -> None:
-        if isinstance(event.item, ArtistTrackRow):
-            app: QobitApp = self.app  # type: ignore[assignment]
-            lv = self.query_one("#top-tracks", ListView)
-            rows = list(lv.query(ArtistTrackRow))
-            idx = rows.index(event.item)
-            queue = [r.track for r in rows[idx + 1 :]]
-            app.play_track(event.item.track, queue=queue)
-            event.list_view.focus()
 
     @on(events.Click, "#artist-breadcrumb")
     def _on_artist_breadcrumb_click(self) -> None:

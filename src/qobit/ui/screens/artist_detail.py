@@ -21,7 +21,7 @@ from textual_image.widget import TGPImage
 from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
+from .._now_playing import NowPlayingRowMixin, heart_suffix, playing_content
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
@@ -57,7 +57,8 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     ArtistTrackRow .row-meta { color: $text-muted; }
     """
 
-    def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
+    def __init__(self, track: Track, number: int | None, favorite: bool = False) -> None:
+        """``number`` None: an unnumbered row (♪), as in the favourites list."""
         super().__init__()
         self.track = track
         self._number = number
@@ -66,7 +67,8 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        text = f"{self._number}.  {t.display_title}"  # numbered: no ♪ (see album rows)
+        prefix = f"{self._number}." if self._number else "♪"  # numbered lists: no ♪
+        text = f"{prefix}  {t.display_title}"
         return playing_content(text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
@@ -77,6 +79,178 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
         self._refresh_primary()
+
+
+# Both lists side by side from this width; below it, one panel and a switch.
+ARTIST_TRACKS_COLUMNS_MIN_W = 120
+
+
+class ArtistTracks(Widget):
+    """An artist's Top Tracks and the user's favourite tracks by that artist.
+
+    Wide: two columns. Narrow: one panel showing either list; `t`, or ←/→,
+    switches. No favourites by this artist: Top Tracks alone. Shared by the
+    artist page and the Artists tab. Call ``load(artist_id)``."""
+
+    BINDINGS = [
+        Binding("t", "switch", "Top / Favs", show=False),
+        Binding("left", "switch", show=False),
+        Binding("right", "switch", show=False),
+    ]
+
+    DEFAULT_CSS = """
+    ArtistTracks { layout: horizontal; height: 1fr; }
+    ArtistTracks TrackListView {
+        width: 1fr;
+        height: 1fr;
+        border: round $accent 40%;
+        border-title-color: $accent 40%;
+        border-title-style: bold;
+    }
+    ArtistTracks TrackListView:focus {
+        border: round $accent;
+        border-title-color: $accent;
+    }
+    ArtistTracks.-columns #artist-favs { margin-left: 1; }
+    """
+
+    _artist_id: str | None = None
+    _showing: str = "top"  # in switch mode: "top" | "favs"
+    _fav_ids: tuple[str, ...] = ()
+
+    def compose(self) -> ComposeResult:
+        yield TrackListView(id="top-tracks")
+        yield TrackListView(id="artist-favs")
+
+    def on_mount(self) -> None:
+        app = self.app
+        self.watch(app, "now_playing", lambda _: self._mark_playing(), init=False)
+        self.watch(app, "is_paused", lambda _: self._mark_playing(), init=False)
+        # toggle_favorite bumps queue_version: refresh the favourites column
+        # and the hearts when a track is (un)favourited anywhere.
+        self.watch(app, "queue_version", lambda _: self._sync_favourites(), init=False)
+        self._layout()
+
+    def load(self, artist_id: str) -> None:
+        self._artist_id = artist_id
+        self._showing = "top"
+        self._fav_ids = ()
+        self._load()
+
+    @work(exclusive=True, group="_load")  # a newer artist cancels a stale load
+    async def _load(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        top = self.query_one("#top-tracks", TrackListView)
+        await top.clear()
+        await self.query_one("#artist-favs", TrackListView).clear()
+        self._layout()
+        artist_id = self._artist_id
+        try:
+            items = await app._client.get_artist_top_tracks(artist_id or "")
+        except QobuzError:
+            items = []
+        fav_ids = await app.ensure_favorite_ids()
+        if not self.is_attached or artist_id != self._artist_id:
+            return
+        rows = [
+            ArtistTrackRow(t := Track.from_api(raw), i, str(t.id) in fav_ids)
+            for i, raw in enumerate(items, 1)
+        ]
+        await top.mount(*rows)
+        await self._refresh_favs()
+
+    def _favourites(self) -> list[Track]:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if self._artist_id is None:
+            return []
+        tracks = [t for t in (app._fav_tracks or []) if t.by_artist(self._artist_id)]
+        return sorted(tracks, key=lambda t: t.favorited_at or 0, reverse=True)
+
+    async def _refresh_favs(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        with contextlib.suppress(Exception):
+            await app.ensure_favorite_tracks()
+        tracks = self._favourites()
+        self._fav_ids = tuple(t.id for t in tracks)
+        favs = self.query_one("#artist-favs", TrackListView)
+        await favs.clear()
+        await favs.mount(*[ArtistTrackRow(t, None, favorite=True) for t in tracks])
+        self._mark_playing()
+        self._layout()
+
+    def _sync_favourites(self) -> None:
+        """After a (un)favourite anywhere: fix the hearts, and rebuild the
+        favourites list only if its tracks changed."""
+        if self._artist_id is None or not self.is_attached:
+            return
+        app: QobitApp = self.app  # type: ignore[assignment]
+        ids = app._fav_ids or set()
+        for row in self.query_one("#top-tracks", TrackListView).query(ArtistTrackRow):
+            row.set_favorite(str(row.track.id) in ids)
+        if tuple(t.id for t in self._favourites()) != self._fav_ids:
+            self.run_worker(self._refresh_favs(), group="_refresh_favs", exclusive=True)
+
+    def _mark_playing(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        now_id = getattr(app.now_playing, "id", None)
+        for row in self.query(ArtistTrackRow):
+            row.set_playing(row.track.id == now_id, paused=app.is_paused)
+
+    # ── layout ───────────────────────────────────────────────────────────────
+
+    def on_resize(self) -> None:
+        self._layout()
+
+    @property
+    def _columns(self) -> bool:
+        return bool(self._fav_ids) and self.size.width >= ARTIST_TRACKS_COLUMNS_MIN_W
+
+    def _layout(self) -> None:
+        top = self.query_one("#top-tracks", TrackListView)
+        favs = self.query_one("#artist-favs", TrackListView)
+        n = len(self._fav_ids)
+        columns = self._columns
+        self.set_class(columns, "-columns")
+        top.display = columns or not n or self._showing == "top"
+        favs.display = bool(n) and (columns or self._showing == "favs")
+        if columns or not n:
+            top.border_title = "Top Tracks"
+            favs.border_title = f"Your favourites · {n}"
+        else:  # one panel: name both lists, the hidden one dimmed
+            other = "[dim]{}[/dim]"
+            if self._showing == "top":
+                top.border_title = f"Top Tracks  ·  {other.format(f'Your favourites · {n}')}"
+            else:
+                favs.border_title = f"{other.format('Top Tracks')}  ·  Your favourites · {n}"
+        top.border_subtitle = favs.border_subtitle = "" if columns or not n else "t switch"
+
+    def action_switch(self) -> None:
+        if not self._fav_ids:
+            return
+        if self._columns:  # both visible: move focus across
+            target = (
+                "#artist-favs"
+                if self.screen.focused is self.query_one("#top-tracks")
+                else "#top-tracks"
+            )
+            self.query_one(target, TrackListView).focus()
+            return
+        self._showing = "favs" if self._showing == "top" else "top"
+        self._layout()
+        self.query_one("#top-tracks" if self._showing == "top" else "#artist-favs").focus()
+
+    # ── play ─────────────────────────────────────────────────────────────────
+
+    @on(ListView.Selected)
+    def _on_selected(self, event: ListView.Selected) -> None:
+        if not isinstance(event.item, ArtistTrackRow):
+            return
+        event.stop()
+        rows = list(event.list_view.query(ArtistTrackRow))
+        idx = rows.index(event.item)
+        app: QobitApp = self.app  # type: ignore[assignment]
+        app.play_track(event.item.track, queue=[r.track for r in rows[idx + 1 :]])
+        self.call_after_refresh(event.list_view.focus)
 
 
 class AlbumCard(Widget):
@@ -665,7 +839,7 @@ class ArtistHeader(Widget):
                 self.query_one(TGPImage).image = img
 
 
-class ArtistScreen(NowPlayingViewMixin, Screen):
+class ArtistScreen(Screen):
     BINDINGS = [Binding("escape", "navigate_back", "Back", priority=True)]
 
     DEFAULT_CSS = """
@@ -694,19 +868,6 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
         layout: vertical;
         margin: 0;
         padding: 0;
-    }
-
-    ArtistScreen #top-tracks {
-        height: 1fr;
-        margin: 0;
-        border: round $accent 40%;
-        border-title-color: $accent 40%;
-        border-title-style: bold;
-    }
-
-    ArtistScreen #top-tracks:focus {
-        border: round $accent;
-        border-title-color: $accent;
     }
 
     ArtistScreen #albums {
@@ -748,7 +909,7 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
         yield ArtistHeader()
         with ContentSwitcher(initial="artist-view", id="main-content"):
             with Vertical(id="artist-view"):
-                yield TrackListView(id="top-tracks")
+                yield ArtistTracks()
                 yield AlbumGrid(id="albums")
             with Vertical(id="album-view"):
                 yield AlbumDetailPanel(id="album-panel")
@@ -758,11 +919,9 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         self.query_one(ArtistHeader).set_loading()
-        self.query_one("#top-tracks", ListView).border_title = "Top Tracks"
         self.query_one("#albums", AlbumGrid).border_title = "Albums & EPs"
-        self._wire_now_playing(ArtistTrackRow, "#top-tracks")
         self._load_detail()
-        self._load_tracks()
+        self.query_one(ArtistTracks).load(self._artist_id)
 
     @property
     def page_artist(self) -> Artist | None:
@@ -816,43 +975,9 @@ class ArtistScreen(NowPlayingViewMixin, Screen):
         except NoMatches:
             pass
 
-    @work
-    async def _load_tracks(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
-        try:
-            items = await app._client.get_artist_top_tracks(self._artist_id)
-        except Exception:
-            return
-        if not items or not self.is_attached:
-            return
-        fav_ids = await app.ensure_favorite_ids()
-        if not self.is_attached:
-            return
-        try:
-            lv = self.query_one("#top-tracks", ListView)
-            rows = [
-                ArtistTrackRow(t := Track.from_api(raw), i, str(t.id) in fav_ids)
-                for i, raw in enumerate(items, 1)
-            ]
-            self._apply_now_playing(rows)
-            await lv.mount(*rows)
-        except NoMatches:
-            pass
-
     @on(events.Click, "#breadcrumb")
     def _on_breadcrumb_click(self) -> None:
         self.app.pop_screen()
-
-    @on(ListView.Selected, "#top-tracks")
-    def _on_top_track_selected(self, event: ListView.Selected) -> None:
-        if isinstance(event.item, ArtistTrackRow):
-            app: QobitApp = self.app  # type: ignore[assignment]
-            lv = self.query_one("#top-tracks", ListView)
-            rows = list(lv.query(ArtistTrackRow))
-            idx = rows.index(event.item)
-            queue = [r.track for r in rows[idx + 1 :]]
-            app.play_track(event.item.track, queue=queue)
-            self.call_after_refresh(lv.focus)
 
     @on(AlbumCard.Selected)
     def _on_album_selected(self, event: AlbumCard.Selected) -> None:

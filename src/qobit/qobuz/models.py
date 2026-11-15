@@ -50,6 +50,10 @@ class Track:
     version: str | None = None
     image_url: str | None = None
     favorited_at: int | None = None
+    # Who performs it, and whose album it's on: they differ on compilations and
+    # soundtracks. The artist page's "Your favourites" matches either.
+    artist_id: str | None = None
+    album_artist_id: str | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "Track":
@@ -61,10 +65,12 @@ class Track:
             n = obj.get("name", "")
             return n.get("display", "") if isinstance(n, dict) else n
 
+        performer = data.get("performer") or data.get("artist") or {}
+        album_artist = album.get("artist") or {}
         artist = (
             (data.get("performer") or {}).get("name", "")
             or _name(data.get("artist") or {})
-            or _name(album.get("artist") or {})
+            or _name(album_artist)
         )
         return cls(
             id=str(data["id"]),
@@ -76,7 +82,12 @@ class Track:
             version=data.get("version") or None,
             image_url=image.get("large") or image.get("small") or None,
             favorited_at=data.get("favorited_at") or None,
+            artist_id=str(performer["id"]) if performer.get("id") else None,
+            album_artist_id=str(album_artist["id"]) if album_artist.get("id") else None,
         )
+
+    def by_artist(self, artist_id: str) -> bool:
+        return artist_id in (self.artist_id, self.album_artist_id)
 
     @property
     def display_title(self) -> str:
