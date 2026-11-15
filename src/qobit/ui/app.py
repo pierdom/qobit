@@ -225,6 +225,12 @@ class QobitApp(App[None]):
         height: 1fr;
         margin-bottom: 1;
     }
+    /* Lists sit on their panel. Textual's ListView paints $surface, a shade
+       off the background: with an opaque background every list showed as a
+       lighter box, larger than its rounded border. (Popups that want a
+       surface, like the `i` menu, set it explicitly and win on specificity.) */
+    ListView { background: transparent; }
+
     /* List highlight: the accent tint, like the grid cards' selection.
        Textual 8 marks the row with `-highlight` (it was `--highlight` in
        older Textual; a rule on the old name silently stopped matching and
@@ -473,6 +479,10 @@ class QobitApp(App[None]):
         self.volume = get_saved_volume() if _sw_vol_on else 100
         self._fit_tab_labels(self.size.width)
         self._restore_player_state()
+        if self.now_playing is not None:
+            # The restored track's album details and artist bio for the hero
+            # (playing a track fetches them; a restore didn't).
+            self._fetch_now_playing_album(self.now_playing)
         if self._connect_wanted:
             self._start_connect()
         self.set_interval(5.0, self._connect_tick)

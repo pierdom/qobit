@@ -212,7 +212,8 @@ class NowPlayingHero(Widget):
         display: none;
     }
     NowPlayingHero #hero-art { width: 32; height: 16; }
-    NowPlayingHero.-playing #hero-art-row { display: block; }
+    /* Whenever a track is loaded, also paused or restored after a restart. */
+    NowPlayingHero.-has-track #hero-art-row { display: block; }
     NowPlayingHero .hero-title {
         width: 1fr; text-align: center; text-style: bold; color: $accent;
     }
@@ -259,6 +260,7 @@ class NowPlayingHero(Widget):
     # ── reactive watchers ─────────────────────────────────────────────────────
 
     def _on_now_playing(self, track: object) -> None:
+        self.set_class(bool(track), "-has-track")
         if track and getattr(track, "image_url", None):
             self._fetch_art(track.image_url)  # type: ignore[union-attr]
         self._refresh_favorite()

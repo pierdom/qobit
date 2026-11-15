@@ -149,7 +149,9 @@ class TransportBar(Widget):
         margin-right: 1;
         display: none;
     }
-    TransportBar.-playing TGPImage {
+    /* Art shows whenever a track is loaded, also paused or restored after
+       a restart (is_playing is still False until the first play). */
+    TransportBar.-has-track TGPImage {
         display: block;
     }
     """
@@ -202,6 +204,7 @@ class TransportBar(Widget):
 
     def _on_now_playing(self, track: object) -> None:
         content = self.query_one(_TransportContent)
+        self.set_class(bool(track), "-has-track")
         if track:
             content.label = f"{track.artist} — {track.display_title}"  # type: ignore[union-attr]
             content.album = track.album  # type: ignore[union-attr]

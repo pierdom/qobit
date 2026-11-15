@@ -245,6 +245,12 @@ A while the cursor showed B. Connect's `load_track` treats "stale" as handled
 
 **Visual consistency rules** (aesthetic sweep, 2026-11-15; check every UI change
 against a rendered screenshot):
+- Lists are `background: transparent` (one rule in `QobitApp.CSS`): Textual's
+  ListView paints `$surface`, which showed as a lighter box around every list
+  once the background is opaque. Popups that want a surface set it explicitly.
+- Now-playing art (transport bar, hero) shows whenever a track is loaded
+  (`-has-track`), not only while playing: a track restored paused after a
+  restart had no art. `-playing` only switches the accent border.
 - All borders and dividers are `round`; no `heavy`, `solid` or double lines (the
   queue's section dividers are drawn with `─`).
 - qobit's own chrome uses `$accent`, including the active-tab underline, list
