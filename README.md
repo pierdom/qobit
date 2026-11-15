@@ -38,7 +38,8 @@ view live in a keyboard-driven terminal UI with cover art.
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
-- Cover art and artist bios, using the Kitty graphics protocol.
+- Cover art and artist bios, drawn with the Kitty graphics protocol (see
+  [Terminal](#terminal)).
 - Themes, including Ayu Dark, Mirage and Light.
 - OS media keys and now-playing widgets (MPRIS on Linux, Now Playing on macOS).
 - Qobuz Connect: qobit can appear as a device in the Qobuz apps and be
@@ -48,7 +49,7 @@ view live in a keyboard-driven terminal UI with cover art.
 
 Requirements: a Qobuz subscription (Hi-Res for 24-bit), Python 3.11+,
 [uv](https://docs.astral.sh/uv/), [mpv](https://mpv.io/), and a terminal that
-supports the Kitty graphics protocol (kitty, Ghostty, iTerm2 3.5+).
+supports the Kitty graphics protocol (see [Terminal](#terminal)).
 
 On Linux, the media-key support builds against system headers. Install them
 first:
@@ -74,6 +75,25 @@ qobit               # start the TUI
 
 For bit-perfect output, choose the device as described in
 [docs/audio.md](docs/audio.md).
+
+## Terminal
+
+qobit draws all images (cover art, artist photos) with the
+[Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/),
+and only with it. There is no fallback.
+
+| Terminal | Images |
+|---|---|
+| [kitty](https://sw.kovidgoyal.net/kitty/) | works |
+| [Ghostty](https://ghostty.org) | works |
+| [WezTerm](https://wezterm.org), Konsole | implement the protocol; not tested with qobit |
+| Inside tmux | needs `set -g allow-passthrough on`; not tested with qobit |
+
+> [!WARNING]
+> In any other terminal (GNOME Terminal, iTerm2, macOS Terminal, Alacritty,
+> Windows Terminal, VS Code, …) qobit looks very bad: every image turns into
+> blocks of garbled characters across the grids, the Now Playing panel and the
+> transport bar. Playback still works, but use one of the terminals above.
 
 ## Usage
 
