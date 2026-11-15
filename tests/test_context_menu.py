@@ -64,3 +64,37 @@ def test_menu_options_wrap_around():
 
     last, first = asyncio.run(run())
     assert (last, first) == (len(options) - 1, 0)
+
+
+def test_page_behind_a_menu_does_not_shift():
+    """Textual draws the page behind a modal inside the modal's padding; the
+    app-wide `Screen { padding: 0 1 }` made it jump one column right when the
+    `i`/`g` menu opened. QobitApp.CSS zeroes ModalScreen padding."""
+    import asyncio
+    import re
+
+    from textual.app import App
+    from textual.widgets import Label
+
+    from qobit.ui.app import QobitApp
+    from qobit.ui.screens.context_menu import ContextMenu
+
+    class _App(App):
+        CSS = QobitApp.CSS
+
+        def compose(self):
+            yield Label("MARKER")
+
+    def marker_x(svg: str) -> str:
+        return re.search(r'<text[^>]*x="([\d.]+)"[^>]*>MARKER', svg).group(1)
+
+    async def run():
+        app = _App()
+        async with app.run_test(size=(40, 10)) as pilot:
+            before = marker_x(app.export_screenshot())
+            app.push_screen(ContextMenu("T", "A", track_options(favorite=False)))
+            await pilot.pause()
+            return before, marker_x(app.export_screenshot())
+
+    before, with_menu = asyncio.run(run())
+    assert before == with_menu

@@ -204,6 +204,10 @@ class QobitApp(App[None]):
         */
         padding: 0 1;
     }
+    /* Modals (the `i`/`g` menus, the command palette) are Screens too, but
+       Textual draws the page behind a modal inside the modal's padding: with
+       the inset above, the whole background jumped one column right. */
+    ModalScreen { padding: 0; }
     /* Unified scrollbar design across every scrollable widget / page. */
     * {
         scrollbar-size-vertical: 1;
