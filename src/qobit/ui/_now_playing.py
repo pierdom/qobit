@@ -30,7 +30,7 @@ def heart_suffix(favorite: bool, pad: str = "  ") -> tuple[str, str] | str:
 class NowPlayingRowMixin:
     """Mixin for ListItem subclasses that show a ▶/⏸ now-playing indicator.
 
-    Subclasses must implement ``_primary() -> Content`` and have a ``.primary``
+    Subclasses must implement ``_primary() -> Content`` and have a ``.row-title``
     CSS class on their primary Label.
     """
 
@@ -46,7 +46,7 @@ class NowPlayingRowMixin:
 
     def _refresh_primary(self) -> None:
         try:
-            self.query_one(".primary", Label).update(self._primary())  # type: ignore[attr-defined]
+            self.query_one(".row-title", Label).update(self._primary())  # type: ignore[attr-defined]
         except NoMatches:
             pass
 

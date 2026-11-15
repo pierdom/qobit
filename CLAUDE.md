@@ -216,6 +216,26 @@ skip policy belongs to the caller (`_do_play` locally, the renderer in Connect).
 
 **`_render_version` counter**: each view holds `_render_version: int`, incremented before starting a `@work` load. The worker captures the version at start and discards results if it changed by the time it returns, so stale workers can't overwrite newer results.
 
+**Visual consistency rules** (aesthetic sweep, 2026-11-15; check every UI change
+against a rendered screenshot):
+- All borders and dividers are `round`; no `heavy`, `solid` or double lines (the
+  queue's section dividers are drawn with `─`).
+- qobit's own chrome uses `$accent`, including the active-tab underline, list
+  highlights and the progress bar. Rich `Text` styles don't resolve `$variables`
+  (`style="$accent"` silently renders the default colour): read
+  `app.theme_variables["accent"]` instead, as `TransportBar` does.
+- Never name a CSS class `primary`, `secondary`, `accent`, `success`, `warning`
+  or `error` on a Label: Textual 8 ships those as Label variants with their own
+  colour and background (all track titles turned blue that way). Track rows use
+  `row-title` / `row-meta`.
+- List highlight targets Textual 8's `-highlight` class (not the old
+  `--highlight`): `$accent 35%` in a focused list, `12%` in an unfocused one,
+  labels transparent. Grid cards use the same tint via `.grid-card`.
+- Numbered lists (queue, album tracklist, top tracks) show the number only;
+  unnumbered lists (Tracks, Search) show `♪`. Secondary lines use `  ·  `.
+- The three library grids share `LIBRARY_TILE_MIN_W` (40), `grid-gutter: 1 2`
+  and `grid-rows` = `GRID_CARD_IMG_H`.
+
 **Grid tile size**: the Albums, Artists and Playlists tabs share one image
 height, `artist_detail.GRID_CARD_IMG_H` (5 rows); the CSS heights carry a
 `/* GRID_CARD_IMG_H */` marker. Each card's text column must fit in that many

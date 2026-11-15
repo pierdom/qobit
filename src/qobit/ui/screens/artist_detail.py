@@ -23,7 +23,6 @@ from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
-from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -33,6 +32,9 @@ _CARD_IMG_H = 4  # album tiles inside an artist page (title + year only)
 # Playlists tabs — so all three tile sizes match. Every card's text column is
 # laid out to fit in this many rows.
 GRID_CARD_IMG_H = 5
+# Minimum tile width for the same three library grids, so they show the same
+# number of columns at a given terminal width.
+LIBRARY_TILE_MIN_W = 40
 _TILE_MIN_W = 22
 
 
@@ -50,7 +52,7 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     ArtistTrackRow { height: 2; padding: 0 1; }
     ArtistTrackRow Label { width: 1fr; }
-    ArtistTrackRow .secondary { color: $text-muted; }
+    ArtistTrackRow .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -62,16 +64,13 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        if self._is_playing:
-            text = f"{self._number}.  {t.display_title}"
-        else:
-            text = f"{self._number}. {ICON_TRACK}  {t.display_title}"
+        text = f"{self._number}.  {t.display_title}"  # numbered: no ♪ (see album rows)
         return playing_content(text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite

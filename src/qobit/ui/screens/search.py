@@ -32,8 +32,8 @@ class TrackItem(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     TrackItem { height: 2; padding: 0 1; }
     TrackItem Label { width: 1fr; }
-    TrackItem .primary { text-style: bold; }
-    TrackItem .secondary { color: $text-muted; }
+    TrackItem .row-title { text-style: bold; }
+    TrackItem .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track, favorite: bool = False) -> None:
@@ -52,8 +52,8 @@ class TrackItem(NowPlayingRowMixin, ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -64,8 +64,8 @@ class AlbumItem(ListItem):
     DEFAULT_CSS = """
     AlbumItem { height: 2; padding: 0 1; }
     AlbumItem Label { width: 1fr; }
-    AlbumItem .primary { text-style: bold; }
-    AlbumItem .secondary { color: $text-muted; }
+    AlbumItem .row-title { text-style: bold; }
+    AlbumItem .row-meta { color: $text-muted; }
     """
 
     def __init__(self, album: Album) -> None:
@@ -75,16 +75,16 @@ class AlbumItem(ListItem):
     def compose(self) -> ComposeResult:
         a = self.album
         year = str(a.year) if a.year else "—"
-        yield Label(f"{ICON_ALBUM}  {a.title}", classes="primary")
-        yield Label(f"     {a.artist}  ·  {year}  ·  {a.tracks_count} tracks", classes="secondary")
+        yield Label(f"{ICON_ALBUM}  {a.title}", classes="row-title")
+        yield Label(f"     {a.artist}  ·  {year}  ·  {a.tracks_count} tracks", classes="row-meta")
 
 
 class ArtistItem(ListItem):
     DEFAULT_CSS = """
     ArtistItem { height: 2; padding: 0 1; }
     ArtistItem Label { width: 1fr; }
-    ArtistItem .primary { text-style: bold; }
-    ArtistItem .secondary { color: $text-muted; }
+    ArtistItem .row-title { text-style: bold; }
+    ArtistItem .row-meta { color: $text-muted; }
     """
 
     def __init__(self, artist: Artist) -> None:
@@ -93,17 +93,18 @@ class ArtistItem(ListItem):
 
     def compose(self) -> ComposeResult:
         a = self.artist
-        sub = f"{a.albums_count} albums" if a.albums_count else ""
-        yield Label(f"{ICON_ARTIST}  {a.name}", classes="primary")
-        yield Label(f"     {sub}", classes="secondary")
+        n = a.albums_count
+        sub = f"{n} album{'' if n == 1 else 's'}" if n else ""
+        yield Label(f"{ICON_ARTIST}  {a.name}", classes="row-title")
+        yield Label(f"     {sub}", classes="row-meta")
 
 
 class PlaylistItem(ListItem):
     DEFAULT_CSS = """
     PlaylistItem { height: 2; padding: 0 1; }
     PlaylistItem Label { width: 1fr; }
-    PlaylistItem .primary { text-style: bold; }
-    PlaylistItem .secondary { color: $text-muted; }
+    PlaylistItem .row-title { text-style: bold; }
+    PlaylistItem .row-meta { color: $text-muted; }
     """
 
     def __init__(self, playlist: Playlist) -> None:
@@ -112,8 +113,8 @@ class PlaylistItem(ListItem):
 
     def compose(self) -> ComposeResult:
         p = self.playlist
-        yield Label(f"{ICON_PLAYLIST}  {p.name}", classes="primary")
-        yield Label(f"     {p.owner}  ·  {p.tracks_count} tracks", classes="secondary")
+        yield Label(f"{ICON_PLAYLIST}  {p.name}", classes="row-title")
+        yield Label(f"     {p.owner}  ·  {p.tracks_count} tracks", classes="row-meta")
 
 
 # ── search view ───────────────────────────────────────────────────────────────

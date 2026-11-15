@@ -222,18 +222,37 @@ class QobitApp(App[None]):
         height: 1fr;
         margin-bottom: 1;
     }
-    /* .--highlight doubled: its specificity otherwise exactly ties
-       Screen.-transparent *'s below, and this rule lives in the same
-       App.CSS stylesheet source as that one, so plain specificity decides —
-       doubling the class is enough to win here. (That's NOT true for any
-       rule defined in a *widget's own* DEFAULT_CSS instead of here — see
-       the "transparency survives" block right before Screen.-transparent
-       for why those need a different fix.) */
-    ListItem.--highlight.--highlight {
-        background: $accent 35%;
+    /* List highlight: the accent tint, like the grid cards' selection.
+       Textual 8 marks the row with `-highlight` (it was `--highlight` in
+       older Textual; a rule on the old name silently stopped matching and
+       every list fell back to Textual's solid primary-colour cursor).
+       Focused list: full tint. Unfocused list: a faint tint, so the Search
+       tab's three lists don't all look selected. Labels go transparent so
+       the row's tint shows behind the text under Screen.-transparent too
+       (same fix as .grid-card). */
+    ListView > ListItem.-highlight {
+        color: $foreground;
+        background: $accent 12%;
+        text-style: none;
     }
-    ListItem.--highlight > Label {
+    ListView:focus > ListItem.-highlight {
+        color: $foreground;
         background: $accent 35%;
+        text-style: none;
+    }
+    ListItem.-highlight > Label {
+        background: transparent;
+    }
+    /* Active-tab underline in the accent colour too (Textual draws it with
+       $block-cursor-background, i.e. the theme's primary). */
+    Tabs Underline > .underline--bar {
+        color: $accent;
+    }
+    /* The footer scrolls horizontally when its key hints don't fit (narrow
+       terminals), and its scrollbar then covers the hints. Hide it: the
+       hints that fit stay visible. */
+    Footer {
+        scrollbar-size-horizontal: 0;
     }
     Label.-hl {
         color: $accent;

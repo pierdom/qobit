@@ -30,8 +30,8 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     PlaylistTrackRow { height: 2; padding: 0 1; }
     PlaylistTrackRow Label { width: 1fr; }
-    PlaylistTrackRow .primary { text-style: bold; }
-    PlaylistTrackRow .secondary { color: $text-muted; }
+    PlaylistTrackRow .row-title { text-style: bold; }
+    PlaylistTrackRow .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -51,8 +51,8 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"        {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"        {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -89,7 +89,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         border-title-color: $accent;
     }
     PlaylistScreen #playlist-panel:focus-within .detail-tracklist {
-        border-top: solid $accent;
+        border-top: round $accent;
     }
     """
     )

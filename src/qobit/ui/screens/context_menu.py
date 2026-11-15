@@ -76,7 +76,7 @@ class TrackContextMenu(ModalScreen[str | None]):
     TrackContextMenu #menu-header {
         width: 1fr;
         height: auto;
-        padding: 1 2;
+        padding: 1 2 0 2;  /* title and artist on consecutive lines */
         background: $boost;
         color: $accent;
         text-style: bold;

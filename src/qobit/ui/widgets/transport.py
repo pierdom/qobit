@@ -65,9 +65,12 @@ class _TransportContent(Widget):
             if self.duration > 0
             else 0
         )
+        # Rich Text doesn't resolve Textual's $variables ("$accent" rendered
+        # as the default text colour), so use the theme's actual accent.
+        accent = self.app.theme_variables.get("accent", "")
         bar = Text(no_wrap=True)
-        bar.append("█" * filled, style="$accent")
-        bar.append("░" * (bar_w - filled), style="dim $accent")
+        bar.append("█" * filled, style=accent)
+        bar.append("░" * (bar_w - filled), style=f"dim {accent}".strip())
         bar.append(time_str, style="dim")
 
         return Group(line1, line2, bar)
@@ -120,10 +123,8 @@ class TransportBar(Widget):
         height: 6;
         /* Same dim-accent → full-accent ladder every other panel uses on
            focus, here driven by playback state instead since the transport
-           bar is never keyboard-focused. heavy (not round, unlike every
-           library panel) — this is the one console-readout element that's
-           always on screen, so it gets a deliberately bolder frame. */
-        border: heavy $accent 40%;
+           bar is never keyboard-focused. Round like every other panel. */
+        border: round $accent 40%;
         /* top-left: play/pause status ("Now Playing") */
         border-title-color: $accent 40%;
         border-title-align: left;
@@ -135,7 +136,7 @@ class TransportBar(Widget):
         padding: 0 1;
     }
     TransportBar.-playing {
-        border: heavy $accent;
+        border: round $accent;
         border-title-color: $accent;
     }
     TransportBar:hover {

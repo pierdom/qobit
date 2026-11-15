@@ -63,20 +63,20 @@ class SectionHeader(ListItem):
         # distinct from the single-line rules used for plain list dividers
         # elsewhere (there are none elsewhere; this is the only divider in
         # the app, which is exactly why it gets the distinct treatment).
-        left = f"══ {self._title.upper()} "
-        right = f" {self._count} ══" if self._count is not None else "══"
+        left = f"── {self._title.upper()} "
+        right = f" {self._count} ──" if self._count is not None else "──"
         # `width` is the Label's content width; -1 leaves slack for the list's
         # scrollbar gutter so the rule never wraps onto a second line.
         fill = max(2, width - len(left) - len(right) - 1)
-        return Text(left + "═" * fill + right, no_wrap=True, overflow="crop")
+        return Text(left + "─" * fill + right, no_wrap=True, overflow="crop")
 
 
 class QueueTrackRow(ListItem):
     DEFAULT_CSS = """
     QueueTrackRow { height: 2; padding: 0 1; }
     QueueTrackRow Label { width: 1fr; }
-    QueueTrackRow .primary { text-style: bold; }
-    QueueTrackRow .secondary { color: $text-muted; }
+    QueueTrackRow .row-title { text-style: bold; }
+    QueueTrackRow .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -92,12 +92,12 @@ class QueueTrackRow(ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
-        self.query_one(".primary", Label).update(self._primary())
+        self.query_one(".row-title", Label).update(self._primary())
 
 
 class HistoryTrackRow(ListItem):
@@ -107,8 +107,8 @@ class HistoryTrackRow(ListItem):
     DEFAULT_CSS = """
     HistoryTrackRow { height: 2; padding: 0 1; }
     HistoryTrackRow Label { width: 1fr; }
-    HistoryTrackRow .primary { color: $text-muted; }
-    HistoryTrackRow .secondary { color: $text-muted 60%; }
+    HistoryTrackRow .row-title { color: $text-muted; }
+    HistoryTrackRow .row-meta { color: $text-muted 60%; }
     """
 
     def __init__(self, track: Track, favorite: bool = False) -> None:
@@ -123,12 +123,12 @@ class HistoryTrackRow(ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
-        self.query_one(".primary", Label).update(self._primary())
+        self.query_one(".row-title", Label).update(self._primary())
 
 
 class NowPlayingListRow(ListItem):
@@ -139,8 +139,8 @@ class NowPlayingListRow(ListItem):
     DEFAULT_CSS = """
     NowPlayingListRow { height: 2; padding: 0 1; background: $accent 8%; }
     NowPlayingListRow Label { width: 1fr; }
-    NowPlayingListRow .primary { text-style: bold; color: $accent; }
-    NowPlayingListRow .secondary { color: $accent 60%; }
+    NowPlayingListRow .row-title { text-style: bold; color: $accent; }
+    NowPlayingListRow .row-meta { color: $accent 60%; }
     """
 
     def __init__(self, track: Track, is_paused: bool = False, favorite: bool = False) -> None:
@@ -157,16 +157,16 @@ class NowPlayingListRow(ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
     def set_paused(self, paused: bool) -> None:
         self._is_paused = paused
-        self.query_one(".primary", Label).update(self._primary())
+        self.query_one(".row-title", Label).update(self._primary())
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
-        self.query_one(".primary", Label).update(self._primary())
+        self.query_one(".row-title", Label).update(self._primary())
 
 
 class NowPlayingHero(Widget):
@@ -194,16 +194,14 @@ class NowPlayingHero(Widget):
         width: 2fr;
         max-width: 66;
         height: 1fr;
-        /* heavy, not round — the console-readout treatment, matching
-           TransportBar (same now-playing information), distinct from the
-           round library panel it sits next to. */
-        border: heavy $accent 40%;
+        /* Round like every other panel in qobit. */
+        border: round $accent 40%;
         layout: vertical;
         align-horizontal: center;
         padding: 1 2;
     }
     NowPlayingHero:focus {
-        border: heavy $accent;
+        border: round $accent;
     }
     NowPlayingHero #hero-art-row {
         width: 1fr;

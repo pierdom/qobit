@@ -15,7 +15,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist
 from .._images import fetch_image
-from .artist_detail import GRID_CARD_IMG_H, _GridNav, _set_art_width
+from .artist_detail import GRID_CARD_IMG_H, LIBRARY_TILE_MIN_W, _GridNav, _set_art_width
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -155,7 +155,7 @@ class PlaylistGrid(_GridNav, ScrollableContainer):
     PlaylistGrid {
         layout: grid;
         grid-size: 2;
-        grid-rows: 7;
+        grid-rows: 5;  /* GRID_CARD_IMG_H */
         grid-gutter: 1 2;
     }
     """
@@ -218,7 +218,7 @@ class PlaylistsView(Widget):
     PlaylistsView #playlists-grid-view { height: 1fr; }
     PlaylistsView PlaylistGrid {
         height: 1fr;
-        grid-rows: 7;
+        grid-rows: 5;  /* GRID_CARD_IMG_H */
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;
@@ -248,7 +248,7 @@ class PlaylistsView(Widget):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="playlists-grid-view"):
-            yield PlaylistGrid(id="user-playlists-grid", tile_min_width=50)
+            yield PlaylistGrid(id="user-playlists-grid", tile_min_width=LIBRARY_TILE_MIN_W)
 
     def on_mount(self) -> None:
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)

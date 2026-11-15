@@ -13,7 +13,7 @@ from textual.widgets import ContentSwitcher, Label
 from ...qobuz.models import Album, Artist
 from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW
 from .album_detail import AlbumDetailPanel
-from .artist_detail import AlbumCard, AlbumGrid, ArtistHeader
+from .artist_detail import LIBRARY_TILE_MIN_W, AlbumCard, AlbumGrid, ArtistHeader
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -50,8 +50,8 @@ class AlbumsView(Widget):
     AlbumsView #albums-grid-view { height: 1fr; }
     AlbumsView AlbumGrid {
         height: 1fr;
-        grid-rows: 6;
-        grid-gutter: 1 4;
+        grid-rows: 5;  /* GRID_CARD_IMG_H */
+        grid-gutter: 1 2;  /* same gaps as the Artists and Playlists grids */
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;
@@ -93,7 +93,7 @@ class AlbumsView(Widget):
     def compose(self) -> ComposeResult:
         with ContentSwitcher(initial="albums-grid-view", id="albums-switcher"):
             with Vertical(id="albums-grid-view"):
-                yield AlbumGrid(id="fav-albums-grid", tile_min_width=42)
+                yield AlbumGrid(id="fav-albums-grid", tile_min_width=LIBRARY_TILE_MIN_W)
             with Vertical(id="albums-album-view"):
                 yield Label("← Favourite Albums", id="album-breadcrumb")
                 yield ArtistHeader()

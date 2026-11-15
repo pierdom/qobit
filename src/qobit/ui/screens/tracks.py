@@ -43,8 +43,8 @@ class FavTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     FavTrackRow { height: 2; padding: 0 0 0 1; }
     FavTrackRow Label { width: 1fr; }
-    FavTrackRow .primary { text-style: bold; }
-    FavTrackRow .secondary { color: $text-muted; }
+    FavTrackRow .row-title { text-style: bold; }
+    FavTrackRow .row-meta { color: $text-muted; }
     """
 
     def __init__(self, track: Track) -> None:
@@ -59,8 +59,8 @@ class FavTrackRow(NowPlayingRowMixin, ListItem):
 
     def compose(self) -> ComposeResult:
         t = self.track
-        yield Label(self._primary(), classes="primary")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="secondary")
+        yield Label(self._primary(), classes="row-title")
+        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
 
 
 class TracksView(NowPlayingViewMixin, Widget):

@@ -14,6 +14,7 @@ from ...qobuz.models import Album, Artist, Track
 from ..widgets.lists import TrackListView
 from .album_detail import AlbumDetailPanel
 from .artist_detail import (
+    LIBRARY_TILE_MIN_W,
     AlbumCard,
     AlbumGrid,
     ArtistCard,
@@ -129,7 +130,7 @@ class ArtistsView(Widget):
     def compose(self) -> ComposeResult:
         with ContentSwitcher(initial="artists-grid-view", id="artists-switcher"):
             with Vertical(id="artists-grid-view"):
-                yield ArtistGrid(id="fav-artists-grid", tile_min_width=33)
+                yield ArtistGrid(id="fav-artists-grid", tile_min_width=LIBRARY_TILE_MIN_W)
             with Vertical(id="artist-detail-view"):
                 yield Label("← Favourite Artists", id="artist-breadcrumb")
                 yield ArtistHeader()

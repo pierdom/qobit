@@ -28,7 +28,6 @@ from .._utils import (
 )
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
-from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -49,14 +48,13 @@ class TrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        if self._is_playing:
-            text = f"{self._number:2}.  {t.display_title}  {t.duration_str}"
-        else:
-            text = f"{self._number:2}. {ICON_TRACK}  {t.display_title}  {t.duration_str}"
+        # Numbered lists show the number only (no ♪), like the Up Next queue;
+        # the ▶/⏸ marker for the playing row comes from playing_content.
+        text = f"{self._number:2}.  {t.display_title}  ·  {t.duration_str}"
         return playing_content(text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
-        yield Label(self._primary(), classes="primary")
+        yield Label(self._primary(), classes="row-title")
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -95,7 +93,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     AlbumDetailPanel .ap-badges { height: auto; color: $text-muted; }
     AlbumDetailPanel .ap-awards { height: auto; color: $accent 70%; margin-top: 1; }
     AlbumDetailPanel:focus-within .detail-tracklist {
-        border-top: solid $accent;
+        border-top: round $accent;
     }
     /* Vertical-compact modes (see set_compact): halve the album art, then lay
        the tracklist out in two columns when space is tight. */
