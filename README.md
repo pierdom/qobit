@@ -42,6 +42,8 @@ control playback from a keyboard-driven terminal UI with cover art.
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
+- Artist pages with top tracks, your favourites by that artist, albums and
+  similar artists.
 - Cover art and artist bios, drawn with the Kitty graphics protocol (see
   [Terminal](#terminal)).
 - Themes, including Ayu Dark, Mirage and Light.

@@ -179,8 +179,8 @@ tab: Top Tracks plus "Your favourites" (favourite tracks where
 on compilations and soundtracks). Two columns from
 `ARTIST_TRACKS_COLUMNS_MIN_W` (120) of panel width, else one panel with `t`
 switching; no favourites, no second list. It refreshes on `queue_version`
-(bumped by every favourite toggle). Border titles take `[dim]` markup but don't
-resolve `$variables`.
+(bumped by every favourite toggle). Border titles take style markup
+(`[underline]`, `[not bold]`, `[dim]`) but don't resolve `$variables`.
 
 **Similar artists.** `ArtistReleases` wraps the album grid (keeping the
 host's id) and an `ArtistGrid` of similar artists behind `t` (the arrows move
@@ -188,9 +188,11 @@ the grid cursor, so no arrow switch here). The full list
 (`artist/getSimilarArtists`, paged) loads on first switch; whether to offer it
 comes from the preview in `artist/page`. `ArtistHeader(similar=True)` lists
 that preview beside the bio from `ARTIST_HEADER_SIMILAR_MIN_W` (128, compared
-with the terminal width). Both switching panels build their title with
-`switch_title()` and map clicks on it with `clicked_label()` (the title starts
-3 cells in: corner, rule, space).
+with the terminal width). Both switching panels derive from `_TitleSwitch`
+(click on a name in the title → `action_switch`) and build the title with
+`switch_title()`: the shown view underlined like the active top-bar tab, the
+other at normal weight (`dim` made it unreadable on an unfocused panel).
+`clicked_label()` maps a click to a name (the title starts 3 cells in).
 `artist/page` is cached per artist and shared in flight
 (`client.get_artist_page`). Opening an artist from any of these goes through
 `QobitApp.open_artist`. Don't name widget methods or attributes after Textual

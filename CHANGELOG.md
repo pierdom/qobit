@@ -7,7 +7,7 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
-## [Unreleased]
+## [0.6.0] - 2026-11-15
 
 ### Added
 
@@ -19,6 +19,11 @@ release from this entry.
   click on the panel title switches), and as a short list beside the bio from
   128 columns. `♥` marks artists you follow.
 - The `i` and `g` menus wrap around: up on the first option goes to the last.
+
+### Changed
+
+- Panels with two views name both in the title, the shown one underlined;
+  click a name, or press `t`, to switch.
 
 ### Fixed
 
@@ -193,6 +198,7 @@ releases (development phases 1–9).
 - Session restore (last track + position).
 - CLI: `play`, `auth`, `devices`, `set-device`, `clear-cache`.
 
+[0.6.0]: https://github.com/pierdom/qobit/releases/tag/v0.6.0
 [0.5.0]: https://github.com/pierdom/qobit/releases/tag/v0.5.0
 [0.4.0]: https://github.com/pierdom/qobit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/pierdom/qobit/releases/tag/v0.3.0
