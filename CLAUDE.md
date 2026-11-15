@@ -187,7 +187,10 @@ host's id) and an `ArtistGrid` of similar artists behind `t` (the arrows move
 the grid cursor, so no arrow switch here). The full list
 (`artist/getSimilarArtists`, paged) loads on first switch; whether to offer it
 comes from the preview in `artist/page`. `ArtistHeader(similar=True)` lists
-that preview beside the bio from `ARTIST_HEADER_SIMILAR_MIN_W` (160).
+that preview beside the bio from `ARTIST_HEADER_SIMILAR_MIN_W` (128, compared
+with the terminal width). Both switching panels build their title with
+`switch_title()` and map clicks on it with `clicked_label()` (the title starts
+3 cells in: corner, rule, space).
 `artist/page` is cached per artist and shared in flight
 (`client.get_artist_page`). Opening an artist from any of these goes through
 `QobitApp.open_artist`. Don't name widget methods or attributes after Textual

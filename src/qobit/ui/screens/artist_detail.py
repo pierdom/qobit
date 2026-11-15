@@ -83,8 +83,34 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
 
 # Both lists side by side from this width; below it, one panel and a switch.
 ARTIST_TRACKS_COLUMNS_MIN_W = 120
-# The header lists a few similar artists beside the bio from this width.
-ARTIST_HEADER_SIMILAR_MIN_W = 160
+# The header lists a few similar artists beside the bio from this terminal width.
+ARTIST_HEADER_SIMILAR_MIN_W = 128
+
+# Panels that hold two views (Top Tracks / Your favourites, Albums / Similar)
+# name both in the border title, the hidden one dimmed; `t` or a click on a
+# name switches.
+_SWITCH_SEP = "  │  "
+SWITCH_HINT = "t or click the title to switch"
+
+
+def switch_title(labels: list[str], active: int) -> str:
+    return _SWITCH_SEP.join(
+        label if i == active else f"[dim]{label}[/dim]" for i, label in enumerate(labels)
+    )
+
+
+def clicked_label(panel: Widget, event: events.Click, labels: list[str]) -> int | None:
+    """Which name in ``panel``'s switch title was clicked, if any. The title
+    starts 3 cells in: corner, one rule, one space."""
+    if event.screen_y != panel.region.y:
+        return None
+    x = event.screen_x - (panel.region.x + 3)
+    start = 0
+    for i, label in enumerate(labels):
+        if start <= x < start + len(label):
+            return i
+        start += len(label) + len(_SWITCH_SEP)
+    return None
 
 
 class ArtistTracks(Widget):
@@ -219,12 +245,22 @@ class ArtistTracks(Widget):
             top.border_title = "Top Tracks"
             favs.border_title = f"Your favourites · {n}"
         else:  # one panel: name both lists, the hidden one dimmed
-            other = "[dim]{}[/dim]"
-            if self._showing == "top":
-                top.border_title = f"Top Tracks  ·  {other.format(f'Your favourites · {n}')}"
-            else:
-                favs.border_title = f"{other.format('Top Tracks')}  ·  Your favourites · {n}"
-        top.border_subtitle = favs.border_subtitle = "" if columns or not n else "t switch"
+            title = switch_title(self._labels, 0 if self._showing == "top" else 1)
+            (top if self._showing == "top" else favs).border_title = title
+        top.border_subtitle = favs.border_subtitle = "" if columns or not n else SWITCH_HINT
+
+    @property
+    def _labels(self) -> list[str]:
+        return ["Top Tracks", f"Your favourites · {len(self._fav_ids)}"]
+
+    def on_click(self, event: events.Click) -> None:
+        if not self._fav_ids or self._columns:
+            return
+        panel = self.query_one("#top-tracks" if self._showing == "top" else "#artist-favs")
+        picked = clicked_label(panel, event, self._labels)
+        if picked is not None and ("top", "favs")[picked] != self._showing:
+            event.stop()
+            self.action_switch()
 
     def action_switch(self) -> None:
         if not self._fav_ids:
@@ -854,15 +890,29 @@ class ArtistReleases(Widget):
         on_similar = self._has_similar and self._showing == "similar"
         albums.display = not on_similar
         similar.display = on_similar
-        count = f" · {self._similar_count}" if self._similar_count is not None else ""
         if not self._has_similar:
             albums.border_title, albums.border_subtitle = "Albums & EPs", ""
         elif on_similar:
-            similar.border_title = f"[dim]Albums & EPs[/dim]  ·  Similar artists{count}"
-            similar.border_subtitle = "t switch"
+            similar.border_title = switch_title(self._labels, 1)
+            similar.border_subtitle = SWITCH_HINT
         else:
-            albums.border_title = f"Albums & EPs  ·  [dim]Similar artists{count}[/dim]"
-            albums.border_subtitle = "t switch"
+            albums.border_title = switch_title(self._labels, 0)
+            albums.border_subtitle = SWITCH_HINT
+
+    @property
+    def _labels(self) -> list[str]:
+        count = f" · {self._similar_count}" if self._similar_count is not None else ""
+        return ["Albums & EPs", f"Similar artists{count}"]
+
+    def on_click(self, event: events.Click) -> None:
+        if not self._has_similar:
+            return
+        on_similar = self._showing == "similar"
+        panel = self.query_one("#similar-artists") if on_similar else self.albums
+        picked = clicked_label(panel, event, self._labels)
+        if picked is not None and picked != int(on_similar):
+            event.stop()
+            self.action_switch()
 
     def action_switch(self) -> None:
         if not self._has_similar:
@@ -1007,14 +1057,14 @@ class ArtistHeader(Widget):
         await lv.clear()
         await lv.mount(*[ListItem(Label(it["name"], markup=False)) for it in items])
         lv.border_title = "Similar"
-        lv.border_subtitle = "t: more in albums" if more else ""
+        lv.border_subtitle = "more below (t)" if more else ""
         self._layout_similar()
 
     def on_resize(self) -> None:
         self._layout_similar()
 
     def _layout_similar(self) -> None:
-        wide = self.size.width >= ARTIST_HEADER_SIMILAR_MIN_W
+        wide = self.app.size.width >= ARTIST_HEADER_SIMILAR_MIN_W
         self.set_class(bool(self._similar_items) and wide, "-similar")
 
     @on(ListView.Selected, ".ah-similar")

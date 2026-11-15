@@ -67,12 +67,13 @@ Tracks (where everything is one).
 An artist's page (from the Artists tab, Search, `g` or `i`) shows their **Top
 Tracks** and, if you have favourited any of their songs, **Your favourites**.
 On a wide terminal the two lists sit side by side and `←` `→` move between
-them; on a narrower one they share a panel and `t` (or `←` `→`) switches.
+them; on a narrower one they share a panel: `t` (or `←` `→`) switches, or
+click the list's name in the panel title.
 
 Below them, **Albums & EPs** shares its panel with **Similar artists** (from
-Qobuz): `t` switches, `Enter` opens an artist, `i` follows them, and `♥` marks
-artists you already follow. On a wide terminal the header also lists a few
-similar artists beside the bio. Artists Qobuz has no similar artists for show
+Qobuz): `t` or a click on the name in the panel title switches, `Enter` opens
+an artist, `i` follows them, and `♥` marks artists you already follow. From 128
+columns the header also lists a few similar artists beside the bio. Artists Qobuz has no similar artists for show
 only their albums.
 
 ## Radio and mixes

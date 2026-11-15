@@ -13,10 +13,11 @@ release from this entry.
 
 - The artist page shows **Your favourites**: your favourite tracks by that
   artist, next to Top Tracks. Side by side on wide terminals; on narrower ones
-  they share a panel and `t` switches. Hidden when you have none.
-- Similar artists on the artist page: in the Albums & EPs panel (`t`
-  switches), and as a short list beside the bio on wide terminals. `♥` marks
-  artists you follow.
+  they share a panel; `t` or a click on the panel title switches. Hidden when
+  you have none.
+- Similar artists on the artist page: in the Albums & EPs panel (`t` or a
+  click on the panel title switches), and as a short list beside the bio from
+  128 columns. `♥` marks artists you follow.
 
 ### Fixed
 
