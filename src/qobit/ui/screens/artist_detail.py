@@ -83,6 +83,8 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
 
 # Both lists side by side from this width; below it, one panel and a switch.
 ARTIST_TRACKS_COLUMNS_MIN_W = 120
+# The header lists a few similar artists beside the bio from this width.
+ARTIST_HEADER_SIMILAR_MIN_W = 160
 
 
 class ArtistTracks(Widget):
@@ -639,10 +641,21 @@ class ArtistCard(Widget):
     /* Selected state: shared .grid-card rules in QobitApp.CSS. */
     """
 
-    def __init__(self, artist: Artist) -> None:
+    def __init__(self, artist: Artist, followed: bool = False) -> None:
+        """``followed``: mark with ♥ (used where not every artist is followed,
+        like Similar artists)."""
         super().__init__(classes="grid-card")
         self._artist = artist
+        self._followed = followed
         self._art_requested = False
+
+    def set_followed(self, followed: bool) -> None:
+        self._followed = followed
+        with contextlib.suppress(NoMatches):
+            self.query_one(".card-name", Label).update(self._label())
+
+    def _label(self) -> Content:
+        return Content.assemble(self._artist.name, heart_suffix(self._followed))
 
     @property
     def artist(self) -> Artist:
@@ -651,7 +664,7 @@ class ArtistCard(Widget):
     def compose(self) -> ComposeResult:
         yield TGPImage()
         with Vertical(classes="card-info"):
-            yield Label(escape(self._artist.name), classes="card-name card-primary", markup=True)
+            yield Label(self._label(), classes="card-name card-primary")
 
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
@@ -770,6 +783,126 @@ class ArtistGrid(_GridNav, ScrollableContainer):
             self.post_message(ArtistCard.Selected(card.artist))
 
 
+class ArtistReleases(Widget):
+    """The artist's Albums & EPs, and their Similar artists in the same panel:
+    `t` switches (the arrows move the grid cursor). Shown only when Qobuz has
+    similar artists. The full list loads the first time it's opened. The
+    album grid keeps the id the host gives it; the host fills it."""
+
+    BINDINGS = [Binding("t", "switch", "Albums / Similar", show=False)]
+
+    DEFAULT_CSS = """
+    ArtistReleases { height: 1fr; }
+    ArtistReleases #similar-artists {
+        display: none;
+        height: 1fr;
+        grid-rows: 5;  /* GRID_CARD_IMG_H */
+        border: round $accent 40%;
+        border-title-color: $accent 40%;
+        border-title-style: bold;
+        border-subtitle-color: $accent 40%;
+    }
+    ArtistReleases #similar-artists:focus {
+        border: round $accent;
+        border-title-color: $accent;
+    }
+    """
+
+    def __init__(self, albums_id: str, **kwargs: object) -> None:
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+        self._albums_id = albums_id
+        self._artist_id: str | None = None
+        self._showing = "albums"
+        self._has_similar = False
+        self._similar_loaded = False
+        self._similar_count: int | None = None
+
+    def compose(self) -> ComposeResult:
+        yield AlbumGrid(id=self._albums_id)
+        yield ArtistGrid(id="similar-artists")
+
+    @property
+    def albums(self) -> AlbumGrid:
+        return self.query_one(f"#{self._albums_id}", AlbumGrid)
+
+    def on_mount(self) -> None:
+        self._layout()
+
+    async def set_artist(self, artist_id: str) -> None:
+        self._artist_id = artist_id
+        self._showing = "albums"
+        self._has_similar = self._similar_loaded = False
+        self._similar_count = None
+        await self.query_one("#similar-artists", ArtistGrid).clear_cards()
+        self._layout()
+        self._check_similar(artist_id)
+
+    @work(exclusive=True, group="_check_similar")  # a newer artist cancels a stale one
+    async def _check_similar(self, artist_id: str) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        try:
+            items, _ = await app._client.get_similar_artists_preview(artist_id)
+        except QobuzError:
+            return
+        if self.is_attached and artist_id == self._artist_id:
+            self._has_similar = bool(items)
+            self._layout()
+
+    def _layout(self) -> None:
+        albums = self.albums
+        similar = self.query_one("#similar-artists", ArtistGrid)
+        on_similar = self._has_similar and self._showing == "similar"
+        albums.display = not on_similar
+        similar.display = on_similar
+        count = f" · {self._similar_count}" if self._similar_count is not None else ""
+        if not self._has_similar:
+            albums.border_title, albums.border_subtitle = "Albums & EPs", ""
+        elif on_similar:
+            similar.border_title = f"[dim]Albums & EPs[/dim]  ·  Similar artists{count}"
+            similar.border_subtitle = "t switch"
+        else:
+            albums.border_title = f"Albums & EPs  ·  [dim]Similar artists{count}[/dim]"
+            albums.border_subtitle = "t switch"
+
+    def action_switch(self) -> None:
+        if not self._has_similar:
+            return
+        self._showing = "similar" if self._showing == "albums" else "albums"
+        self._layout()
+        if self._showing == "similar":
+            self.query_one("#similar-artists", ArtistGrid).focus()
+            if not self._similar_loaded:
+                self._similar_loaded = True
+                self._load_similar(self._artist_id or "")
+        else:
+            self.albums.focus()
+
+    @work(exclusive=True, group="_load_similar")
+    async def _load_similar(self, artist_id: str) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        grid = self.query_one("#similar-artists", ArtistGrid)
+        grid.border_subtitle = "loading…"
+        try:
+            items = await app._client.get_similar_artists(artist_id)
+        except QobuzError:
+            self._similar_loaded = False  # let `t` retry
+            grid.border_subtitle = "couldn't load"
+            return
+        if not self.is_attached or artist_id != self._artist_id:
+            return
+        followed = {a.id for a in (app._fav_artists or [])}
+        artists = [Artist.from_api(raw) for raw in items]
+        self._similar_count = len(artists)
+        await grid.set_cards([ArtistCard(a, followed=a.id in followed) for a in artists])
+        self._layout()
+
+    @on(ArtistCard.Selected)
+    def _on_similar_selected(self, event: ArtistCard.Selected) -> None:
+        event.stop()
+        app: QobitApp = self.app  # type: ignore[assignment]
+        app.open_artist(event.artist.id)
+
+
 class ArtistHeader(Widget):
     """Reusable artist image + biography header.
 
@@ -805,12 +938,37 @@ class ArtistHeader(Widget):
         width: 1fr;
         color: $text-muted;
     }
+    ArtistHeader .ah-similar {
+        display: none;
+        width: 32;
+        height: 7;
+        margin-left: 1;
+        background: transparent;
+        border: round $accent 40%;
+        border-title-color: $accent 40%;
+        border-title-style: bold;
+        border-subtitle-color: $accent 40%;
+    }
+    ArtistHeader .ah-similar:focus {
+        border: round $accent;
+        border-title-color: $accent;
+    }
+    ArtistHeader.-similar .ah-similar { display: block; }
+    ArtistHeader .ah-similar ListItem { height: 1; padding: 0 1; }
     """
+
+    def __init__(self, *, similar: bool = False, **kwargs: object) -> None:
+        """``similar``: on wide terminals, list a few similar artists beside
+        the bio (artist pages; not the album pages that reuse this header)."""
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+        self._similar = similar
+        self._similar_items: list[dict] = []
 
     def compose(self) -> ComposeResult:
         yield TGPImage(classes="ah-image")
         with VerticalScroll(classes="ah-bio-section"):
             yield Label("", classes="ah-bio")
+        yield ListView(classes="ah-similar")
 
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), 7)
@@ -820,6 +978,8 @@ class ArtistHeader(Widget):
 
     def set_loading(self, name: str = "Loading…") -> None:
         self.artist = None
+        self._similar_items = []
+        self._layout_similar()
         self.query_one(".ah-bio-section").border_title = name
         self.query_one(".ah-bio", Label).update("")
 
@@ -830,6 +990,40 @@ class ArtistHeader(Widget):
             self.query_one(".ah-bio", Label).update(escape(artist.biography))
         if artist.image_url:
             self._fetch_image(artist.image_url)
+        if self._similar:
+            self._load_similar(artist.id)
+
+    @work(exclusive=True, group="_load_similar")  # a newer artist cancels a stale one
+    async def _load_similar(self, artist_id: str) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        try:
+            items, more = await app._client.get_similar_artists_preview(artist_id)
+        except QobuzError:
+            return
+        if not self.is_attached or self.artist is None or self.artist.id != artist_id:
+            return
+        self._similar_items = items
+        lv = self.query_one(".ah-similar", ListView)
+        await lv.clear()
+        await lv.mount(*[ListItem(Label(it["name"], markup=False)) for it in items])
+        lv.border_title = "Similar"
+        lv.border_subtitle = "t: more in albums" if more else ""
+        self._layout_similar()
+
+    def on_resize(self) -> None:
+        self._layout_similar()
+
+    def _layout_similar(self) -> None:
+        wide = self.size.width >= ARTIST_HEADER_SIMILAR_MIN_W
+        self.set_class(bool(self._similar_items) and wide, "-similar")
+
+    @on(ListView.Selected, ".ah-similar")
+    def _on_similar_selected(self, event: ListView.Selected) -> None:
+        event.stop()
+        idx = event.list_view.index
+        if idx is not None and 0 <= idx < len(self._similar_items):
+            app: QobitApp = self.app  # type: ignore[assignment]
+            app.open_artist(self._similar_items[idx]["id"])
 
     @work(exclusive=True, group="_fetch_image")  # a newer request cancels a stale one
     async def _fetch_image(self, url: str) -> None:
@@ -906,11 +1100,11 @@ class ArtistScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Label(f"← {self._source}", id="breadcrumb")
-        yield ArtistHeader()
+        yield ArtistHeader(similar=True)
         with ContentSwitcher(initial="artist-view", id="main-content"):
             with Vertical(id="artist-view"):
                 yield ArtistTracks()
-                yield AlbumGrid(id="albums")
+                yield ArtistReleases("albums")
             with Vertical(id="album-view"):
                 yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
@@ -919,7 +1113,7 @@ class ArtistScreen(Screen):
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         self.query_one(ArtistHeader).set_loading()
-        self.query_one("#albums", AlbumGrid).border_title = "Albums & EPs"
+        self.run_worker(self.query_one(ArtistReleases).set_artist(self._artist_id))
         self._load_detail()
         self.query_one(ArtistTracks).load(self._artist_id)
 

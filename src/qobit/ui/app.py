@@ -694,6 +694,12 @@ class QobitApp(App[None]):
             self._flash_status(f"Unfollowed {artist.name}")
         with contextlib.suppress(Exception):
             self.query_one(ArtistsView).favorites_changed()
+        from .screens.artist_detail import ArtistCard
+
+        for screen in self.screen_stack:  # the ♥ on Similar artists tiles
+            for card in screen.query(ArtistCard):
+                if card.artist.id == artist.id:
+                    card.set_followed(on)
 
     # ── seek from mouse click on bar ─────────────────────────────────────────
 
@@ -1439,7 +1445,6 @@ class QobitApp(App[None]):
 
     @work
     async def _open_artist(self, track: Track) -> None:
-        from .screens.artist_detail import ArtistScreen
 
         try:
             data = await self._client.get_track(str(track.id))
@@ -1452,8 +1457,15 @@ class QobitApp(App[None]):
         if not artist_id:
             self._flash_status("Artist not available")
             return
+        self.open_artist(str(artist_id))
+
+    def open_artist(self, artist_id: str) -> None:
+        """Open an artist page over the current one, with the breadcrumb and
+        Escape target of where it was opened from (`g`, `i`, Similar)."""
+        from .screens.artist_detail import ArtistScreen
+
         tab_id, name = self._origin()
-        self.push_screen(ArtistScreen(str(artist_id), source=name, back_tab=tab_id))
+        self.push_screen(ArtistScreen(artist_id, source=name, back_tab=tab_id))
 
     def _origin(self) -> tuple[str, str]:
         """Where a page opened from the ``i``/``g`` menu comes from: ``(tab id,

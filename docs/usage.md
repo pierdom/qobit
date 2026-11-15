@@ -69,6 +69,12 @@ Tracks** and, if you have favourited any of their songs, **Your favourites**.
 On a wide terminal the two lists sit side by side and `←` `→` move between
 them; on a narrower one they share a panel and `t` (or `←` `→`) switches.
 
+Below them, **Albums & EPs** shares its panel with **Similar artists** (from
+Qobuz): `t` switches, `Enter` opens an artist, `i` follows them, and `♥` marks
+artists you already follow. On a wide terminal the header also lists a few
+similar artists beside the bio. Artists Qobuz has no similar artists for show
+only their albums.
+
 ## Radio and mixes
 
 **Song radio** (`R`) fills Up Next with ~50 Qobuz suggestions seeded from the

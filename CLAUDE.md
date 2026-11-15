@@ -182,6 +182,18 @@ switching; no favourites, no second list. It refreshes on `queue_version`
 (bumped by every favourite toggle). Border titles take `[dim]` markup but don't
 resolve `$variables`.
 
+**Similar artists.** `ArtistReleases` wraps the album grid (keeping the
+host's id) and an `ArtistGrid` of similar artists behind `t` (the arrows move
+the grid cursor, so no arrow switch here). The full list
+(`artist/getSimilarArtists`, paged) loads on first switch; whether to offer it
+comes from the preview in `artist/page`. `ArtistHeader(similar=True)` lists
+that preview beside the bio from `ARTIST_HEADER_SIMILAR_MIN_W` (160).
+`artist/page` is cached per artist and shared in flight
+(`client.get_artist_page`). Opening an artist from any of these goes through
+`QobitApp.open_artist`. Don't name widget methods or attributes after Textual
+internals: an `ArtistCard._name()` helper shadowed `Widget._name` and crashed
+every tile.
+
 **Breadcrumbs.** Pages opened from `g`/`i` get `_origin()`: the main screen's
 active tab id (`screen_stack[0]`, the artist page's Escape target) and the text
 from the page underneath's `page_title` (album/artist page or inline detail),

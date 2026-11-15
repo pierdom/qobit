@@ -127,6 +127,9 @@ class QobuzClient:
         # to prevent unbounded growth in very long sessions.
         self._album_cache: OrderedDict[str, dict] = OrderedDict()
         self._artist_detail_cache: OrderedDict[str, dict] = OrderedDict()
+        # artist/page feeds Top Tracks, the header's similar-artists preview and
+        # the similar panel: one request per artist, shared even while in flight.
+        self._artist_page_cache: OrderedDict[str, asyncio.Future] = OrderedDict()
 
     def __repr__(self) -> str:
         token = self.user_auth_token
@@ -376,11 +379,44 @@ class QobuzClient:
             self._artist_detail_cache.popitem(last=False)
         return result
 
+    async def get_artist_page(self, artist_id: str) -> dict:
+        """artist/page (top tracks, a similar-artists preview, …), cached."""
+        future = self._artist_page_cache.get(artist_id)
+        if future is None:
+            future = asyncio.ensure_future(self._get("artist/page", artist_id=artist_id))
+            self._artist_page_cache[artist_id] = future
+            if len(self._artist_page_cache) > 200:
+                self._artist_page_cache.popitem(last=False)
+        try:
+            # shield: a caller's cancelled worker mustn't cancel the shared request
+            return await asyncio.shield(future)
+        except QobuzError:
+            self._artist_page_cache.pop(artist_id, None)  # retry next time
+            raise
+
     async def get_artist_top_tracks(self, artist_id: str) -> list[dict]:
         """Popularity-ranked top tracks from artist/page."""
-        page = await self._get("artist/page", artist_id=artist_id)
-        top_tracks = page.get("top_tracks", [])
-        return top_tracks if isinstance(top_tracks, list) else top_tracks.get("items", [])
+        page = await self.get_artist_page(artist_id)
+        top_tracks = page.get("top_tracks") or []
+        return top_tracks if isinstance(top_tracks, list) else top_tracks.get("items") or []
+
+    async def get_similar_artists_preview(self, artist_id: str) -> tuple[list[dict], bool]:
+        """The few similar artists artist/page includes (``{"id", "name"}``),
+        and whether there are more."""
+        sim = (await self.get_artist_page(artist_id)).get("similar_artists") or {}
+        items = []
+        for it in sim.get("items") or []:
+            name = it.get("name")
+            name = name.get("display", "") if isinstance(name, dict) else name or ""
+            items.append({"id": str(it["id"]), "name": name})
+        return items, bool(sim.get("has_more"))
+
+    async def get_similar_artists(self, artist_id: str) -> list[dict]:
+        """Every similar artist (artist/getSimilarArtists, paged)."""
+        first = await self._get_paged(
+            "artist/getSimilarArtists", "artists", 100, artist_id=artist_id
+        )
+        return (first.get("artists") or {}).get("items") or []
 
     async def get_streaming_url(self, track_id: str, quality: str = "FLAC_CD") -> dict:
         format_id = QUALITY_IDS.get(quality, QUALITY_IDS["FLAC_CD"])

@@ -19,6 +19,7 @@ from .artist_detail import (
     ArtistCard,
     ArtistGrid,
     ArtistHeader,
+    ArtistReleases,
     ArtistTracks,
 )
 
@@ -119,13 +120,13 @@ class ArtistsView(Widget):
                 yield ArtistGrid(id="fav-artists-grid", tile_min_width=LIBRARY_TILE_MIN_W)
             with Vertical(id="artist-detail-view"):
                 yield Label("← Favourite Artists", id="artist-breadcrumb")
-                yield ArtistHeader()
+                yield ArtistHeader(similar=True)
                 with ContentSwitcher(
                     initial="artist-tracks-albums-view", id="artist-content-switcher"
                 ):
                     with Vertical(id="artist-tracks-albums-view"):
                         yield ArtistTracks()
-                        yield AlbumGrid(id="artist-albums-grid")
+                        yield ArtistReleases("artist-albums-grid")
                     with Vertical(id="artist-album-detail-view"):
                         yield Label("", id="album-breadcrumb")
                         yield AlbumDetailPanel(id="album-panel")
@@ -133,7 +134,6 @@ class ArtistsView(Widget):
     def on_mount(self) -> None:
         self.query_one("#fav-artists-grid", ArtistGrid).border_title = "Favourite Artists"
         self._update_subtitle()
-        self.query_one("#artist-albums-grid", AlbumGrid).border_title = "Albums & EPs"
 
     @property
     def page_artist(self) -> Artist | None:
@@ -323,6 +323,7 @@ class ArtistsView(Widget):
         grid = self.query_one("#artist-albums-grid", AlbumGrid)
         grid._cursor = -1
         await grid.clear_cards()
+        await self.query_one(ArtistReleases).set_artist(artist.id)
 
         inner_cs = self.query_one("#artist-content-switcher", ContentSwitcher)
         inner_cs.current = "artist-tracks-albums-view"
