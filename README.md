@@ -5,7 +5,7 @@
 # qobit
 
 [![CI](https://github.com/pierdom/qobit/actions/workflows/ci.yml/badge.svg)](https://github.com/pierdom/qobit/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/pierdom/qobit?sort=semver&color=F9BD2F)](https://github.com/pierdom/qobit/releases)
+[![Release](https://img.shields.io/github/v/release/pierdom/qobit?sort=semver&color=E6B450)](https://github.com/pierdom/qobit/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fpierdom%2Fqobit%2Fmain%2Fpyproject.toml)](pyproject.toml)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
