@@ -67,6 +67,7 @@ include = [
     "/README.md",
     "/CHANGELOG.md",
     "/LICENSE",
+    "/SECURITY.md",
 ]
 exclude = ["__pycache__"]
 
