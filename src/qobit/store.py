@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from ._fs import private_dir, write_private
+from .qobuz.sanitize import clean_json
 
 DATA_DIR = Path.home() / ".local" / "share" / "qobit"
 
@@ -17,7 +18,9 @@ def load(name: str) -> dict[str, Any]:
     p = _path(name)
     if p.exists():
         try:
-            return json.loads(p.read_text())
+            # Cleaned on load too: files saved before Qobuz text was cleaned
+            # (qobuz/sanitize.py) may still carry escape sequences.
+            return clean_json(json.loads(p.read_text()))
         except Exception:
             return {}
     return {}

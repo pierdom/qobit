@@ -195,6 +195,7 @@ playerctl -p qobit metadata   # title / artist / album / artUrl while playing
 ~/.local/share/qobit/connect.lock      held while Qobuz Connect is on
 ~/.local/share/qobit/qobit.lock        held while qobit runs (qobit logout refuses then)
 ~/.local/share/qobit/mpv.sock          mpv IPC socket
+~/.local/share/qobit/stream.m3u        the playing stream's URL, while playing
 ~/.cache/qobit/images/                 cover-art cache (safe to delete: qobit clear-cache)
 ```
 

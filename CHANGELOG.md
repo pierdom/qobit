@@ -16,6 +16,20 @@ release from this entry.
   logs in through the browser only (`qobit auth`); a password an older qobit
   saved is deleted at startup, with a notice. `QOBUZ_EMAIL` /
   `QOBUZ_PASSWORD` are no longer read.
+- **Text from Qobuz can no longer drive the terminal.** Titles, names and
+  playlist descriptions (public playlists are written by other users) passed
+  escape sequences straight through: one could rewrite the clipboard (OSC
+  52) or redraw the screen. Control characters are now stripped from every
+  API response, error message and saved state file.
+- The session token travels in a request header, never in the URL (URLs end
+  up in logs).
+- The stream URL (signed, naming the account) no longer appears in mpv's
+  command line, which any local user can read: mpv reads it from a private
+  playlist file, deleted when playback stops.
+- A crash screen no longer shows the session token: Textual prints local
+  variables there, and credentials are now masked in them.
+- The cover-art cache (a record of what was played) is readable only by
+  you.
 - **The session token lives in the system keyring**: the macOS Keychain, or
   the Secret Service on Linux (GNOME Keyring, KWallet). `config.json` keeps
   only a marker. Without a keyring (headless Linux, SSH) the token stays in

@@ -27,6 +27,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, urlparse
 
+from ..secret import Secret
+
 OAUTH_URL = "https://www.qobuz.com/signin/oauth"
 LOGIN_TIMEOUT = 300.0  # long enough to log in on another device and paste back
 
@@ -78,7 +80,7 @@ class LoginPrompt:
         code = (qs.get("code_autorisation") or qs.get("code") or [None])[0]
         if not code or not _CODE_RE.fullmatch(code):
             return "no_code"
-        self._code.set_result(code)
+        self._code.set_result(Secret(code))
         return "ok"
 
     async def wait(self, timeout: float | None = None) -> str:

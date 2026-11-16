@@ -22,6 +22,8 @@ import sys
 from collections.abc import Iterator
 from typing import Any
 
+from .secret import secret
+
 SERVICE = "qobit"
 ACCOUNT = "qobuz-session-token"
 
@@ -92,7 +94,7 @@ def load() -> str | None:
         return None
     try:
         with _quiet_stderr():
-            return _keyring().get_password(SERVICE, ACCOUNT)
+            return secret(_keyring().get_password(SERVICE, ACCOUNT))
     except Exception:
         return None
 

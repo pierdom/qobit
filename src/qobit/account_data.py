@@ -21,6 +21,9 @@ from . import config, store
 
 # Every file in DATA_DIR that carries account activity.
 ACCOUNT_FILES = ("queue_state.json", "player_state.json", "mixes_cache.json")
+# The stream playlist (audio/player.py) holds a signed URL naming the
+# account: normally removed when playback stops, erased here if left over.
+_LEFTOVER_FILES = ("stream.m3u",)
 # Empty marker/lock files and the mpv socket: no account data, removed only
 # with the settings (nothing of qobit left).
 _RUNTIME_FILES = ("qobit.lock", "connect.lock", "mpv.sock")
@@ -71,6 +74,9 @@ def erase_account_data() -> list[str]:
             with contextlib.suppress(FileNotFoundError):
                 path.unlink()
                 removed.append(names[name])
+    for name in _LEFTOVER_FILES:
+        with contextlib.suppress(FileNotFoundError):
+            (store.DATA_DIR / name).unlink()
     _, covers, _ = clear_disk_cache()
     if covers:
         removed.append(f"{covers} cached cover{'s' if covers != 1 else ''}")

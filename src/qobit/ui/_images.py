@@ -10,6 +10,8 @@ from pathlib import Path
 import httpx
 from PIL import Image as PILImage
 
+from .._fs import private_dir
+
 # Cap concurrent HTTP fetches so a full library grid doesn't flood the
 # network or thrash PIL/Kitty rendering all at once.
 _FETCH_SEM = asyncio.Semaphore(6)
@@ -78,7 +80,9 @@ def _cache_dir() -> Path | None:
         base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
         d = Path(base) / "qobit" / "images"
         try:
-            d.mkdir(parents=True, exist_ok=True)
+            # 0700 both: the covers are a record of what was listened to.
+            private_dir(d.parent)
+            private_dir(d)
             _CACHE_DIR = d
         except Exception:
             _CACHE_DIR = None

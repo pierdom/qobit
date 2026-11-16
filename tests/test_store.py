@@ -50,3 +50,9 @@ def test_save_overwrites_previous_contents():
     store.save("x.json", {"a": 1})
     store.save("x.json", {"b": 2})
     assert store.load("x.json") == {"b": 2}
+
+
+def test_load_strips_escape_sequences_from_older_files():
+    store.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    (store.DATA_DIR / "q.json").write_text('{"t": "A\\u001b]52;c;eA==\\u0007B"}')
+    assert store.load("q.json") == {"t": "A]52;c;eA==B"}

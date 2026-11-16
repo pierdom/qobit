@@ -229,3 +229,25 @@ def test_has_graphical_browser(monkeypatch, platform, env, expected):
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     assert mod._has_graphical_browser() is expected
+
+
+def test_the_session_token_travels_in_a_header_never_the_url():
+    """URLs end up in logs (httpx logs them at INFO); headers don't."""
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200, json={"tracks": {"items": []}})
+
+    client = QobuzClient()
+    client.restore_session("123", "secret-token", ["s"])
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    asyncio.run(client.search("x"))
+    asyncio.run(client._post("favorite/create", track_ids="1"))
+    asyncio.run(client.get_dynamic_suggestions([1], []))
+    assert len(seen) == 3
+    for request in seen:
+        assert "secret-token" not in str(request.url)
+        assert request.headers["X-User-Auth-Token"] == "secret-token"
+        assert "secret-token" not in request.content.decode()
+        assert "app_id=123" in str(request.url) + request.content.decode()

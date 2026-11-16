@@ -6,6 +6,7 @@ from typing import Any
 
 from . import token_store
 from ._fs import private_dir, write_private
+from .secret import secret
 
 CONFIG_DIR = Path.home() / ".config" / "qobit"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -70,7 +71,7 @@ def get_oauth_session() -> tuple[str, str, list[str]]:
     secrets = s.get("secrets") or ([s["secret"]] if s.get("secret") else [])
     in_keyring = s.get("token_store") == "keyring"
     token = (token_store.load() or "") if in_keyring else s.get("token", "")
-    return s.get("app_id", ""), token, secrets
+    return s.get("app_id", ""), secret(token) or "", secrets
 
 
 def token_location() -> str:

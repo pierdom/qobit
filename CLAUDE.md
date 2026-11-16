@@ -389,6 +389,17 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
   `action_navigate_back()` (True = handled). A modal whose caller needs its
   dismiss callback must close itself there: a bare `pop_screen()` skips the
   callback (the login dialog stayed "open" forever that way).
+- Text from Qobuz is untrusted (public playlists are user-written) and
+  Textual passes ESC to the terminal (verified: OSC 52 reached it). Every
+  response goes through `client._json()` → `sanitize.clean_json`; never call
+  `r.json()` directly. Server text shown elsewhere (Connect errors) goes
+  through `sanitize.clean`; `store.load` cleans state files too.
+- Credentials are `secret.Secret` (masked repr: Textual's crash screen
+  prints locals). Wrap any new token/JWT/code where it enters. The session
+  token is sent as `X-User-Auth-Token`, never a query parameter.
+- mpv gets the stream URL from `DATA_DIR/stream.m3u` (0600, deleted on
+  stop), never argv: argv is world-readable and a URL starting with `--`
+  would be an option.
 - The token goes through `token_store` (via `config.save_oauth_session` /
   `get_oauth_session`, never directly): system keyring when usable (session
   marked `"token_store": "keyring"`, no token in the file), else the file.
@@ -439,6 +450,7 @@ JPEG, cached in memory and in `~/.cache/qobit/images/`.
 ~/.local/share/qobit/queue_state.json  timeline + cursor
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ
 ~/.local/share/qobit/mpv.sock          mpv IPC socket (fixed path)
+~/.local/share/qobit/stream.m3u        stream URL for mpv (0600, while playing)
 ~/.local/share/qobit/qobit.lock        held (shared) by every running TUI
 ~/.cache/qobit/images/                 cover-art cache (qobit clear-cache)
 ```

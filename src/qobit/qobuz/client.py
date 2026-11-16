@@ -17,7 +17,9 @@ from typing import Any
 
 import httpx
 
+from ..secret import secret as as_secret
 from .oauth import LoginError, LoginPrompt, redirect_server
+from .sanitize import clean, clean_json
 
 API_BASE = "https://www.qobuz.com/api.json/0.2/"
 PLAY_BASE = "https://play.qobuz.com"
@@ -77,6 +79,12 @@ def _print_login(prompt: LoginPrompt) -> None:
 
 
 _LOGIN_ENDPOINTS = ("oauth/callback", "user/login")
+
+
+def _json(r: httpx.Response) -> Any:
+    """A response's JSON with terminal control characters stripped from
+    every string (sanitize.py): titles and playlist names reach the screen."""
+    return clean_json(r.json())
 
 
 def _account_summary(user: dict) -> dict[str, str]:
@@ -178,10 +186,12 @@ class QobuzClient:
         # and silently vanish under `python -O`.
         if not self._app_id:
             raise QobuzError("Not logged in to Qobuz")
-        params: dict[str, Any] = {"app_id": self._app_id}
-        if self.user_auth_token:
-            params["user_auth_token"] = self.user_auth_token
-        return params
+        return {"app_id": self._app_id}
+
+    def _auth_headers(self) -> dict[str, str]:
+        """The session token travels in a header, never the URL: URLs end up
+        in proxy, server and debug logs (httpx logs them at INFO)."""
+        return {"X-User-Auth-Token": self.user_auth_token} if self.user_auth_token else {}
 
     async def _send(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """Every HTTP call goes through here: network failures (offline,
@@ -220,24 +230,25 @@ class QobuzClient:
     async def _get(self, endpoint: str, **params: Any) -> dict:
         p = self._base_params()
         p.update(params)
-        r = await self._send("GET", API_BASE + endpoint, params=p)
+        r = await self._send("GET", API_BASE + endpoint, params=p, headers=self._auth_headers())
         self._raise_for_status(r)
-        return r.json()
+        return _json(r)
 
     async def _post(self, endpoint: str, **data: Any) -> dict:
         d = self._base_params()
         d.update(data)
-        r = await self._send("POST", API_BASE + endpoint, data=d)
+        r = await self._send("POST", API_BASE + endpoint, data=d, headers=self._auth_headers())
         self._raise_for_status(r)
-        return r.json()
+        return _json(r)
 
     @staticmethod
     def _raise_for_status(r: httpx.Response) -> None:
         if r.is_error:
             try:
-                msg = r.json().get("message", r.text)
+                msg = str(_json(r).get("message", r.text))
             except Exception:
                 msg = r.text
+            msg = clean(msg)[:300]  # shown in the UI: no control codes, no page dump
             if r.status_code == 401:
                 raise AuthExpiredError(f"Qobuz session expired ({r.status_code}): {msg}")
             raise QobuzError(f"Qobuz API error {r.status_code}: {msg}")
@@ -250,7 +261,7 @@ class QobuzClient:
     def restore_session(self, app_id: str, token: str, secrets: list[str]) -> None:
         """Restore a previously saved OAuth session without re-authenticating."""
         self._app_id = app_id
-        self.user_auth_token = token
+        self.user_auth_token = as_secret(token)
         self._secret_candidates = secrets + [s for s in self._secret_candidates if s not in secrets]
 
     async def login_oauth(self, show_url: Callable[[LoginPrompt], None] | None = None) -> None:
@@ -289,7 +300,7 @@ class QobuzClient:
                 "Qobuz didn't accept the login code (expired, already used, or "
                 f"mistyped): run qobit auth again. ({e})"
             ) from None
-        interim_token = r.json().get("token")
+        interim_token = as_secret(_json(r).get("token"))
         if not interim_token:
             raise QobuzError("Qobuz returned no token for the login code")
 
@@ -304,8 +315,8 @@ class QobuzClient:
             },
         )
         self._raise_for_status(r)
-        data = r.json()
-        token = data.get("user_auth_token")
+        data = _json(r)
+        token = as_secret(data.get("user_auth_token"))
         if not token:
             raise QobuzError("Qobuz returned no session for the login")
         self.user_auth_token = token
@@ -349,10 +360,10 @@ class QobuzClient:
             API_BASE + "dynamic/suggest",
             params=self._base_params(),
             content=json.dumps(body),
-            headers={"Content-Type": "text/plain;charset=UTF-8"},
+            headers={**self._auth_headers(), "Content-Type": "text/plain;charset=UTF-8"},
         )
         self._raise_for_status(r)
-        return r.json()
+        return _json(r)
 
     async def get_artist(self, artist_id: str, albums_limit: int = 20) -> dict:
         return await self._get(
@@ -449,7 +460,7 @@ class QobuzClient:
                     },
                 )
                 self._raise_for_status(r)
-                result = r.json()
+                result = _json(r)
                 self._app_secret = secret
                 self._secret_candidates = [secret] + [
                     s for s in self._secret_candidates if s != secret
@@ -472,10 +483,10 @@ class QobuzClient:
             headers={"X-App-Id": self._app_id, "X-User-Auth-Token": self.user_auth_token},
         )
         self._raise_for_status(r)
-        tok = (r.json() or {}).get("jwt_qws") or {}
+        tok = (_json(r) or {}).get("jwt_qws") or {}
         if not tok.get("jwt") or not tok.get("endpoint"):
             raise QobuzError("Connect token missing from qws/createToken response")
-        return tok["endpoint"], tok["jwt"]
+        return tok["endpoint"], as_secret(tok["jwt"])
 
     # --- user library ---
 
