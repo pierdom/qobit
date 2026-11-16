@@ -7,9 +7,9 @@ Runs the real QobitApp headless (the ``ui_app`` fixture in conftest.py)."""
 from __future__ import annotations
 
 import asyncio
+import random
 
 import pytest
-import random
 
 from qobit.qobuz.models import Track
 from qobit.ui.screens.queue import QueueView, SectionHeader, TimelineRow
