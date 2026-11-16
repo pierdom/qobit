@@ -199,6 +199,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             ]
             self._apply_now_playing(rows)
             await lv.set_rows(rows)  # type: ignore[attr-defined]  # lazy: playlists can be long
+            self._place_initial_cursor(lv)
         except NoMatches:
             return
 

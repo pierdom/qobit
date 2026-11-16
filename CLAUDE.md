@@ -200,7 +200,11 @@ focused widget it collects a track (a list row's `.track`), an album (a grid's
 selected card, a Search `AlbumItem`, or the enclosing
 `AlbumDetailPanel.album`) and an artist (a card/`ArtistItem`, or an ancestor's
 `page_artist`: `ArtistScreen`, `ArtistsView` with an artist open). Any mix
-works; nothing to act on, no menu. `ContextMenu` dismisses with an action id
+works; nothing to act on, no menu. An album with no track (a grid card)
+also gets "Go to artist" (`album_artist`, resolving a lean album's artist
+id via `get_album`), unless an artist page is already the subject. Lists
+filled by a view get a cursor (`_place_initial_cursor`: the playing row,
+else the first): focused with no row, the menu found no track at all. `ContextMenu` dismisses with an action id
 and `_on_track_menu` dispatches. "Remove from queue" appears only on Up Next
 rows (removes by identity). **`g`** opens `GoToMenu` for the playing (or
 restored) track through the same dispatch. "Go to artist" needs `get_track`

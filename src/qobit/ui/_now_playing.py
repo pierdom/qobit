@@ -226,6 +226,17 @@ class NowPlayingViewMixin:
                 self._np_playing_row = row
                 break
 
+    def _place_initial_cursor(self, lv: object) -> None:
+        """After a list's first fill: the cursor on the playing row, else on
+        the first, unless the user already moved it. Without one, the list
+        had focus but nothing selected: no cursor to see, and the ``i``
+        menu found no track (album-only options)."""
+        if lv.index is not None or not lv.children:  # type: ignore[attr-defined]
+            return
+        playing = self._np_playing_row
+        children = list(lv.children)  # type: ignore[attr-defined]
+        lv.index = children.index(playing) if playing in children else 0  # type: ignore[attr-defined]
+
     def _apply_now_playing(self, rows: list, *, first_batch: bool = True) -> None:
         """Mark the playing track in a batch of rows before mounting.
 

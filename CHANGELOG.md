@@ -23,6 +23,10 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Fixed
 
+- An album or playlist opened with no track selected: no cursor to see,
+  and the `i` menu offered only the album's favourite (no *Go to artist*,
+  *Play next*…). The first track, or the one playing, is now selected. On
+  an album card, `i` also offers *Go to artist*.
 - *Play radio* from the `i` menu on the track that's playing restarted it;
   now only Up Next becomes the station (as with `R`). On the track restored
   at startup it resumes where you left off.

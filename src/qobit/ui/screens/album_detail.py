@@ -343,6 +343,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
             ]
             self._apply_now_playing(rows)
             await lv.mount(*rows)
+            self._place_initial_cursor(lv)
         except NoMatches:
             pass
 

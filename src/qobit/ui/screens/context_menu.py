@@ -54,6 +54,12 @@ def album_option(favorite: bool) -> Option:
     return ("favorite_album", _heart(favorite), label)
 
 
+def album_artist_option() -> Option:
+    """Go to the album's artist: for an album with no track selected (a grid
+    card), where the track options' "Go to artist" isn't offered."""
+    return ("album_artist", ICON_ARTIST, "Go to artist")
+
+
 def artist_option(following: bool) -> Option:
     return ("follow_artist", _heart(following), "Unfollow artist" if following else "Follow artist")
 

@@ -1645,7 +1645,13 @@ class QobitApp(App[None]):
         row gets the track actions; an album (a grid card or the album page on
         show) adds its favourite toggle; an artist (a card, or the artist page
         on show) adds follow/unfollow. Nothing to act on: no menu."""
-        from .screens.context_menu import ContextMenu, album_option, artist_option, track_options
+        from .screens.context_menu import (
+            ContextMenu,
+            album_artist_option,
+            album_option,
+            artist_option,
+            track_options,
+        )
 
         focused = self.focused
         if focused is None:
@@ -1663,6 +1669,8 @@ class QobitApp(App[None]):
             if album is not None:
                 fav_albums = await self.ensure_favorite_albums()
                 options.append(album_option(any(a.id == album.id for a in fav_albums)))
+                if track is None and artist is None:  # not already on its artist's page
+                    options.append(album_artist_option())
             if artist is not None:
                 followed = await self.ensure_favorite_artists()
                 options.append(artist_option(any(a.id == artist.id for a in followed)))
@@ -1721,6 +1729,8 @@ class QobitApp(App[None]):
             self.run_worker(self.toggle_favorite_album(album))
         elif action == "follow_artist" and artist is not None:
             self.run_worker(self.toggle_follow_artist(artist))
+        elif action == "album_artist" and album is not None:
+            self._open_album_artist(album)
         elif track is None:
             return
         elif action == "favorite":
@@ -1798,6 +1808,22 @@ class QobitApp(App[None]):
             self._flash_status("Artist not available")
             return
         self.open_artist(str(artist_id))
+
+    @work
+    async def _open_album_artist(self, album: Album) -> None:
+        """An album from a grid or a search may be lean (no artist id): the
+        full record has it (cached by the client)."""
+        artist_id = album.artist_id
+        if not artist_id:
+            try:
+                artist_id = Album.from_api(await self._client.get_album(album.id)).artist_id
+            except QobuzError:
+                self._flash_status("Couldn't open artist")
+                return
+        if not artist_id:
+            self._flash_status("Artist not available")
+            return
+        self.open_artist(artist_id)
 
     def open_artist(self, artist_id: str) -> None:
         """Open an artist page over the current one (`g`, `i`, Similar); the
