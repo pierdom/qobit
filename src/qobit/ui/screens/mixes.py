@@ -45,10 +45,12 @@ def _cache_key(kind: str) -> str:
 
 class MixCard(Widget, can_focus=True):
     """One of the two mix tiles. Focusable, so the keyboard reaches it (Tab,
-    ←/→ between the two); Enter or Space opens it, ↓ goes to the track list."""
+    ←/→ between the two); Enter opens it, ↓ goes to the track list. Space
+    stays the app's pause (it used to open the card too, hiding Pause from
+    the footer on this tab)."""
 
     BINDINGS = [
-        Binding("enter,space", "open", "Open mix", show=False),
+        Binding("enter", "open", "Open mix", show=False),
         Binding("left", "sibling(-1)", show=False),
         Binding("right", "sibling(1)", show=False),
         Binding("down", "to_list", show=False),

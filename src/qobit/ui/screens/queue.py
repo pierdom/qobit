@@ -202,6 +202,15 @@ class TimelineRow(ListItem):
         self._refresh_title()
 
 
+# Now Playing panel rows: border + padding, then the text under the cover
+# (title, artist, album + gap, genre/label, resolution + gap, lamp) and the
+# gap below the cover. The cover gets what's left, up to _ART_ROWS.
+_CHROME_ROWS = 4
+_TEXT_ROWS = 9
+_ART_ROWS = 16
+_ART_MIN_ROWS = 4
+
+
 class NowPlayingHero(Widget):
     """Large now-playing focal panel: album art, rich metadata, artist bio.
 
@@ -246,6 +255,8 @@ class NowPlayingHero(Widget):
     NowPlayingHero #hero-art { width: 32; height: 16; }
     /* Whenever a track is loaded, also paused or restored after a restart. */
     NowPlayingHero.-has-track #hero-art-row { display: block; }
+    /* Too short for a recognisable cover (see _fit_art): text only. */
+    NowPlayingHero.-has-track.-no-art #hero-art-row { display: none; }
     NowPlayingHero .hero-title {
         width: 1fr; text-align: center; text-style: bold; color: $qobit-accent-text;
     }
@@ -287,9 +298,7 @@ class NowPlayingHero(Widget):
             yield Static("", classes="hero-bio", markup=False)
 
     def on_mount(self) -> None:
-        cell = get_cell_size()
-        if cell.width > 0 and cell.height > 0:
-            self.query_one(TGPImage).styles.width = round(16 * cell.height / cell.width)
+        self._fit_art(self.size.height)
         app: QobitApp = self.app  # type: ignore[assignment]
         self.watch(app, "now_playing", self._on_now_playing, init=True)
         self.watch(app, "is_playing", self._on_is_playing, init=True)
@@ -304,6 +313,24 @@ class NowPlayingHero(Widget):
         # toggle_favorite bumps queue_version: keeps the heart right when the
         # track is (un)favourited from a list or the `i` menu.
         self.watch(app, "queue_version", lambda _: self._refresh_favorite(), init=False)
+
+    def on_resize(self, event: Resize) -> None:
+        self._fit_art(event.size.height)
+
+    def _fit_art(self, height: int) -> None:
+        """Size the cover to what the panel has left after its text, up to
+        _ART_ROWS: at a fixed 16 rows it pushed the resolution and the lamp
+        out of a short panel. Below _ART_MIN_ROWS the cover hides."""
+        rows = max(0, min(_ART_ROWS, height - _CHROME_ROWS - _TEXT_ROWS))
+        self.set_class(rows < _ART_MIN_ROWS, "-no-art")
+        if rows < _ART_MIN_ROWS:
+            return
+        self.query_one("#hero-art-row").styles.height = rows
+        art = self.query_one(TGPImage)
+        art.styles.height = rows
+        cell = get_cell_size()
+        if cell.width > 0 and cell.height > 0:
+            art.styles.width = round(rows * cell.height / cell.width)
 
     # ── reactive watchers ─────────────────────────────────────────────────────
 

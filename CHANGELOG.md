@@ -79,6 +79,11 @@ release from this entry.
   footer, and light themes' muted text with the background off). Secondary
   text now uses a colour qobit checks per theme, and everything reads at
   4.5:1 or better except a few of the themes' own colours.
+- On the Mixes tab, Space opened the focused mix instead of pausing (and
+  `space Pause` was missing from the footer there). `Enter` opens a mix.
+- On short terminals the Now Playing panel's cover pushed the resolution and
+  the bit-perfect lamp out of view: the cover now shrinks to fit, and hides
+  when there's no room for it.
 - After switching theme, the bit-perfect lamp and the transport readout kept
   the previous theme's colours until the next track.
 - A selected row, card or menu option is readable in every theme. Its text

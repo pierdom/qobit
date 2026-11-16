@@ -63,7 +63,8 @@ for every other list.
 The **right** side is the **Now Playing** panel: cover art, title and artist,
 `album · year`, `genre · label`, the stream's resolution (`[ 24-BIT · 96 kHz ]`), and the artist's
 biography (scroll with the mouse wheel). Below ~100 columns the panel is hidden
-and the timeline takes the full width.
+and the timeline takes the full width; on a short terminal the cover shrinks,
+and hides when there's no room, so the text always shows.
 
 | Key | Action |
 |-----|--------|
