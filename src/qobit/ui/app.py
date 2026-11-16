@@ -326,7 +326,7 @@ class QobitApp(App[None]):
        override can actually win against Screen.-transparent * below is
        here, scoped under it so it only applies in transparent mode (the
        widgets' own rules already supply the same values the rest of the
-       time). These are UI *state* — selection, now-playing, a divider, a
+       time). These are UI *state* — selection, now-playing, a
        modal's legibility — not page background, and losing them silently
        under transparency is worse than the terminal not showing through
        there specifically. */
@@ -335,9 +335,6 @@ class QobitApp(App[None]):
     }
     Screen.-transparent TimelineRow.-now {
         background: $accent 8%;
-    }
-    Screen.-transparent SectionHeader {
-        background: $surface;
     }
     Screen.-transparent,
     Screen.-transparent * {

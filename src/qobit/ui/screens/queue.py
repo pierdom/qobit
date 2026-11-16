@@ -45,7 +45,10 @@ class SectionHeader(ListItem):
     ``set_count`` updates it in place (the list is reconciled, not rebuilt)."""
 
     DEFAULT_CSS = """
-    SectionHeader { height: 1; padding: 0 1; background: $surface; }
+    /* No background: the rule is the divider. A $surface band showed only in
+       the 1-col padding at each end under a transparent background (the
+       Label goes ansi_default there), and lists sit on their panel anyway. */
+    SectionHeader { height: 1; padding: 0 1; background: transparent; }
     SectionHeader.-spaced { margin-top: 1; }
     SectionHeader Label { width: 1fr; color: $accent; text-style: bold; }
     """
