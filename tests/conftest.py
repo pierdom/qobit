@@ -18,6 +18,47 @@ from qobit.ui import _images
 from qobit.ui.screens import queue as queue_module
 
 
+class FakeKeyring:
+    """In-memory stand-in for the ``keyring`` module: tests must never read
+    or write the developer's real Keychain / Secret Service. ``fail = True``
+    makes it behave like a machine without a usable keyring."""
+
+    name = "Fake keyring"
+
+    def __init__(self):
+        self.items: dict[tuple[str, str], str] = {}
+        self.fail = False
+
+    def get_keyring(self):
+        return self
+
+    def _check(self):
+        if self.fail:
+            raise RuntimeError("no keyring")
+
+    def set_password(self, service, account, password):
+        self._check()
+        self.items[(service, account)] = password
+
+    def get_password(self, service, account):
+        self._check()
+        return self.items.get((service, account))
+
+    def delete_password(self, service, account):
+        self._check()
+        del self.items[(service, account)]
+
+
+@pytest.fixture(autouse=True)
+def fake_keyring(monkeypatch):
+    from qobit import token_store
+
+    kr = FakeKeyring()
+    monkeypatch.setattr(token_store, "_keyring", lambda: kr)
+    monkeypatch.setattr(token_store, "enabled", lambda: True)
+    return kr
+
+
 @pytest.fixture(autouse=True)
 def isolated_filesystem_state(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CONFIG_DIR", tmp_path / "config")

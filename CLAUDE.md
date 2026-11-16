@@ -16,7 +16,8 @@ setup); keep feature detail there, not in the README.
 ```
 src/qobit/
 ├── __main__.py          CLI + TUI launcher (qobit with no args)
-├── config.py            session token + device/settings config (env → file)
+├── config.py            session + device/settings config (env → file)
+├── token_store.py       the session token in the system keyring (else config.json)
 ├── _fs.py               private_dir (0700) / write_private (atomic, 0600)
 ├── store.py             JSON runtime state in DATA_DIR (player/queue state)
 ├── account_data.py      what an account leaves on disk; erase (logout), the
@@ -388,6 +389,13 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
   `action_navigate_back()` (True = handled). A modal whose caller needs its
   dismiss callback must close itself there: a bare `pop_screen()` skips the
   callback (the login dialog stayed "open" forever that way).
+- The token goes through `token_store` (via `config.save_oauth_session` /
+  `get_oauth_session`, never directly): system keyring when usable (session
+  marked `"token_store": "keyring"`, no token in the file), else the file.
+  Linux without `DBUS_SESSION_BUS_ADDRESS` skips the keyring; every keyring
+  call silences fd 2 (GLib warns there while probing, garbling the TUI).
+  conftest's autouse `fake_keyring` replaces `token_store._keyring` and
+  `enabled`: a test must never reach the real Keychain.
 - Everything qobit writes under CONFIG_DIR / DATA_DIR goes through
   `_fs.write_private` (0600 from the first byte, in a 0700 dir): the token
   lives in config.json and DATA_DIR holds mpv's IPC socket (its `run`
@@ -426,7 +434,7 @@ JPEG, cached in memory and in `~/.cache/qobit/images/`.
 ## Files
 
 ```
-~/.config/qobit/config.json            credentials, device, theme, radio, Connect, session
+~/.config/qobit/config.json            session (token: keyring if any), device, theme, radio, Connect
 ~/.local/share/qobit/player_state.json last track + position
 ~/.local/share/qobit/queue_state.json  timeline + cursor
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ

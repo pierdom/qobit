@@ -41,6 +41,7 @@ from ..config import (
     set_saved_volume,
     set_software_volume_enabled,
     set_transparent_background,
+    token_location,
 )
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, StreamUrl, Track
@@ -580,6 +581,12 @@ class QobitApp(App[None]):
         self._running_lock = hold_running_lock()
         if self._client.user_auth_token:
             self._go_online()
+        elif token_location() == "keyring":
+            self.call_after_refresh(
+                self.request_login,
+                "Your session is in the system keyring, which isn't reachable here "
+                "(no desktop session?). Log in to use qobit here.",
+            )
         else:
             self.call_after_refresh(self.request_login)
 

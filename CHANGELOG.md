@@ -16,6 +16,12 @@ release from this entry.
   logs in through the browser only (`qobit auth`); a password an older qobit
   saved is deleted at startup, with a notice. `QOBUZ_EMAIL` /
   `QOBUZ_PASSWORD` are no longer read.
+- **The session token lives in the system keyring**: the macOS Keychain, or
+  the Secret Service on Linux (GNOME Keyring, KWallet). `config.json` keeps
+  only a marker. Without a keyring (headless Linux, SSH) the token stays in
+  `config.json`; `QOBIT_KEYRING=0` forces that. A token already in the file
+  moves to the keyring at the next start. `qobit auth status` says where it
+  is.
 - `config.json` (the session token) and the files in `~/.local/share/qobit`
   are written 0600 from the first byte, in 0700 directories. Before, the
   token was briefly world-readable on every settings change (and stayed so

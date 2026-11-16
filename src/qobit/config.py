@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from . import token_store
 from ._fs import private_dir, write_private
 
 CONFIG_DIR = Path.home() / ".config" / "qobit"
@@ -62,20 +63,54 @@ def set_audio_device(device_id: str) -> None:
 
 
 def get_oauth_session() -> tuple[str, str, list[str]]:
-    """Returns (app_id, token, secrets) or empty values if no saved session."""
+    """Returns (app_id, token, secrets) or empty values if no saved session.
+    The token comes from the system keyring when the session says it's
+    there (token_store.py), else from this file."""
     s = load().get("oauth_session") or {}
     secrets = s.get("secrets") or ([s["secret"]] if s.get("secret") else [])
-    return s.get("app_id", ""), s.get("token", ""), secrets
+    in_keyring = s.get("token_store") == "keyring"
+    token = (token_store.load() or "") if in_keyring else s.get("token", "")
+    return s.get("app_id", ""), token, secrets
+
+
+def token_location() -> str:
+    """Where the saved token is: "keyring", "file" or "" (no session)."""
+    s = load().get("oauth_session") or {}
+    if s.get("token_store") == "keyring":
+        return "keyring"
+    return "file" if s.get("token") else ""
 
 
 def save_oauth_session(
     app_id: str, token: str, secrets: list[str], account: dict[str, str] | None = None
 ) -> None:
+    """Save a session: the token in the system keyring when there is one
+    (only a marker here), else in this file (0600)."""
     cfg = load()
-    cfg["oauth_session"] = {"app_id": app_id, "token": token, "secrets": secrets}
+    session: dict = {"app_id": app_id, "secrets": secrets}
+    if token_store.store(token):
+        session["token_store"] = "keyring"
+    else:
+        session["token"] = token
     if account:
-        cfg["oauth_session"]["account"] = account
+        session["account"] = account
+    cfg["oauth_session"] = session
     save(cfg)
+
+
+def move_token_to_keyring() -> bool:
+    """Startup: a token saved in this file (older qobit, or no keyring back
+    then) moves to the keyring when one is usable now. True if moved."""
+    cfg = load()
+    s = cfg.get("oauth_session") or {}
+    token = s.get("token")
+    if not token or s.get("token_store") == "keyring" or not token_store.store(token):
+        return False
+    del s["token"]
+    s["token_store"] = "keyring"
+    cfg["oauth_session"] = s
+    save(cfg)
+    return True
 
 
 def get_account() -> dict[str, str]:
@@ -84,10 +119,13 @@ def get_account() -> dict[str, str]:
 
 
 def clear_oauth_session() -> bool:
-    """Forget the saved session (log out). True if there was one."""
+    """Forget the saved session (log out), in the keyring too. True if
+    there was one."""
     cfg = load()
     if "oauth_session" not in cfg:
         return False
+    if (cfg["oauth_session"] or {}).get("token_store") == "keyring":
+        token_store.delete()
     del cfg["oauth_session"]
     save(cfg)
     return True

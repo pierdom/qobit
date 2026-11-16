@@ -39,6 +39,9 @@ dependencies = [
     "pyobjc-framework-MediaPlayer>=10.0; sys_platform == 'darwin'",
     "pydbus>=0.6; sys_platform == 'linux'",
     "PyGObject>=3.50; sys_platform == 'linux'",
+    # The session token in the system keyring (token_store.py): macOS
+    # Keychain, Linux Secret Service. Falls back to config.json without one.
+    "keyring>=25.0",
 ]
 
 [project.urls]

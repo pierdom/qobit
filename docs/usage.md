@@ -6,7 +6,12 @@ All keys, and how each tab works. The README has a short version.
 
 `qobit auth` prints a Qobuz login link and opens it in your browser (when
 there is a display). Log in, and the browser comes back to qobit on
-`localhost`; the session is saved in `~/.config/qobit/config.json`.
+`localhost`; the session token is saved in the system keyring (the macOS
+Keychain, or GNOME Keyring / KWallet on Linux), or in
+`~/.config/qobit/config.json` (readable only by you) where there's none,
+such as a headless machine. `QOBIT_KEYRING=0` keeps it in the file. Over SSH
+into a desktop machine the keyring isn't reachable: qobit asks you to log in
+there (that session then lives in the file).
 
 On a machine without a browser (over SSH, a headless box), open the link on
 any device and log in. The browser then lands on a `localhost` page that
@@ -183,7 +188,7 @@ playerctl -p qobit metadata   # title / artist / album / artUrl while playing
 ## Files
 
 ```
-~/.config/qobit/config.json            login, audio device, theme, settings
+~/.config/qobit/config.json            login (the token itself: system keyring if any), audio device, theme, settings
 ~/.local/share/qobit/player_state.json last track + position
 ~/.local/share/qobit/queue_state.json  the queue (history, current, up next)
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ

@@ -16,18 +16,21 @@ import asyncio
 import sys
 import time
 
-from . import __version__
+from . import __version__, token_store
 from .account_data import erase_account_data, erase_settings, tui_running
 from .audio.device import list_devices
 from .audio.player import MpvPlayer
 from .audio.verify import check_bit_perfect
 from .config import (
+    CONFIG_FILE,
     get_account,
     get_audio_device,
     get_oauth_session,
+    move_token_to_keyring,
     purge_legacy_credentials,
     save_oauth_session,
     set_audio_device,
+    token_location,
 )
 from .qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from .qobuz.models import StreamUrl, Track
@@ -275,9 +278,22 @@ async def cmd_auth(args: argparse.Namespace) -> int:
 
 async def cmd_auth_status() -> int:
     app_id, token, secrets = get_oauth_session()
+    where = token_location()
+    if where == "keyring" and not token:
+        print(
+            "The session is in the system keyring, which isn't reachable here (no "
+            "desktop session, or QOBIT_KEYRING=0). Run qobit from the desktop, or "
+            "log in here with: qobit auth"
+        )
+        return 1
     if not (app_id and token):
         print("Not logged in. Run: qobit auth")
         return 1
+    stored = (
+        f"Token stored in {token_store.name()}."
+        if where == "keyring"
+        else f"Token stored in {CONFIG_FILE} (no system keyring available)."
+    )
     async with QobuzClient() as client:
         client.restore_session(app_id, token, secrets)
         try:
@@ -287,8 +303,10 @@ async def cmd_auth_status() -> int:
             return 1
         except QobuzError as e:
             print(f"{_account_line()} (couldn't reach Qobuz to check: {e})")
+            print(stored)
             return 2
     print(f"{_account_line()}. The session works.")
+    print(stored)
     return 0
 
 
@@ -380,6 +398,7 @@ def main() -> None:
             "qobit logs in through the browser only (qobit auth).",
             file=sys.stderr,
         )
+    move_token_to_keyring()  # a token still in config.json, now that a keyring is here
 
     if args.command == "play":
         sys.exit(asyncio.run(cmd_play(args)))
