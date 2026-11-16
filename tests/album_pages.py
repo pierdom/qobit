@@ -47,23 +47,35 @@ def stub_album_client(app) -> None:
 
 
 async def open_album(app, pilot, where: str) -> tuple[AlbumDetailPanel, ArtistHeader]:
+    """Open the album where asked; returns once its tracks are listed and
+    the layout has settled (the panel fits itself on resize)."""
     album = Album.from_api(ALBUM)
     if where == "page":
         await app.push_screen(AlbumScreen(album))
-        await pilot.pause(0.3)
-        screen = app.screen
-        return screen.query_one(AlbumDetailPanel), screen.query_one(ArtistHeader)
-    base = app.screen_stack[0]
-    if where == "albums":
-        app.action_switch_tab("albums")
-        await pilot.pause(0.2)
-        view = base.query_one("#view-albums")
+        host = app.screen
     else:
-        app.action_switch_tab("artists")
-        await pilot.pause(0.2)
-        view = base.query_one("#view-artists")
-        view._open_artist(Artist.from_api(ARTIST))
-        await pilot.pause(0.2)
-    view._open_album(album)
-    await pilot.pause(0.3)
-    return view.query_one("#album-panel", AlbumDetailPanel), view.query_one(ArtistHeader)
+        base = app.screen_stack[0]
+        app.action_switch_tab(where)
+        host = base.query_one(f"#view-{where}")
+        await wait_until(pilot, lambda: host.display)
+        if where == "artists":
+            host._open_artist(Artist.from_api(ARTIST))
+            await wait_until(pilot, lambda: host._view == "artist")
+        host._open_album(album)
+    panel = host.query_one(AlbumDetailPanel)
+    tracks = len(ALBUM["tracks"]["items"])
+    await wait_until(pilot, lambda: len(panel.query_one(".detail-tracklist").children) == tracks)
+    await pilot.pause(0.1)  # one more layout pass for the fit
+    return panel, host.query_one(ArtistHeader)
+
+
+async def wait_until(pilot, condition, timeout: float = 5.0) -> None:
+    """Poll the UI until ``condition()`` holds: fixed pauses flaked on slow
+    CI runners (a menu not open yet after 0.3 s)."""
+    for _ in range(int(timeout / 0.05)):
+        if condition():
+            return
+        await pilot.pause(0.05)
+    code = getattr(condition, "__code__", None)
+    where = f"{code.co_filename.rsplit('/', 1)[-1]}:{code.co_firstlineno}" if code else condition
+    raise AssertionError(f"condition at {where} not met within {timeout} s")

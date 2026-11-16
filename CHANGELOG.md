@@ -23,6 +23,9 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Fixed
 
+- On a busy machine, opening an album from the Albums or Artists tab (or
+  an artist page) could leave nothing focused, so keys did nothing until
+  Tab. The track list now takes focus once the view has switched.
 - **Acting on a filtered result.** While typing a `/` filter every key went
   into it (`i` too), and Enter played the highlighted track, replacing the
   queue. Enter now ends the typing and keeps the results, so `i`, `f` and

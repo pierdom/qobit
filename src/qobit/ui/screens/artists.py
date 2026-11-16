@@ -322,7 +322,10 @@ class ArtistsView(TypeToFilter, Widget):
         inner_cs = self.query_one("#artist-content-switcher", ContentSwitcher)
         inner_cs.current = "artist-album-detail-view"
         self._view = "album"
-        panel.focus_tracklist()
+        # After the switch is laid out: focused at once, the call could be
+        # ignored (not displayed yet) with the grid hidden, leaving nothing
+        # focused on a busy machine.
+        self.call_after_refresh(panel.focus_tracklist)
         self.app.nav_changed()  # type: ignore[attr-defined]
 
     def on_album_detail_panel_resized(self, _: AlbumDetailPanel.Resized) -> None:

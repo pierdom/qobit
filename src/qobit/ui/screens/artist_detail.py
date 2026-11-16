@@ -1278,7 +1278,10 @@ class ArtistScreen(Screen):
         panel.load(album)
         self.query_one("#main-content", ContentSwitcher).current = "album-view"
         self._album_view_active = True
-        panel.focus_tracklist()
+        # After the switch is laid out: focused at once, the call could be
+        # ignored (not displayed yet) with the grid hidden, leaving nothing
+        # focused on a busy machine.
+        self.call_after_refresh(panel.focus_tracklist)
         self.app.nav_changed()  # type: ignore[attr-defined]
 
     def _show_artist_view(self) -> None:
