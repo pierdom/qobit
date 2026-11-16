@@ -218,7 +218,8 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         parts: list[str] = [escape(album.artist), year]
         if album.genre:
             parts.append(escape(album.genre))
-        self.query_one(".detail-title", Label).update(escape(album.title))
+        self.refresh_heart()
+        self._load_heart(album.id)
         # Plain: the CSS gives these lines the muted colour ([dim] on top
         # halved it, 1.5:1 on light themes).
         self.query_one(".detail-sub", Label).update("  ·  ".join(parts))
@@ -228,6 +229,26 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         if album.image_url:
             self._fetch_art(album.image_url)
         self._fetch_full_album(album)
+
+    def refresh_heart(self) -> None:
+        """The title, with a ♥ when the album is in the user's favourites."""
+        if self.album is None:
+            return
+        is_fav = getattr(self.app, "is_favorite_album", lambda _id: False)(self.album.id)
+        self.query_one(".detail-title", Label).update(
+            Content.assemble(self.album.title, heart_suffix(is_fav))
+        )
+
+    @work(exclusive=True, group="_load_heart")  # a newer album cancels a stale one
+    async def _load_heart(self, album_id: str) -> None:
+        """Favourite albums load at startup; if they haven't yet, wait, then
+        draw the heart. A failed load just leaves it off."""
+        try:
+            await self.app.ensure_favorite_albums()  # type: ignore[attr-defined]
+        except Exception:
+            return
+        if self.is_attached and self.album is not None and self.album.id == album_id:
+            self.refresh_heart()
 
     def focus_tracklist(self) -> None:
         self.query_one(".detail-tracklist", ListView).focus()
@@ -279,7 +300,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
                 badge_parts.append(escape(full.label))
             if q := full.quality_badge:
                 # HI-RES in the theme's hi-res colour, like the transport.
-                badge_parts.append(q.replace("HI-RES ", "[b $qobit-hires]HI-RES [/]", 1))
+                badge_parts.append(q.replace("HI-RES ", "[b $qobit-hires]HI-RES[/] ", 1))
             if full.popularity is not None:
                 badge_parts.append(f"★ {full.popularity}")
             self._set_optional(".ap-badges", "  ·  ".join(badge_parts))

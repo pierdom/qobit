@@ -11,6 +11,9 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Changed
 
+- A ♥ marks a favourite album (after its title) and a followed artist (in
+  the artist header's title), and follows changes from the `i` menu
+  straight away.
 - The player's second line shows the album's year: *Kind of Blue (1959)*.
 - While a track plays, the `◢◤ qobit` mark in the top right slowly cycles
   through the theme's progress-bar colours (the accent and HI-RES colours in
@@ -26,8 +29,6 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
   panel); the art shrinks to fit, the artist header steps aside when there's
   no room for it, and on very short terminals the art goes and the
   tracklist splits into two columns.
-- A space was missing between *HI-RES* and the resolution in the album
-  header.
 
 ## [0.10.0] - 2026-11-16
 

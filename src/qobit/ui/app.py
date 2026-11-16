@@ -937,6 +937,25 @@ class QobitApp(App[None]):
                 self._fav_artists = [Artist.from_api(r) for r in raw]
             return self._fav_artists
 
+    def is_favorite_album(self, album_id: str) -> bool:
+        """From the cache: False until ensure_favorite_albums has loaded it."""
+        return any(a.id == album_id for a in self._fav_albums or ())
+
+    def is_followed_artist(self, artist_id: str) -> bool:
+        """From the cache: False until ensure_favorite_artists has loaded it."""
+        return any(a.id == artist_id for a in self._fav_artists or ())
+
+    def _refresh_hearts(self) -> None:
+        """Redraw the ♥ on every open album panel and artist header (pages
+        included) after a favourite or follow changed."""
+        from .screens.album_detail import AlbumDetailPanel
+        from .screens.artist_detail import ArtistHeader
+
+        for screen in self.screen_stack:
+            for widget in (*screen.query(AlbumDetailPanel), *screen.query(ArtistHeader)):
+                with contextlib.suppress(Exception):
+                    widget.refresh_heart()
+
     async def toggle_favorite_album(self, album: Album) -> None:
         albums = await self.ensure_favorite_albums()
         on = not any(a.id == album.id for a in albums)
@@ -951,6 +970,7 @@ class QobitApp(App[None]):
         else:
             albums[:] = [a for a in albums if a.id != album.id]
             self._flash_status(f"Removed from favourites: {album.title}")
+        self._refresh_hearts()
         with contextlib.suppress(Exception):
             self.query_one(AlbumsView).favorites_changed()
 
@@ -968,6 +988,7 @@ class QobitApp(App[None]):
         else:
             artists[:] = [a for a in artists if a.id != artist.id]
             self._flash_status(f"Unfollowed {artist.name}")
+        self._refresh_hearts()
         with contextlib.suppress(Exception):
             self.query_one(ArtistsView).favorites_changed()
         from .screens.artist_detail import ArtistCard

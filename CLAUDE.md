@@ -243,6 +243,12 @@ closes pages first; Escape (`action_back`) goes up one level. The app's own
 `screen_stack[0]` (`base_tab()`, `_base_view()`). Never derive a tab id from a
 display name.
 
+**Hearts on pages.** `AlbumDetailPanel` (after the title, `heart_suffix`) and
+`ArtistHeader` (bio panel's border title; `theme_color(HEART)`, redrawn on a
+theme change) show ♥ from `is_favorite_album` / `is_followed_artist` (cache
+reads), after awaiting `ensure_favorite_*` in a `_load_heart` worker. The
+album/artist toggles call `_refresh_hearts()`, which walks every screen.
+
 **Favourites.** `ensure_favorite_tracks/albums/artists()` fetch once each (one
 lock per list, loaded in parallel at startup); a failed load isn't cached.
 `toggle_favorite`, `toggle_favorite_album` and `toggle_follow_artist` update
@@ -497,6 +503,9 @@ uv run pytest
   never start mpv (the socket path is shared), stub `set_saved_theme`.
 - Verify UI headless: `app.save_screenshot()` → `rsvg-convert` → PNG (Kitty
   images show as garbage there; real captures need a Kitty-protocol terminal).
+  The PNG collapses or widens spaces between differently styled runs
+  ("HI-RES24-BIT", "Kind of Blue♥" that were fine): check spacing on the
+  rendered text, `screen._compositor.render_strips()` → `strip.text`.
 - Releasing: version only in `pyproject.toml`. Bump, CHANGELOG entry, `uv lock`,
   commit `chore(release): X.Y.Z`, merge to main, annotated tag `vX.Y.Z`, push
   the tag. `.github/workflows/release.yml` then runs CI, checks the tag matches

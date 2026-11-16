@@ -32,11 +32,12 @@ from .._now_playing import (
 )
 from .._utils import readout
 from ..nav import page_header
+from ..themes import HEART, theme_color
 from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
-from .search import ICON_TRACK
+from .search import ICON_FAV, ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -1100,6 +1101,7 @@ class ArtistHeader(Widget):
 
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), 7)
+        self.watch(self.app, "theme", self._on_theme, init=False)
 
     artist: Artist | None = None
     """The artist shown, once ``populate`` has run."""
@@ -1116,7 +1118,8 @@ class ArtistHeader(Widget):
 
     def populate(self, artist: Artist) -> None:
         self.artist = artist
-        self.query_one(".ah-bio-section").border_title = escape(readout(artist.name))
+        self.refresh_heart()
+        self._load_heart(artist.id)
         self.query_one(Art).placeholder = artist.name
         if artist.biography:
             self.query_one(".ah-bio", Label).update(escape(artist.biography))
@@ -1124,6 +1127,30 @@ class ArtistHeader(Widget):
             self._fetch_image(artist.image_url)
         if self._similar:
             self._load_similar(artist.id)
+
+    def refresh_heart(self) -> None:
+        """The bio panel's title: the name, with a ♥ when followed. A border
+        title doesn't resolve $variables, so the colour is the theme's value
+        (redrawn on a theme change)."""
+        if self.artist is None:
+            return
+        title = escape(readout(self.artist.name))
+        if getattr(self.app, "is_followed_artist", lambda _id: False)(self.artist.id):
+            title += f"  [{theme_color(self.app, HEART)}]{ICON_FAV}[/]"
+        self.query_one(".ah-bio-section").border_title = title
+
+    @work(exclusive=True, group="_load_heart")  # a newer artist cancels a stale one
+    async def _load_heart(self, artist_id: str) -> None:
+        try:
+            await self.app.ensure_favorite_artists()  # type: ignore[attr-defined]
+        except Exception:
+            return
+        if self.is_attached and self.artist is not None and self.artist.id == artist_id:
+            self.refresh_heart()
+
+    def _on_theme(self, _: object) -> None:
+        # theme fires before theme_variables is recomputed (see CLAUDE.md).
+        self.call_after_refresh(self.refresh_heart)
 
     @work(exclusive=True, group="_load_similar")  # a newer artist cancels a stale one
     async def _load_similar(self, artist_id: str) -> None:
