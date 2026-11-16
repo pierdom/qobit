@@ -44,6 +44,13 @@ class StreamUrl:
         return f"[ {quality_text(bd, self.sampling_rate / 1000)} ]"
 
 
+def release_year(album: dict) -> int | None:
+    """An album's original release year, from ``release_date_original``
+    ("1959-08-17"); None when the API doesn't give one."""
+    release = album.get("release_date_original") or ""
+    return int(release[:4]) if len(release) >= 4 and release[:4].isdigit() else None
+
+
 @dataclass
 class Track:
     id: str
@@ -59,6 +66,9 @@ class Track:
     # soundtracks. The artist page's "Your favourites" matches either.
     artist_id: str | None = None
     album_artist_id: str | None = None
+    # The album's original release year (the transport shows "Album (1959)").
+    # None in queues saved before it existed: they load unchanged.
+    album_year: int | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "Track":
@@ -89,6 +99,7 @@ class Track:
             favorited_at=data.get("favorited_at") or None,
             artist_id=str(performer["id"]) if performer.get("id") else None,
             album_artist_id=str(album_artist["id"]) if album_artist.get("id") else None,
+            album_year=release_year(album),
         )
 
     def by_artist(self, artist_id: str) -> bool:
@@ -158,8 +169,9 @@ class Album:
             t.image_url = t.image_url or img_url
             t.album = t.album or data.get("title", "")
             t.album_id = t.album_id or album_id
-        release = data.get("release_date_original", "") or ""
-        year = int(release[:4]) if len(release) >= 4 and release[:4].isdigit() else None
+        year = release_year(data)
+        for t in tracks:
+            t.album_year = t.album_year or year
         awards = [
             name
             for a in (data.get("awards") or [])

@@ -7,6 +7,17 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Changed
+
+- The player's second line shows the album's year: *Kind of Blue (1959)*.
+- While a track plays, the `◢◤ qobit` mark in the top right slowly cycles
+  through the theme's progress-bar colours (the accent and HI-RES colours in
+  themes whose bar is a single colour).
+- The empty part of the progress bar is a thin line instead of a shaded
+  track, so its moving tip no longer shows a dark gap.
+
 ## [0.10.0] - 2026-11-16
 
 ### Changed

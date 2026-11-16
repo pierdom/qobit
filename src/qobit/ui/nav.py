@@ -13,10 +13,12 @@ on a tab) closes the pages and switches tab.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, NamedTuple
 
 from textual import events
+from textual.color import Color
 from textual.content import Content
 from textual.screen import ModalScreen
 from textual.widget import Widget
@@ -150,10 +152,47 @@ def page_screens(app: QobitApp) -> list:
     return [s for s in app.screen_stack[1:] if not isinstance(s, ModalScreen)]
 
 
+# The wordmark's colour cycle while playing: one loop (start → end → start)
+# every CYCLE_SECS, and the word spans SPREAD of a loop, so it reads like the
+# progress bar's gradient sliding along the letters.
+WORDMARK_TEXT = "◢◤ qobit"
+CYCLE_SECS = 6.0
+SPREAD = 0.5
+_FRAME_SECS = 1 / 12
+
+
+def wordmark_palette(app: object) -> tuple[Color, Color] | None:
+    """The two colours the wordmark cycles between: the progress bar's ends,
+    or (when a theme's bar is one colour) the accent and the HI-RES colour,
+    each made readable as text. None for ANSI themes, which can't blend."""
+    from .themes import BAR_END, BAR_START, HIRES, theme_text_color
+
+    a, b = (theme_text_color(app, n) for n in (BAR_START, BAR_END))
+    if a == b:
+        a, b = (theme_text_color(app, n) for n in ("qobit-accent-text", HIRES))
+    if not (a.startswith("#") and b.startswith("#")):
+        return None
+    return Color.parse(a), Color.parse(b)
+
+
+def wordmark_colours(start: Color, end: Color, phase: float, n: int) -> list[str]:
+    """One colour per character at ``phase`` (0–1) of the cycle."""
+    out = []
+    for i in range(n):
+        x = (phase - SPREAD * i / max(1, n - 1)) % 1.0
+        out.append(start.blend(end, 1 - abs(2 * x - 1)).hex)  # triangle: seamless loop
+    return out
+
+
 class Wordmark(Widget):
     """``◢◤ qobit`` at the right end of the tab bar, on every screen. It sits
     on the ``overlay`` layer (QobitApp.CSS), docked right with a height of 1,
-    so it shares the tab bar's row instead of taking one of its own."""
+    so it shares the tab bar's row instead of taking one of its own.
+
+    While a track plays, its colours cycle through the theme's progress-bar
+    gradient (accent ↔ HI-RES where the bar is one colour). The phase comes
+    from the clock, so the copies on stacked pages stay in step; the timer
+    runs only while playing."""
 
     DEFAULT_CSS = """
     Wordmark {
@@ -171,12 +210,34 @@ class Wordmark(Widget):
 
     def on_mount(self) -> None:
         self.fit(self.app.size.width)
+        self._timer = self.set_interval(_FRAME_SECS, self.refresh, pause=True)
+        self.watch(self.app, "is_playing", self._sync, init=False)
+        self.watch(self.app, "is_paused", self._sync, init=False)
+        self._sync()
 
     def fit(self, width: int) -> None:
         self.display = width >= self.MIN_WIDTH
 
+    def _live(self) -> bool:
+        app = self.app
+        return bool(getattr(app, "is_playing", False) and not getattr(app, "is_paused", False))
+
+    def _sync(self, *_: object) -> None:
+        if self._live():
+            self._timer.resume()
+        else:
+            self._timer.pause()
+        self.refresh()
+
     def render(self) -> Content:
-        return Content.assemble(("◢◤", "$qobit-accent-text"), (" qobit", "bold $qobit-muted"))
+        palette = wordmark_palette(self.app) if self._live() else None
+        if palette is None:
+            return Content.assemble(("◢◤", "$qobit-accent-text"), (" qobit", "bold $qobit-muted"))
+        phase = (time.monotonic() / CYCLE_SECS) % 1.0
+        colours = wordmark_colours(*palette, phase, len(WORDMARK_TEXT))
+        return Content.assemble(
+            *((ch, f"bold {c}") for ch, c in zip(WORDMARK_TEXT, colours, strict=True))
+        )
 
 
 def page_header(app: QobitApp) -> list[Widget]:
