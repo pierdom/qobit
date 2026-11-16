@@ -11,7 +11,7 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
-from .._utils import status_line
+from .._utils import readout, status_line
 from ..nav import Breadcrumb
 from .album_detail import AlbumDetailPanel
 from .artist_detail import (
@@ -113,7 +113,7 @@ class ArtistsView(Widget):
                         yield AlbumDetailPanel(id="album-panel")
 
     def on_mount(self) -> None:
-        self.query_one("#fav-artists-grid", ArtistGrid).border_title = "Favourite Artists"
+        self.query_one("#fav-artists-grid", ArtistGrid).border_title = readout("Favourite Artists")
         self._update_subtitle()
 
     @property

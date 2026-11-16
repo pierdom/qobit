@@ -16,7 +16,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist
 from .._images import fetch_image
-from .._utils import status_line
+from .._utils import readout, status_line
 from ..widgets.art import Art
 from .artist_detail import GRID_CARD_IMG_H, LIBRARY_TILE_MIN_W, _GridNav, _set_art_width
 
@@ -251,7 +251,7 @@ class PlaylistsView(Widget):
 
     def on_mount(self) -> None:
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
-        grid.border_title = "Playlists"
+        grid.border_title = readout("Playlists")
         self._update_subtitle()
 
     def activate(self) -> None:

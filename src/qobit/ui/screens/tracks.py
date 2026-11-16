@@ -19,7 +19,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import status_line
+from .._utils import readout, status_line
 from ..widgets.lists import TrackListView
 from .search import ICON_TRACK
 
@@ -114,7 +114,7 @@ class TracksView(NowPlayingViewMixin, Widget):
 
     def on_mount(self) -> None:
         container = self.query_one("#tracks-container", Vertical)
-        container.border_title = "Favourite Tracks"
+        container.border_title = readout("Favourite Tracks")
         self._update_subtitle()
         self._wire_now_playing(FavTrackRow, "#fav-tracks")
 

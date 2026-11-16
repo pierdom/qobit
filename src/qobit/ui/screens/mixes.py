@@ -26,7 +26,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import status_line
+from .._utils import readout, status_line
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
@@ -199,7 +199,7 @@ class MixesView(NowPlayingViewMixin, Widget):
 
     def on_mount(self) -> None:
         tl = self.query_one("#mix-track-list", TrackListView)
-        tl.border_title = "Mixes"
+        tl.border_title = readout("Mixes")
         tl.border_subtitle = "d = DailyQ  ·  w = WeeklyQ"
         self._refresh_card_statuses()
         self._wire_now_playing(MixTrackRow, "#mix-track-list")
@@ -252,7 +252,7 @@ class MixesView(NowPlayingViewMixin, Widget):
             self._load_cached(tracks, kind, version)
         else:
             tl = self.query_one("#mix-track-list", TrackListView)
-            tl.border_title = "DailyQ" if kind == "daily" else "WeeklyQ"
+            tl.border_title = readout("DailyQ" if kind == "daily" else "WeeklyQ")
             tl.border_subtitle = "generating…"
             self._generate(kind, version)
 
@@ -308,7 +308,7 @@ class MixesView(NowPlayingViewMixin, Widget):
             return
         name = "DailyQ" if kind == "daily" else "WeeklyQ"
         refreshed = "today" if kind == "daily" else "this week"
-        tl.border_title = f"{name}  ·  {len(tracks)} tracks"
+        tl.border_title = readout(f"{name}  ·  {len(tracks)} tracks")
         tl.border_subtitle = f"refreshed {refreshed}"
 
         fav_ids: set[str] = set()

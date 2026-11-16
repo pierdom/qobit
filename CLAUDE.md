@@ -24,7 +24,7 @@ src/qobit/
 ├── audio/device.py      mpv devices + synthesized alsa/hw:CARD=…,DEV=… entries,
 │                        bit-perfect ones flagged and sorted first
 ├── audio/player.py      mpv subprocess + IPC, bit-perfect flags, _stop_gen
-├── audio/verify.py      post-play rate/format check via mpv IPC
+├── audio/verify.py      bit-perfect check: mpv IPC + (Linux) ALSA hw_params
 ├── audio/media_keys.py  macOS Now Playing / Linux MPRIS2 (pydbus); degrades
 │                        silently without the optional deps
 ├── connect/             Qobuz Connect renderer, UI-agnostic (no Textual):
@@ -36,7 +36,7 @@ src/qobit/
     ├── nav.py           TABS, breadcrumb trail (Breadcrumb), a page's tab bar
     ├── play_context.py  LocalPlayContext / ConnectPlayContext: the only
     │                    writers of _timeline/_cursor
-    ├── themes.py        cyberdeck + ayu-dark/-mirage/-light; colours only
+    ├── themes.py        cyberdeck + ayu-dark/-mirage/-light; qobit-* variables
     ├── _images.py       image fetch: 6 concurrent, memory + disk cache
     ├── _now_playing.py  row/view mixins for the ▶/⏸ marker, heart_suffix()
     ├── widgets/lists.py PagedListView (page keys move the cursor; lazy rows)
@@ -234,6 +234,24 @@ the caches and patch the Tracks/Albums/Artists tabs, so nothing re-fetches.
 **Self-wiring widgets.** TransportBar and NowPlayingHero `watch()` the app's
 reactives on mount, so any instance anywhere is live. Now-playing art shows
 whenever a track is loaded (`-has-track`), not only while playing.
+
+**Identity.**
+- Theme variables `qobit-bar-start`/`-end` (progress gradient) and
+  `qobit-hires` (the HI-RES tag) live in `Theme.variables`; other themes get
+  `QobitApp.get_theme_variable_defaults()` (accent bar, HI-RES = `$warning`:
+  built-ins' `$secondary` can be unreadable). So `$qobit-hires` is safe in CSS
+  and Content styles; Rich Text and border titles need `theme_color()`.
+- The lamp: `_play_stream` starts `_verify_signal` → `audio.verify.check_signal`
+  → `app.signal`; `widgets.transport.signal_parts/signal_readout` render it for
+  the transport and the Now Playing panel. Software volume below 100% overrides
+  it (mpv can't see DSP).
+- The playing row's bar meter: `_now_playing.playing_icon()`; rows that show it
+  register with `track_live()`, and the app's beat timer calls `tick()`.
+- Cover art is `widgets.art.Art` (a TGPImage with an initials placeholder): use
+  it for any new image and set `.placeholder` when the subject changes.
+- Panel titles go through `_utils.readout()` (uppercase, same length).
+- `nav.Wordmark` sits on the Screen's `overlay` layer, docked right with height
+  1, so it shares the tab bar's row; it hides below `Wordmark.MIN_WIDTH`.
 
 **Status line.** `status_msg` is the transport's `artist — title` line; use
 `_flash_status()` for transient notices (auto-clears after ~3 s).

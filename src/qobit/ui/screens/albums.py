@@ -12,7 +12,7 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
-from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, status_line
+from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, readout, status_line
 from ..nav import Breadcrumb
 from .album_detail import AlbumDetailPanel
 from .artist_detail import LIBRARY_TILE_MIN_W, AlbumCard, AlbumGrid, ArtistHeader
@@ -86,7 +86,7 @@ class AlbumsView(Widget):
 
     def on_mount(self) -> None:
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
-        grid.border_title = "Favourite Albums"
+        grid.border_title = readout("Favourite Albums")
         self._update_subtitle()
 
     def nav_levels(self) -> list[str]:

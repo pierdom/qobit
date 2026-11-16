@@ -150,7 +150,37 @@ def page_screens(app: QobitApp) -> list:
     return [s for s in app.screen_stack[1:] if not isinstance(s, ModalScreen)]
 
 
+class Wordmark(Widget):
+    """``◢◤ qobit`` at the right end of the tab bar, on every screen. It sits
+    on the ``overlay`` layer (QobitApp.CSS), docked right with a height of 1,
+    so it shares the tab bar's row instead of taking one of its own."""
+
+    DEFAULT_CSS = """
+    Wordmark {
+        layer: overlay;
+        dock: right;
+        width: auto;
+        height: 1;
+        padding: 0 1;
+    }
+    """
+
+    # The full tab labels plus this mark (and the screen's inset): narrower,
+    # the mark would cover the last tab, so it hides.
+    MIN_WIDTH = TABBAR_FULL_WIDTH + 12
+
+    def on_mount(self) -> None:
+        self.fit(self.app.size.width)
+
+    def fit(self, width: int) -> None:
+        self.display = width >= self.MIN_WIDTH
+
+    def render(self) -> Content:
+        return Content.assemble(("◢◤", "$accent"), (" qobit", "bold $text-muted"))
+
+
 def page_header(app: QobitApp) -> list[Widget]:
-    """What a pushed page composes at its top: the tab bar (origin tab lit)
-    and the trail."""
-    return [PageTabs(app.base_tab(), app.size.width < TABBAR_FULL_WIDTH), Breadcrumb()]
+    """What a pushed page composes at its top: the tab bar (origin tab lit),
+    the wordmark and the trail."""
+    compact = app.size.width < TABBAR_FULL_WIDTH
+    return [PageTabs(app.base_tab(), compact), Wordmark(), Breadcrumb()]

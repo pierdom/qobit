@@ -59,3 +59,11 @@ def status_line(text: str, *, error: bool = False, id: str | None = None):  # ->
     return Label(
         text, classes="status-line -error" if error else "status-line", id=id, markup=False
     )
+
+
+def readout(text: str) -> str:
+    """A panel title in qobit's readout style: uppercase, like the queue's
+    ``── UP NEXT ──`` dividers and the transport's ``[ ▶ PLAYING ]``. Keeps
+    the length (a letter whose uppercase is longer, like ß, stays as is):
+    clickable titles map a click to a name by its position."""
+    return "".join(u if len(u := c.upper()) == 1 else c for c in text)

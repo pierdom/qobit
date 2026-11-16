@@ -23,7 +23,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import DETAIL_HEADER_CSS, strip_html
+from .._utils import DETAIL_HEADER_CSS, readout, strip_html
 from ..nav import page_header
 from ..widgets.art import Art
 from ..widgets.lists import TrackListView
@@ -130,7 +130,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         _set_art_width(self.query_one(".detail-art", TGPImage), 14)
-        self.query_one("#playlist-panel").border_title = "Playlist"
+        self.query_one("#playlist-panel").border_title = readout("Playlist")
         self.query_one("#playlist-panel").border_subtitle = "loading…"
         self._wire_now_playing(PlaylistTrackRow, ".detail-tracklist")
         self._load()
@@ -143,7 +143,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         except Exception as e:
             if self.is_attached:
                 try:
-                    self.query_one("#playlist-panel").border_title = "Playlist"
+                    self.query_one("#playlist-panel").border_title = readout("Playlist")
                     self.query_one(".detail-title", Label).update(f"[$error]{escape(str(e))}[/]")
                 except NoMatches:
                     pass
@@ -158,7 +158,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             self.query_one(Art).placeholder = playlist.name
             app.nav_changed()
             panel.border_subtitle = ""
-            panel.border_title = "Playlist"  # the name is in bold right below
+            panel.border_title = readout("Playlist")  # the name is in bold right below
 
             self.query_one(".detail-title", Label).update(escape(playlist.name))
 

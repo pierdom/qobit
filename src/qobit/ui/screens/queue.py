@@ -28,7 +28,7 @@ from .._now_playing import (
     playing_icon,
     track_live,
 )
-from .._utils import status_line, strip_html
+from .._utils import readout, status_line, strip_html
 from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import signal_parts
@@ -426,7 +426,7 @@ class QueueView(Widget):
             yield NowPlayingHero(id="now-hero")
 
     def on_mount(self) -> None:
-        self.query_one("#queue-list", ListView).border_title = "Queue"
+        self.query_one("#queue-list", ListView).border_title = readout("Queue")
         app: QobitApp = self.app  # type: ignore[assignment]
         self.watch(app, "queue_version", self._on_queue_changed, init=True)
         self.watch(app, "now_playing", self._on_now_playing_changed, init=False)

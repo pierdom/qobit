@@ -21,7 +21,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import status_line
+from .._utils import readout, status_line
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
@@ -178,9 +178,9 @@ class SearchView(NowPlayingViewMixin, Widget):
 
     def on_mount(self) -> None:
         self.query_one("#search-input", Input).border_subtitle = "⏎"
-        self.query_one("#artists-results", ListView).border_title = "Artists"
-        self.query_one("#tracks-results", ListView).border_title = "Tracks"
-        self.query_one("#albums-results", ListView).border_title = "Albums"
+        self.query_one("#artists-results", ListView).border_title = readout("Artists")
+        self.query_one("#tracks-results", ListView).border_title = readout("Tracks")
+        self.query_one("#albums-results", ListView).border_title = readout("Albums")
         self.query_one("#search-input").focus()
         self._wire_now_playing(TrackItem, "#tracks-results")
 

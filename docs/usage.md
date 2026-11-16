@@ -34,6 +34,17 @@ disappear while an album or artist is open, for example.
 Themes: qobit's own `qobit-cyberdeck`, `ayu-dark`, `ayu-mirage` and `ayu-light`
 (colours from the official [ayu palette](https://github.com/ayu-theme/ayu-colors)),
 plus Textual's built-in themes. `Ctrl+P` → *Theme*; the choice is saved.
+`qobit-cyberdeck` fills the progress bar with a cyan-to-magenta gradient; the
+others use a flat accent.
+
+The transport bar's bottom-right readout shows the stream's resolution,
+`HI-RES` (in a colour of its own) when it's above CD quality, and a
+**bit-perfect lamp** once the output has been checked, a couple of seconds into
+each track: `◉ BIT-PERFECT`, or what differs (`◌ RESAMPLED 96 → 48 kHz`). See
+[audio.md](audio.md#verifying). Album cards and the album page mark hi-res
+albums the same way. The playing track's `▶` is a small animated bar meter
+while it plays (decoration: qobit doesn't analyse the audio). Covers that are
+still loading, or missing, show a tile with initials.
 
 ## Playback (`1`)
 

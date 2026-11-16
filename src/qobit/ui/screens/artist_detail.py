@@ -29,6 +29,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
+from .._utils import readout
 from ..nav import page_header
 from ..widgets.art import Art
 from ..widgets.lists import TrackListView
@@ -292,8 +293,7 @@ class ArtistTracks(_TitleSwitch, Widget):
         top.display = columns or not n or self._showing == "top"
         favs.display = bool(n) and (columns or self._showing == "favs")
         if columns or not n:
-            top.border_title = "Top Tracks"
-            favs.border_title = f"Your favourites · {n}"
+            top.border_title, favs.border_title = self._labels
         else:  # one panel: name both lists, the hidden one dimmed
             title = switch_title(self._labels, 0 if self._showing == "top" else 1)
             (top if self._showing == "top" else favs).border_title = title
@@ -301,7 +301,7 @@ class ArtistTracks(_TitleSwitch, Widget):
 
     @property
     def _labels(self) -> list[str]:
-        return ["Top Tracks", f"Your favourites · {len(self._fav_ids)}"]
+        return [readout("Top Tracks"), readout(f"Your favourites · {len(self._fav_ids)}")]
 
     def _switch_state(self) -> tuple[Widget, list[str], int] | None:
         if not self._fav_ids or self._columns:
@@ -942,7 +942,7 @@ class ArtistReleases(_TitleSwitch, Widget):
         albums.display = not on_similar
         similar.display = on_similar
         if not self._has_similar:
-            albums.border_title, albums.border_subtitle = "Albums & EPs", ""
+            albums.border_title, albums.border_subtitle = readout("Albums & EPs"), ""
         elif on_similar:
             similar.border_title = switch_title(self._labels, 1)
             similar.border_subtitle = SWITCH_HINT
@@ -953,7 +953,7 @@ class ArtistReleases(_TitleSwitch, Widget):
     @property
     def _labels(self) -> list[str]:
         count = f" · {self._similar_count}" if self._similar_count is not None else ""
-        return ["Albums & EPs", f"Similar artists{count}"]
+        return [readout("Albums & EPs"), readout(f"Similar artists{count}")]
 
     def _switch_state(self) -> tuple[Widget, list[str], int] | None:
         if not self._has_similar:
@@ -1078,7 +1078,7 @@ class ArtistHeader(Widget):
         self.artist = None
         self._similar_items = []
         self._layout_similar()
-        self.query_one(".ah-bio-section").border_title = name
+        self.query_one(".ah-bio-section").border_title = escape(readout(name))
         art = self.query_one(Art)
         art.image = None  # not the previous artist's photo under this name
         art.placeholder = name
@@ -1086,7 +1086,7 @@ class ArtistHeader(Widget):
 
     def populate(self, artist: Artist) -> None:
         self.artist = artist
-        self.query_one(".ah-bio-section").border_title = escape(artist.name)
+        self.query_one(".ah-bio-section").border_title = escape(readout(artist.name))
         self.query_one(Art).placeholder = artist.name
         if artist.biography:
             self.query_one(".ah-bio", Label).update(escape(artist.biography))
@@ -1108,7 +1108,7 @@ class ArtistHeader(Widget):
         lv = self.query_one(".ah-similar", ListView)
         await lv.clear()
         await lv.mount(*[ListItem(Label(it["name"], markup=False)) for it in items])
-        lv.border_title = "Similar"
+        lv.border_title = readout("Similar")
         lv.border_subtitle = "more below (t)" if more else ""
         self._layout_similar()
 

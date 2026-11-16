@@ -9,7 +9,28 @@ release from this entry.
 
 ## [Unreleased]
 
+### Added
+
+- A **bit-perfect lamp** on the transport bar and the Now Playing panel: a
+  couple of seconds into each track qobit checks mpv's output and, on Linux,
+  the rate and format the DAC actually runs at (catching a sound server that
+  resamples behind mpv). `◉ BIT-PERFECT`, or what differs:
+  `◌ RESAMPLED 96 → 48 kHz`, `◌ REDUCED 24 → 16-BIT`, `◌ SOFTWARE VOLUME 80%`.
+- `HI-RES` tag for streams and albums above CD quality, in its own theme
+  colour (magenta in cyberdeck, blue in Ayu), on the transport bar, the Now
+  Playing panel, album cards and the album page.
+- The playing track's `▶` becomes a small animated bar meter while it plays.
+- Covers show a tile with the artist's or album's initials while they load,
+  or when there's no image.
+- A `◢◤ qobit` wordmark at the right of the tab bar (from 102 columns).
+
 ### Changed
+
+- The progress bar moves smoothly (an eighth of a cell at a time); in
+  cyberdeck it's a cyan-to-magenta gradient.
+- Panel titles are uppercase readouts (`FAVOURITE ALBUMS`), like the queue's
+  section dividers.
+- Library grids fit more tiles: 3 columns at 120 terminal columns (was 2).
 
 - Track rows line up: the title and the album line start in the same column
   in every list, and the playing row's ▶/⏸ takes the place of its number or

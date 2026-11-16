@@ -35,8 +35,9 @@ control playback from a keyboard-driven terminal UI with cover art.
 ## Features
 
 - Bit-perfect output through PipeWire rate-following or exclusive ALSA `hw:` /
-  CoreAudio devices. Tracks your account can only preview (30-second MP3s) are
-  skipped.
+  CoreAudio devices, with a live lamp that checks it on every track (on Linux,
+  down to the rate the DAC actually runs at). Tracks your account can only
+  preview (30-second MP3s) are skipped.
 - Favourite tracks, artists and albums, and your playlists, with sorting and a
   live filter. Add favourites and follow artists from any list with `i`.
 - A queue you can move back and forth in without losing tracks. It's restored

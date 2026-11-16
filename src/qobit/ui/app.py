@@ -45,7 +45,7 @@ from ..qobuz.models import Album, Artist, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
 from ._now_playing import tick
-from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, page_screens, tab_label
+from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, Wordmark, page_screens, tab_label
 from .play_context import ConnectPlayContext, LocalPlayContext
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
@@ -171,6 +171,8 @@ class QobitApp(App[None]):
     CSS = """
     Screen {
         layout: vertical;
+        /* overlay: the tab bar's wordmark (nav.Wordmark) shares its row. */
+        layers: default overlay;
         /* The whole app's horizontal inset lives here, not on individual
            children's margin. Textual's vertical-layout arrangement
            subtracts a margined child's *own* left+right margin from the
@@ -465,6 +467,7 @@ class QobitApp(App[None]):
             id="nav-tabs",
             active="queue",
         )
+        yield Wordmark()
         with ContentSwitcher(initial="view-queue"):
             yield PlaylistsView(id="view-playlists")
             yield TracksView(id="view-tracks")
@@ -547,6 +550,9 @@ class QobitApp(App[None]):
 
     def on_resize(self, event: events.Resize) -> None:
         self._fit_tab_labels(event.size.width)
+        for screen in self.screen_stack:
+            for mark in screen.query(Wordmark):
+                mark.fit(event.size.width)
 
     def _fit_tab_labels(self, width: int) -> None:
         compact = width < TABBAR_FULL_WIDTH

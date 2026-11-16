@@ -31,6 +31,7 @@ from .._utils import (
     HIDE_ARTIST_BELOW,
     SMALL_ART_BELOW,
     TWO_COL_BELOW,
+    readout,
     strip_html,
 )
 from ..nav import page_header
@@ -156,7 +157,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         """Populate the panel with album data and start async loading."""
         self.album = album
         self.query_one(Art).placeholder = album.title
-        self.border_title = "Album"  # the title is in bold right below
+        self.border_title = readout("Album")  # the title is in bold right below
         year = str(album.year) if album.year else "—"
         parts: list[str] = [escape(album.artist), year]
         if album.genre:
