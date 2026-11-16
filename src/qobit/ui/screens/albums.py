@@ -12,9 +12,9 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
-from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, readout, status_line
+from .._utils import readout, status_line
 from ..nav import Breadcrumb
-from .album_detail import AlbumDetailPanel
+from .album_detail import AlbumDetailPanel, fit_artist_header
 from .artist_detail import LIBRARY_TILE_MIN_W, AlbumCard, AlbumGrid, ArtistHeader
 
 if TYPE_CHECKING:
@@ -114,14 +114,9 @@ class AlbumsView(Widget):
 
     # ── vertical responsiveness ────────────────────────────────────────────────
 
-    def on_resize(self, event: events.Resize) -> None:
-        self._apply_responsive(event.size.height)
-
-    def _apply_responsive(self, height: int) -> None:
-        self.query_one(ArtistHeader).display = height >= HIDE_ARTIST_BELOW
-        self.query_one("#album-panel", AlbumDetailPanel).set_compact(
-            small_art=height < SMALL_ART_BELOW,
-            two_col=height < TWO_COL_BELOW,
+    def on_album_detail_panel_resized(self, _: AlbumDetailPanel.Resized) -> None:
+        fit_artist_header(
+            self.query_one(ArtistHeader), self.query_one("#album-panel", AlbumDetailPanel)
         )
 
     # ── filter ───────────────────────────────────────────────────────────────
@@ -321,7 +316,6 @@ class AlbumsView(Widget):
 
         self.query_one("#albums-switcher", ContentSwitcher).current = "albums-album-view"
         self._album_view_active = True
-        self._apply_responsive(self.size.height)
         panel.focus_tracklist()
         self.app.nav_changed()  # type: ignore[attr-defined]
 

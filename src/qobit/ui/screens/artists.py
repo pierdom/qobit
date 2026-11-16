@@ -13,7 +13,7 @@ from textual.widgets import ContentSwitcher
 from ...qobuz.models import Album, Artist
 from .._utils import readout, status_line
 from ..nav import Breadcrumb
-from .album_detail import AlbumDetailPanel
+from .album_detail import AlbumDetailPanel, fit_artist_header
 from .artist_detail import (
     LIBRARY_TILE_MIN_W,
     AlbumCard,
@@ -345,7 +345,16 @@ class ArtistsView(Widget):
         panel.focus_tracklist()
         self.app.nav_changed()  # type: ignore[attr-defined]
 
+    def on_album_detail_panel_resized(self, _: AlbumDetailPanel.Resized) -> None:
+        # The artist's header may give its rows to an open album on a short
+        # terminal; it comes back with the artist's own page.
+        if self._view == "album":
+            fit_artist_header(
+                self.query_one(ArtistHeader), self.query_one("#album-panel", AlbumDetailPanel)
+            )
+
     def _show_artist_content(self) -> None:
+        self.query_one(ArtistHeader).display = True
         inner_cs = self.query_one("#artist-content-switcher", ContentSwitcher)
         inner_cs.current = "artist-tracks-albums-view"
         self._view = "artist"

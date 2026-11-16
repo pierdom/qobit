@@ -160,6 +160,16 @@ or scroll nears the end; End mounts everything. Whole-list code reads
 `PagedListView.rows` (mounted + backlog). A hard 200 cap once hid most of a
 library: don't add one back.
 
+**Album panel height.** `AlbumDetailPanel` sizes itself from its own height
+(`_fit`, on resize and on load): the tracklist keeps half the panel and at
+least `MIN_TRACK_ROWS`, the art gets the rest (`ART_MIN`–`ART_MAX`), and
+below `ART_MIN` the art goes (`-no-art`; two columns when wide). It posts
+`Resized`; each host with an `ArtistHeader` above it (AlbumScreen, Albums,
+Artists while an album is open) calls `fit_artist_header`, which decides
+from the panel's height *with* the header so it can't oscillate. Never key
+this on the terminal height: three hosts with different chrome broke that.
+`tests/test_album_fit.py` checks all three at 24/32/45 rows.
+
 **Grids.** The container holds focus and `_cursor`, toggling `-selected` on
 cards; `selected_card()` returns the current one. Filtering hides/shows cards
 (`filter_cards`) instead of remounting, so Kitty images aren't re-sent; it

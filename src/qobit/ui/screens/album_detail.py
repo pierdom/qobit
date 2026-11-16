@@ -28,9 +28,6 @@ from .._now_playing import (
 )
 from .._utils import (
     DETAIL_HEADER_CSS,
-    HIDE_ARTIST_BELOW,
-    SMALL_ART_BELOW,
-    TWO_COL_BELOW,
     readout,
     strip_html,
 )
@@ -41,6 +38,34 @@ from ..widgets.transport import TransportBar
 
 if TYPE_CHECKING:
     from ..app import QobitApp
+
+
+# The album panel's vertical budget (AlbumDetailPanel._fit). The tracklist
+# keeps half the panel, at least MIN_TRACK_ROWS; the art takes what's left,
+# from ART_MIN to ART_MAX.
+ART_MAX = 14
+ART_MIN = 5
+MIN_TRACK_ROWS = 8
+TWO_COL_MIN_W = 90  # an art-less panel this wide splits its tracklist in two
+# An artist header (8 rows) sits above the panel only while the panel keeps at
+# least this many rows with it: 7 rows of art, MIN_TRACK_ROWS and the rules.
+PANEL_WITH_ARTIST_MIN = 2 + 9 + 1 + MIN_TRACK_ROWS
+ARTIST_HEADER_ROWS = 8  # ArtistHeader's CSS height
+
+
+def fit_artist_header(header: Widget, panel: AlbumDetailPanel) -> None:
+    """Show ``header`` (above ``panel``) only while the panel keeps
+    PANEL_WITH_ARTIST_MIN rows with it. Worked out from the panel's height
+    *with* the header, whatever its state now, so toggling it can't make
+    the answer flip back."""
+    current = panel.outer_size.height
+    if current <= 0:
+        return
+    shown = header.outer_size.height or ARTIST_HEADER_ROWS
+    with_header = current if header.display else current - shown
+    show = with_header >= PANEL_WITH_ARTIST_MIN
+    if header.display != show:
+        header.display = show
 
 
 class TrackRow(NowPlayingRowMixin, ListItem):
@@ -107,11 +132,12 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     AlbumDetailPanel:focus-within .detail-tracklist {
         border-top: round $accent;
     }
-    /* Vertical-compact modes (see set_compact): halve the album art, then lay
-       the tracklist out in two columns when space is tight. */
-    AlbumDetailPanel.-small-art .detail-header { height: 9; }
-    AlbumDetailPanel.-small-art .detail-art    { height: 7; }
-    AlbumDetailPanel.-small-art .detail-meta   { height: 7; }
+    /* Short panels (see _fit): no art, the header down to title + info line,
+       and with the width for it, the tracklist in two columns. */
+    AlbumDetailPanel.-no-art .detail-art { display: none; }
+    AlbumDetailPanel.-no-art .detail-header { padding: 0 2; }
+    AlbumDetailPanel.-no-art .detail-sub { margin-top: 0; }
+    AlbumDetailPanel.-no-art .detail-meta { overflow-y: hidden; }
     AlbumDetailPanel.-two-col .detail-tracklist {
         layout: grid;
         grid-size: 2;
@@ -136,9 +162,45 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
                 yield Label("", classes="detail-desc", markup=True)
         yield TrackListView(classes="detail-tracklist")
 
+    class Resized(Message):
+        """The panel re-fitted to a new height: hosts with an artist header
+        above it re-check whether there's room for it (fit_artist_header)."""
+
     def on_mount(self) -> None:
-        self._size_art(14)
+        self._size_art(ART_MAX)
         self._wire_now_playing(TrackRow, ".detail-tracklist")
+
+    def on_resize(self, _: events.Resize) -> None:
+        self._fit()
+        self.post_message(self.Resized())
+
+    def _fit(self) -> None:
+        """Share the panel's height between the header and the tracklist: the
+        tracklist keeps half the panel and at least MIN_TRACK_ROWS (fewer
+        for a shorter album), the art gets the rest between ART_MIN and
+        ART_MAX rows. Below ART_MIN the art goes and the header keeps the
+        title and the info line."""
+        height = self.size.height  # inside the border
+        if height <= 0:  # hidden (another view is showing)
+            return
+        # At least MIN_TRACK_ROWS and half the panel; a shorter album needs
+        # only its own count, and its spare rows go to the art.
+        want = max(MIN_TRACK_ROWS, height // 2)
+        count = self.album.tracks_count if self.album and self.album.tracks_count else 0
+        rows = max(3, min(want, count)) if count else want
+        budget = height - rows - 1  # the tracklist's top rule
+        art = min(ART_MAX, budget - 2)  # the header's padding: a row above, a row below
+        no_art = art < ART_MIN
+        self.set_class(no_art, "-no-art")
+        self.set_class(no_art and self.size.width >= TWO_COL_MIN_W, "-two-col")
+        header = self.query_one(".detail-header")
+        meta = self.query_one(".detail-meta")
+        if no_art:
+            header.styles.height = meta.styles.height = max(2, min(4, budget))
+        else:
+            header.styles.height = art + 2
+            meta.styles.height = self.query_one(Art).styles.height = art
+            self._size_art(art)
 
     def _size_art(self, height: int) -> None:
         """Set the art width to keep it square for the given cell height."""
@@ -146,16 +208,10 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         if cell.width > 0 and cell.height > 0:
             self.query_one(TGPImage).styles.width = round(height * cell.height / cell.width)
 
-    def set_compact(self, small_art: bool, two_col: bool) -> None:
-        """Vertical-responsive layout: halve the album art and/or lay the
-        tracklist out in two columns when the page is short on height."""
-        self.set_class(small_art, "-small-art")
-        self.set_class(two_col, "-two-col")
-        self._size_art(7 if small_art else 14)
-
     def load(self, album: Album) -> None:
         """Populate the panel with album data and start async loading."""
         self.album = album
+        self._fit()  # the track count sets the tracklist's share
         self.query_one(Art).placeholder = album.title
         self.border_title = readout("Album")  # the title is in bold right below
         year = str(album.year) if album.year else "—"
@@ -223,7 +279,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
                 badge_parts.append(escape(full.label))
             if q := full.quality_badge:
                 # HI-RES in the theme's hi-res colour, like the transport.
-                badge_parts.append(q.replace("HI-RES ", "[b $qobit-hires]HI-RES[/] ", 1))
+                badge_parts.append(q.replace("HI-RES ", "[b $qobit-hires]HI-RES [/]", 1))
             if full.popularity is not None:
                 badge_parts.append(f"★ {full.popularity}")
             self._set_optional(".ap-badges", "  ·  ".join(badge_parts))
@@ -319,15 +375,10 @@ class AlbumScreen(Screen):
         self._load_artist_info(self._album.artist_id)
         self.call_after_refresh(panel.focus_tracklist)
 
-    def on_resize(self, event: events.Resize) -> None:
+    def on_album_detail_panel_resized(self, _: AlbumDetailPanel.Resized) -> None:
         from .artist_detail import ArtistHeader
 
-        h = event.size.height
-        self.query_one(ArtistHeader).display = h >= HIDE_ARTIST_BELOW
-        self.query_one("#album-panel", AlbumDetailPanel).set_compact(
-            small_art=h < SMALL_ART_BELOW,
-            two_col=h < TWO_COL_BELOW,
-        )
+        fit_artist_header(self.query_one(ArtistHeader), self.query_one(AlbumDetailPanel))
 
     @work
     async def _load_artist_info(self, artist_id: str | None) -> None:

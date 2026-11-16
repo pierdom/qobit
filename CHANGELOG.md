@@ -18,6 +18,17 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 - The empty part of the progress bar is a thin line instead of a shaded
   track, so its moving tip no longer shows a dark gap.
 
+### Fixed
+
+- **Albums on short terminals.** An album opened from the Artists tab, Search
+  or `g` showed its art and the artist header but not a single track at 32
+  rows. The tracklist now always keeps at least 8 rows (and half the album
+  panel); the art shrinks to fit, the artist header steps aside when there's
+  no room for it, and on very short terminals the art goes and the
+  tracklist splits into two columns.
+- A space was missing between *HI-RES* and the resolution in the album
+  header.
+
 ## [0.10.0] - 2026-11-16
 
 ### Changed
