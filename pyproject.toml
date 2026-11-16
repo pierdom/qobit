@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qobit"
-version = "0.7.0"
+version = "0.8.0"
 description = "A bit-perfect Qobuz client with a terminal UI"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,6 +39,9 @@ dependencies = [
     "pyobjc-framework-MediaPlayer>=10.0; sys_platform == 'darwin'",
     "pydbus>=0.6; sys_platform == 'linux'",
     "PyGObject>=3.50; sys_platform == 'linux'",
+    # The session token in the system keyring (token_store.py): macOS
+    # Keychain, Linux Secret Service. Falls back to config.json without one.
+    "keyring>=25.0",
 ]
 
 [project.urls]

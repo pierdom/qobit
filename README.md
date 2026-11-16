@@ -75,7 +75,7 @@ Then:
 ```bash
 git clone https://github.com/pierdom/qobit && cd qobit
 uv tool install .
-qobit auth          # log in once; opens the browser
+qobit auth          # log in once; opens the browser, prints the link
 qobit set-device    # choose the audio output
 qobit               # start the TUI
 ```

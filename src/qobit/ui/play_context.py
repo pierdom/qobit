@@ -27,6 +27,7 @@ from ..connect.renderer import PLAYING, ConnectRenderer
 from ..connect.session import ConnectSession
 from ..qobuz.client import QobuzError
 from ..qobuz.models import Track
+from ..qobuz.sanitize import clean
 
 if TYPE_CHECKING:
     from .app import QobitApp
@@ -122,6 +123,15 @@ class LocalPlayContext:
                 app.queue_version += 1
                 return True
         return False
+
+    def reset(self) -> None:
+        """Empty the timeline: history, current track, Up Next (logout). Local
+        only, with no Connect twin: logout leaves Connect first, and the
+        server's queue is the account's, not this machine's."""
+        app = self.app
+        app._timeline = []
+        app._cursor = -1
+        app.queue_version += 1
 
     def replace_upcoming(self, tracks: list[Track]) -> bool:
         """Swap Up Next for ``tracks`` (song radio), keeping the current track."""
@@ -346,7 +356,7 @@ class ConnectPlayContext:
         app.queue_version += 1
 
     def queue_error(self, message: str) -> None:
-        self.app._flash_status(f"Qobuz Connect refused the queue change: {message}")
+        self.app._flash_status(f"Qobuz Connect refused the queue change: {clean(message)}")
 
     def active_changed(self, active: bool) -> None:
         app = self.app

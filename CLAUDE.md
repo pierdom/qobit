@@ -16,10 +16,15 @@ setup); keep feature detail there, not in the README.
 ```
 src/qobit/
 ├── __main__.py          CLI + TUI launcher (qobit with no args)
-├── config.py            credentials + device config (env → file → prompt)
+├── config.py            session + device/settings config (env → file)
+├── token_store.py       the session token in the system keyring (else config.json)
+├── _fs.py               private_dir (0700) / write_private (atomic, 0600)
 ├── store.py             JSON runtime state in DATA_DIR (player/queue state)
+├── account_data.py      what an account leaves on disk; erase (logout), the
+│                        running-TUI lock (qobit.lock)
 ├── qobuz/client.py      QobuzClient: app_id/secrets from the web bundle, OAuth,
 │                        every API call (see "Qobuz API")
+├── qobuz/oauth.py       login link + redirect server + pasted-address LoginPrompt
 ├── qobuz/models.py      Track, Album, Artist, Playlist, StreamUrl
 ├── audio/device.py      mpv devices + synthesized alsa/hw:CARD=…,DEV=… entries,
 │                        bit-perfect ones flagged and sorted first
@@ -57,6 +62,7 @@ src/qobit/
                          ArtistCard/ArtistGrid, _GridNav (all shared), ArtistScreen
         playlist_detail.py PlaylistScreen
         context_menu.py  ContextMenu (`i`), GoToMenu (`g`)
+        login.py         LoginScreen: login dialog over QobuzClient.login_oauth
 ```
 
 ## Playback and queue
@@ -348,6 +354,63 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
 - `client.py` extracts `app_id` and signing secrets from the web player bundle
   at login (cached in config). `restore_session()` runs in `QobitApp.__init__`
   so credentials exist before any worker.
+- Login is browser OAuth only (`login_oauth`, `qobit auth`). The
+  email/password route stored the password in plaintext, sent it in a URL and
+  couldn't stream: it's gone, and `purge_legacy_credentials()` scrubs it at
+  startup. `login_oauth(show_url=…)` hands the `LoginPrompt` out before
+  anything else (link always shown: SSH, no display); the browser opens only
+  with a display (else `webbrowser` starts lynx in the terminal). The code
+  comes back through `qobuz/oauth.py`: a loopback-only server (127.0.0.1 on
+  an OS-picked port, then ::1 on the same one; one code) or
+  `LoginPrompt.submit(pasted address)` (CLI: stdin via `add_reader`, never a
+  blocking `input()` thread, which would hang exit). Qobuz drops OAuth's
+  `state` (the redirect carries only `code_autorisation`), so the redirect
+  URL has a random secret path, `localhost:<port>/<secret>`, and a code is
+  taken only on it (anything else 404s): that is the login-CSRF guard.
+- The TUI logs in itself: `QobitApp.request_login(reason)` pushes
+  `LoginScreen` (once: `_login_open`), at startup without a token and from
+  `client.on_auth_expired`, which `_send` calls on any 401 to a token-bearing
+  API request (not the login endpoints). Code that needs a session runs from
+  `_go_online()` (startup or after a login); `_reload_after_login()` clears
+  the favourites caches and every view's `_loaded`, then re-activates the
+  current tab. Tests: `StubClient` carries a token so `ui_app` starts logged
+  in. Save a session with `save_oauth_session(*client.session(),
+  account=client.account)`.
+- Logout erases the account (`QobitApp._erase_account`): stop, leave
+  Connect, `LocalPlayContext.reset()` (local only: the server's queue is the
+  account's), clear reactives with saves suppressed (`_restoring`) and the
+  queue-save timer stopped, drop caches, `account_data.erase_account_data()`,
+  pop pages, then `App.recompose()` rebuilds every view empty. Also run when
+  a *different* account logs in (names compared). A new file that holds
+  account activity goes in `account_data.ACCOUNT_FILES`, or logout leaves it
+  behind. Every TUI holds a shared flock on `DATA_DIR/qobit.lock`;
+  `qobit logout` refuses while one runs.
+- Esc on a pushed screen: `action_back` first calls the screen's
+  `action_navigate_back()` (True = handled). A modal whose caller needs its
+  dismiss callback must close itself there: a bare `pop_screen()` skips the
+  callback (the login dialog stayed "open" forever that way).
+- Text from Qobuz is untrusted (public playlists are user-written) and
+  Textual passes ESC to the terminal (verified: OSC 52 reached it). Every
+  response goes through `client._json()` → `sanitize.clean_json`; never call
+  `r.json()` directly. Server text shown elsewhere (Connect errors) goes
+  through `sanitize.clean`; `store.load` cleans state files too.
+- Credentials are `secret.Secret` (masked repr: Textual's crash screen
+  prints locals). Wrap any new token/JWT/code where it enters. The session
+  token is sent as `X-User-Auth-Token`, never a query parameter.
+- mpv gets the stream URL from `DATA_DIR/stream.m3u` (0600, deleted on
+  stop), never argv: argv is world-readable and a URL starting with `--`
+  would be an option.
+- The token goes through `token_store` (via `config.save_oauth_session` /
+  `get_oauth_session`, never directly): system keyring when usable (session
+  marked `"token_store": "keyring"`, no token in the file), else the file.
+  Linux without `DBUS_SESSION_BUS_ADDRESS` skips the keyring; every keyring
+  call silences fd 2 (GLib warns there while probing, garbling the TUI).
+  conftest's autouse `fake_keyring` replaces `token_store._keyring` and
+  `enabled`: a test must never reach the real Keychain.
+- Everything qobit writes under CONFIG_DIR / DATA_DIR goes through
+  `_fs.write_private` (0600 from the first byte, in a 0700 dir): the token
+  lives in config.json and DATA_DIR holds mpv's IPC socket (its `run`
+  command executes programs). Never write there with `write_text`.
 - Every HTTP call goes through `QobuzClient._send`, which turns network errors
   into `QobuzError`. A `@work` that raises closes the app, so never call
   `self._http` directly.
@@ -382,11 +445,13 @@ JPEG, cached in memory and in `~/.cache/qobit/images/`.
 ## Files
 
 ```
-~/.config/qobit/config.json            credentials, device, theme, radio, Connect, session
+~/.config/qobit/config.json            session (token: keyring if any), device, theme, radio, Connect
 ~/.local/share/qobit/player_state.json last track + position
 ~/.local/share/qobit/queue_state.json  timeline + cursor
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ
 ~/.local/share/qobit/mpv.sock          mpv IPC socket (fixed path)
+~/.local/share/qobit/stream.m3u        stream URL for mpv (0600, while playing)
+~/.local/share/qobit/qobit.lock        held (shared) by every running TUI
 ~/.cache/qobit/images/                 cover-art cache (qobit clear-cache)
 ```
 

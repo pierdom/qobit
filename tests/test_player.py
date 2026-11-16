@@ -64,3 +64,45 @@ def test_natural_exit_keeps_gen(player):
     player._proc.returncode = 0  # mpv reached end of file on its own
     gen_after, running = player.snapshot()
     assert gen_after == gen_before and not running
+
+
+def test_the_stream_url_never_appears_in_mpvs_arguments(monkeypatch, tmp_path):
+    """argv is world-readable (ps): the signed URL goes in a private
+    playlist file, read by mpv, deleted when playback stops."""
+    import stat
+
+    launched = []
+
+    class Recording(_FakeProc):
+        def __init__(self, cmd, *args, **kwargs):
+            super().__init__()
+            launched.append(cmd)
+
+    monkeypatch.setattr(player_module.subprocess, "Popen", Recording)
+    p = MpvPlayer()
+    p._sock = tmp_path / "data" / "mpv.sock"
+    url = "https://cdn.example/file?uid=12345&hmac=secret"
+    p.play(url, start=12.5)
+    cmd = launched[0]
+    assert not any("secret" in arg or "uid=" in arg for arg in cmd)
+    assert f"--playlist={p.playlist_path}" in cmd and "--start=12.500" in cmd
+    assert p.playlist_path.read_text() == url + "\n"
+    assert stat.S_IMODE(p.playlist_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(p.playlist_path.parent.stat().st_mode) == 0o700
+    p.stop()
+    assert not p.playlist_path.exists()
+
+
+def test_a_url_shaped_like_an_option_stays_a_url(monkeypatch, tmp_path):
+    launched = []
+
+    class Recording(_FakeProc):
+        def __init__(self, cmd, *args, **kwargs):
+            super().__init__()
+            launched.append(cmd)
+
+    monkeypatch.setattr(player_module.subprocess, "Popen", Recording)
+    p = MpvPlayer()
+    p._sock = tmp_path / "mpv.sock"
+    p.play("--script=/tmp/evil.lua")
+    assert "--script=/tmp/evil.lua" not in launched[0]

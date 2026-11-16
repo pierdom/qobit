@@ -7,6 +7,70 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.8.0] - 2026-11-16
+
+### Security
+
+- **Email/password login removed.** It saved the password in plaintext in
+  `config.json`, sent it in a request URL, and couldn't stream anyway. qobit
+  logs in through the browser only (`qobit auth`); a password an older qobit
+  saved is deleted at startup, with a notice. `QOBUZ_EMAIL` /
+  `QOBUZ_PASSWORD` are no longer read.
+- **Text from Qobuz can no longer drive the terminal.** Titles, names and
+  playlist descriptions (public playlists are written by other users) passed
+  escape sequences straight through: one could rewrite the clipboard (OSC
+  52) or redraw the screen. Control characters are now stripped from every
+  API response, error message and saved state file.
+- The session token travels in a request header, never in the URL (URLs end
+  up in logs).
+- The stream URL (signed, naming the account) no longer appears in mpv's
+  command line, which any local user can read: mpv reads it from a private
+  playlist file, deleted when playback stops.
+- A crash screen no longer shows the session token: Textual prints local
+  variables there, and credentials are now masked in them.
+- The cover-art cache (a record of what was played) is readable only by
+  you.
+- **The session token lives in the system keyring**: the macOS Keychain, or
+  the Secret Service on Linux (GNOME Keyring, KWallet). `config.json` keeps
+  only a marker. Without a keyring (headless Linux, SSH) the token stays in
+  `config.json`; `QOBIT_KEYRING=0` forces that. A token already in the file
+  moves to the keyring at the next start. `qobit auth status` says where it
+  is.
+- `config.json` (the session token) and the files in `~/.local/share/qobit`
+  are written 0600 from the first byte, in 0700 directories. Before, the
+  token was briefly world-readable on every settings change (and stayed so
+  if the chmod failed), and the mpv control socket's folder relied on the
+  umask. Existing files and folders are tightened at startup.
+- The browser login's local server listens on loopback only, on a port
+  picked as it binds, and takes one code. Each login's return address has a
+  random path, and a code is taken only there, so another web page or
+  program can't log qobit into a different account.
+
+### Added
+
+- **Log in inside qobit.** Without a session, or when it expires, qobit opens
+  a login dialog instead of failing in every tab: the link (copy with `c`,
+  open with `o`, or click it), a field for the address the browser ends on,
+  and your queue kept. `^p` → *Log in to Qobuz* / *Log out of Qobuz*.
+- `qobit auth status` (who is logged in, and whether the session still
+  works).
+- **Logging out erases the account from this machine** (`qobit logout`, or
+  `^p` → *Log out of Qobuz*): the session, queue and history, last track,
+  mixes and cached covers, and in a running qobit the library and queue on
+  screen. Settings stay; `qobit logout --all` removes them too. A different
+  account logging in after an expiry gets a clean slate as well.
+- Log in from a machine without a browser (SSH, a headless box): open the
+  link anywhere, then paste the address the browser ends on into
+  `qobit auth`. The login now waits 5 minutes instead of 2.
+
+### Changed
+
+- `qobit auth` always prints the login link, so it can be opened by hand
+  when the browser doesn't come up. Without a display (SSH, a console) qobit
+  no longer tries to open a browser, which could start a text browser in the
+  terminal.
+- A login code Qobuz rejects (expired, already used) gets a plain message.
+
 ## [0.7.0] - 2026-11-16
 
 ### Added

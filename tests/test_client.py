@@ -120,19 +120,19 @@ def test_unauthenticated_client_raises_qobuz_error_not_assertion_error():
     raises AssertionError — a type most call sites don't special-case — and
     (b) silently no-ops under `python -O`. Pin it to a real QobuzError."""
     client = QobuzClient()
-    with pytest.raises(QobuzError, match="Not authenticated"):
+    with pytest.raises(QobuzError, match="Not logged in"):
         asyncio.run(client.get_all_favorite_tracks())
 
 
 def test_get_streaming_url_without_login_raises_qobuz_error():
     client = QobuzClient()
-    with pytest.raises(QobuzError, match="Not authenticated"):
+    with pytest.raises(QobuzError, match="Not logged in"):
         asyncio.run(client.get_streaming_url("123"))
 
 
 def test_get_streaming_url_with_app_id_but_no_token_still_raises():
     client = QobuzClient(app_id="12345")
-    with pytest.raises(QobuzError, match="Not authenticated"):
+    with pytest.raises(QobuzError, match="Not logged in"):
         asyncio.run(client.get_streaming_url("123"))
 
 
@@ -206,3 +206,48 @@ def test_artist_detail_fetches_every_album_page(monkeypatch):
     assert sorted(calls) == [0, 500, 1000]
     assert [a["id"] for a in data["albums"]["items"]] == [0, 500, 1000]
     assert data["name"] == "A"  # the rest of the payload is kept
+
+
+# --- browser login (the flow itself: test_oauth.py) ---
+
+
+@pytest.mark.parametrize(
+    ("platform", "env", "expected"),
+    [
+        ("linux", {}, False),
+        ("linux", {"DISPLAY": ":0"}, True),
+        ("linux", {"WAYLAND_DISPLAY": "wayland-0"}, True),
+        ("darwin", {}, True),
+    ],
+)
+def test_has_graphical_browser(monkeypatch, platform, env, expected):
+    from qobit.qobuz import client as mod
+
+    monkeypatch.setattr(mod.sys, "platform", platform)
+    for var in ("DISPLAY", "WAYLAND_DISPLAY"):
+        monkeypatch.delenv(var, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    assert mod._has_graphical_browser() is expected
+
+
+def test_the_session_token_travels_in_a_header_never_the_url():
+    """URLs end up in logs (httpx logs them at INFO); headers don't."""
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200, json={"tracks": {"items": []}})
+
+    client = QobuzClient()
+    client.restore_session("123", "secret-token", ["s"])
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    asyncio.run(client.search("x"))
+    asyncio.run(client._post("favorite/create", track_ids="1"))
+    asyncio.run(client.get_dynamic_suggestions([1], []))
+    assert len(seen) == 3
+    for request in seen:
+        assert "secret-token" not in str(request.url)
+        assert request.headers["X-User-Auth-Token"] == "secret-token"
+        assert "secret-token" not in request.content.decode()
+        assert "app_id=123" in str(request.url) + request.content.decode()

@@ -4,6 +4,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from . import token_store
+from ._fs import private_dir, write_private
+from .secret import secret
+
 CONFIG_DIR = Path.home() / ".config" / "qobit"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
@@ -18,25 +22,35 @@ def load() -> dict[str, Any]:
 
 
 def save(data: dict[str, Any]) -> None:
-    """Write atomically (tmp file + rename) so a crash/kill mid-write can't
-    leave a truncated config behind, and chmod 0600 on every write — this file
-    may hold a plaintext password or OAuth token, so every writer gets the
-    same protection rather than relying on call sites to remember it."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = CONFIG_FILE.with_name(f"{CONFIG_FILE.name}.tmp")
-    tmp.write_text(json.dumps(data, indent=2))
-    os.replace(tmp, CONFIG_FILE)
-    with contextlib.suppress(Exception):
-        CONFIG_FILE.chmod(0o600)
+    """Write atomically, 0600 from the first byte (``_fs.write_private``): this
+    file holds the Qobuz session token. Legacy plaintext credentials, from
+    the removed email/password login, are dropped on every write."""
+    for key in LEGACY_CREDENTIAL_KEYS:
+        data.pop(key, None)
+    private_dir(CONFIG_DIR)
+    write_private(CONFIG_FILE, json.dumps(data, indent=2))
 
 
-def get_credentials() -> tuple[str, str]:
-    email = os.environ.get("QOBUZ_EMAIL", "")
-    password = os.environ.get("QOBUZ_PASSWORD", "")
-    if email and password:
-        return email, password
+# Saved by the email/password fallback of qobit <= 0.7, which stored the
+# password in plaintext and couldn't stream anyway. Never read; scrubbed.
+LEGACY_CREDENTIAL_KEYS = ("email", "password")
+
+
+def purge_legacy_credentials() -> bool:
+    """Startup cleanup after older qobits. Removes a saved plaintext password
+    (True: worth telling the user) and the `config.json.tmp` they could leave
+    behind, written world-readable before its chmod. Also rewrites a
+    config.json or directory that others can read (0600 / 0700)."""
+    with contextlib.suppress(OSError):
+        CONFIG_FILE.with_name(f"{CONFIG_FILE.name}.tmp").unlink()
+    if not CONFIG_FILE.exists():
+        return False
     cfg = load()
-    return cfg.get("email", ""), cfg.get("password", "")
+    had_password = any(k in cfg for k in LEGACY_CREDENTIAL_KEYS)
+    loose = (CONFIG_FILE.stat().st_mode | CONFIG_DIR.stat().st_mode) & 0o077
+    if had_password or loose:
+        save(cfg)
+    return had_password
 
 
 def get_audio_device() -> str | None:
@@ -50,16 +64,72 @@ def set_audio_device(device_id: str) -> None:
 
 
 def get_oauth_session() -> tuple[str, str, list[str]]:
-    """Returns (app_id, token, secrets) or empty values if no saved session."""
-    s = load().get("oauth_session", {})
+    """Returns (app_id, token, secrets) or empty values if no saved session.
+    The token comes from the system keyring when the session says it's
+    there (token_store.py), else from this file."""
+    s = load().get("oauth_session") or {}
     secrets = s.get("secrets") or ([s["secret"]] if s.get("secret") else [])
-    return s.get("app_id", ""), s.get("token", ""), secrets
+    in_keyring = s.get("token_store") == "keyring"
+    token = (token_store.load() or "") if in_keyring else s.get("token", "")
+    return s.get("app_id", ""), secret(token) or "", secrets
 
 
-def save_oauth_session(app_id: str, token: str, secrets: list[str]) -> None:
+def token_location() -> str:
+    """Where the saved token is: "keyring", "file" or "" (no session)."""
+    s = load().get("oauth_session") or {}
+    if s.get("token_store") == "keyring":
+        return "keyring"
+    return "file" if s.get("token") else ""
+
+
+def save_oauth_session(
+    app_id: str, token: str, secrets: list[str], account: dict[str, str] | None = None
+) -> None:
+    """Save a session: the token in the system keyring when there is one
+    (only a marker here), else in this file (0600)."""
     cfg = load()
-    cfg["oauth_session"] = {"app_id": app_id, "token": token, "secrets": secrets}
+    session: dict = {"app_id": app_id, "secrets": secrets}
+    if token_store.store(token):
+        session["token_store"] = "keyring"
+    else:
+        session["token"] = token
+    if account:
+        session["account"] = account
+    cfg["oauth_session"] = session
     save(cfg)
+
+
+def move_token_to_keyring() -> bool:
+    """Startup: a token saved in this file (older qobit, or no keyring back
+    then) moves to the keyring when one is usable now. True if moved."""
+    cfg = load()
+    s = cfg.get("oauth_session") or {}
+    token = s.get("token")
+    if not token or s.get("token_store") == "keyring" or not token_store.store(token):
+        return False
+    del s["token"]
+    s["token_store"] = "keyring"
+    cfg["oauth_session"] = s
+    save(cfg)
+    return True
+
+
+def get_account() -> dict[str, str]:
+    """``{"name", "plan"}`` saved at login (empty for older sessions)."""
+    return (load().get("oauth_session") or {}).get("account") or {}
+
+
+def clear_oauth_session() -> bool:
+    """Forget the saved session (log out), in the keyring too. True if
+    there was one."""
+    cfg = load()
+    if "oauth_session" not in cfg:
+        return False
+    if (cfg["oauth_session"] or {}).get("token_store") == "keyring":
+        token_store.delete()
+    del cfg["oauth_session"]
+    save(cfg)
+    return True
 
 
 def get_saved_theme() -> str | None:
@@ -129,17 +199,3 @@ def set_saved_volume(value: int) -> None:
     cfg = load()
     cfg["volume"] = value
     save(cfg)
-
-
-def prompt_and_save_credentials() -> tuple[str, str]:
-    print("\nqobit needs your Qobuz credentials.")
-    print("Stored in ~/.config/qobit/config.json (chmod 600 applied automatically)\n")
-    email = input("Email:    ").strip()
-    password = input("Password: ").strip()
-    if email and password:
-        cfg = load()
-        cfg["email"] = email
-        cfg["password"] = password
-        save(cfg)
-        print("\nCredentials saved.\n")
-    return email, password

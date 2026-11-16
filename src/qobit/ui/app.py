@@ -25,6 +25,7 @@ from ..audio.media_keys import MediaKeys
 from ..audio.player import MpvPlayer
 from ..audio.verify import Signal, check_signal
 from ..config import (
+    get_account,
     get_audio_device,
     get_connect_enabled,
     get_oauth_session,
@@ -33,12 +34,14 @@ from ..config import (
     get_saved_volume,
     get_software_volume_enabled,
     get_transparent_background,
+    save_oauth_session,
     set_connect_enabled,
     set_radio_mode,
     set_saved_theme,
     set_saved_volume,
     set_software_volume_enabled,
     set_transparent_background,
+    token_location,
 )
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, StreamUrl, Track
@@ -99,7 +102,19 @@ class _TransparentANSIToTruecolor(_ANSIToTruecolor):
 class QobitCommands(Provider):
     def _commands(self) -> list[tuple[str, object, str]]:
         app: QobitApp = self.app  # type: ignore[assignment]
+        if app._client.user_auth_token:
+            name = get_account().get("name")
+            account = (
+                "Log out of Qobuz",
+                app.action_logout,
+                (f"Logged in as {name}. " if name else "")
+                + "Erases the session, queue, history, mixes and cached covers "
+                "from this machine (settings stay)",
+            )
+        else:
+            account = ("Log in to Qobuz", app.action_login, "Opens the login dialog")
         return [
+            account,
             (
                 "Draw theme background",
                 app.action_toggle_background,
@@ -508,6 +523,13 @@ class QobitApp(App[None]):
         app_id, token, secrets = get_oauth_session()
         if app_id and token and secrets:
             self._client.restore_session(app_id, token, secrets)
+        # A 401 anywhere (session expired or revoked) opens the login dialog
+        # once, instead of every tab showing its own error. The client calls
+        # this from a request on the event loop: defer, never push mid-request.
+        self._client.on_auth_expired = lambda: self.call_later(
+            self.request_login, "Your Qobuz session has expired. Log in again to keep listening."
+        )
+        self._login_open = False
 
     def compose(self) -> ComposeResult:
         yield Tabs(
@@ -550,15 +572,119 @@ class QobitApp(App[None]):
         self.volume = get_saved_volume() if _sw_vol_on else 100
         self._fit_tab_labels(self.size.width)
         self._restore_player_state()
+        self.set_interval(5.0, self._connect_tick)
+        self._prune_image_cache()
+        # `qobit logout` in a terminal refuses while this is held (this TUI
+        # would write the queue straight back).
+        from ..account_data import hold_running_lock
+
+        self._running_lock = hold_running_lock()
+        if self._client.user_auth_token:
+            self._go_online()
+        elif token_location() == "keyring":
+            self.call_after_refresh(
+                self.request_login,
+                "Your session is in the system keyring, which isn't reachable here "
+                "(no desktop session?). Log in to use qobit here.",
+            )
+        else:
+            self.call_after_refresh(self.request_login)
+
+    def _go_online(self) -> None:
+        """Everything that needs a session, run at startup or after a login."""
         if self.now_playing is not None:
             # The restored track's album details and artist bio for the hero
             # (playing a track fetches them; a restore didn't).
             self._fetch_now_playing_album(self.now_playing)
         if self._connect_wanted:
             self._start_connect()
-        self.set_interval(5.0, self._connect_tick)
         self._warm_favorite_ids()
-        self._prune_image_cache()
+
+    # ── login ────────────────────────────────────────────────────────────────
+
+    def request_login(self, reason: str | None = None) -> None:
+        """Open the login dialog (once: a burst of 401s opens one)."""
+        if self._login_open:
+            return
+        from .screens.login import LoginScreen
+
+        self._login_open = True
+        self.push_screen(LoginScreen(self._client, reason), self._on_login_closed)
+
+    async def _on_login_closed(self, logged_in: bool | None) -> None:
+        self._login_open = False
+        if not logged_in:
+            if not self._client.user_auth_token:
+                self.status_msg = "Not logged in: ^p → Log in to Qobuz"
+            return
+        # Someone else logged in (after an expiry: no logout in between): the
+        # previous account's queue, mixes and library mustn't carry over.
+        previous = get_account().get("name")
+        current = (self._client.account or {}).get("name")
+        if previous and current and previous != current:
+            await self._erase_account()
+        save_oauth_session(*self._client.session(), account=self._client.account)
+        name = (self._client.account or {}).get("name")
+        self._flash_status(f"Logged in as {name}" if name else "Logged in")
+        self._reload_after_login()
+
+    def _reload_after_login(self) -> None:
+        """Refetch what failed (or belonged to another account): the
+        favourites caches and the library tabs, which load on activation."""
+        self._fav_tracks = self._fav_ids = None
+        self._fav_albums = self._fav_artists = None
+        for view in self.screen_stack[0].query("ContentSwitcher > *"):
+            if hasattr(view, "_loaded"):
+                view._loaded = False
+        view = self._base_view()
+        if view is not None and hasattr(view, "activate"):
+            view.activate()
+        self._go_online()
+
+    def action_login(self) -> None:
+        self.request_login()
+
+    async def action_logout(self) -> None:
+        """Log out and erase what the account left on this machine. Qobuz has
+        no revoke call: the token is forgotten here, not cancelled there."""
+        await self._erase_account()
+        self._client.user_auth_token = None
+        self._client.account = None
+        self.request_login("Logged out. Log in again, or press Esc to stay logged out.")
+
+    async def _erase_account(self) -> None:
+        """Stop, empty memory, delete the account's files, rebuild the UI.
+        Memory first: the watchers would otherwise write the queue back."""
+        from ..account_data import erase_account_data
+        from ._images import _IMAGE_CACHE
+
+        self._stop_connect()
+        self._player.stop()
+        self._pending_resume = None
+        self._restoring = True  # no player/queue saves while emptying
+        try:
+            self._local_ctx.reset()
+            self.now_playing = None
+            self.now_playing_album = None
+            self.now_playing_bio = ""
+            self.is_playing = self.is_paused = False
+            self.playback_pos = self.playback_dur = 0.0
+            self.status_msg = ""
+        finally:
+            self._restoring = False
+        if self._queue_save_timer is not None:
+            self._queue_save_timer.stop()  # type: ignore[union-attr]
+            self._queue_save_timer = None
+        self._fav_tracks = self._fav_ids = None
+        self._fav_albums = self._fav_artists = None
+        self._client.clear_caches()
+        _IMAGE_CACHE.clear()
+        erase_account_data()
+        while len(self.screen_stack) > 1:
+            self.pop_screen()
+        # Every view (library, mixes, search, pages' trail) rebuilt empty.
+        await self.recompose()
+        self._fit_tab_labels(self.size.width)
 
     @work(thread=True)
     def _prune_image_cache(self) -> None:
@@ -695,6 +821,11 @@ class QobitApp(App[None]):
         else close the page (or menu). On the main screen, the tab's view."""
         if len(self.screen_stack) > 1:
             screen = self.screen
+            # A screen that closes itself (dismiss runs its callback; a bare
+            # pop_screen skipped the login dialog's and left it "open").
+            if getattr(screen, "action_navigate_back", lambda: False)():
+                self.nav_changed()
+                return
             levels = getattr(screen, "nav_levels", list)()
             if len(levels) > 1 and hasattr(screen, "nav_to"):
                 screen.nav_to(len(levels) - 2)
@@ -1236,7 +1367,7 @@ class QobitApp(App[None]):
         try:
             stream = await self._resolve_stream(str(track.id))
         except AuthExpiredError:
-            self.status_msg = "Session expired — run: qobit auth"
+            self.status_msg = "Session expired: log in again"
             return "auth"
         if gen != self._play_gen:
             # Picking A then B quickly: if A's URL arrives last it would stop B

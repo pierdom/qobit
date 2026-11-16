@@ -7,7 +7,10 @@ import threading
 import time
 from pathlib import Path
 
+from .._fs import private_dir, write_private
+
 _SOCK_PATH = Path.home() / ".local" / "share" / "qobit" / "mpv.sock"
+STREAM_PLAYLIST = "stream.m3u"  # next to the socket; see play()
 _SYSTEM = platform.system()
 
 
@@ -41,14 +44,20 @@ class MpvPlayer:
 
     def play(self, url: str, start: float = 0.0) -> None:
         self.stop()
-        self._sock.parent.mkdir(parents=True, exist_ok=True)
+        # 0700: anyone who can reach mpv's IPC socket can make it run programs.
+        private_dir(self._sock.parent)
         if self._sock.exists():
             self._sock.unlink()
 
         cmd = ["mpv", *self._flags()]
         if start > 0:
             cmd.append(f"--start={start:.3f}")
-        cmd.append(url)
+        # The URL goes in a private one-line playlist, not argv: any local
+        # user can read argv (ps), and a stream URL is signed for minutes and
+        # names the Qobuz account. Never a positional argument either: a
+        # string starting with "--" would be read as an mpv option.
+        write_private(self.playlist_path, url + "\n")
+        cmd.append(f"--playlist={self.playlist_path}")
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         with self._state_lock:
             self._proc = proc
@@ -66,6 +75,14 @@ class MpvPlayer:
             except subprocess.TimeoutExpired:
                 proc.kill()
         self._close_conn()
+        with contextlib.suppress(OSError):
+            self.playlist_path.unlink()  # the signed URL: gone with the player
+
+    @property
+    def playlist_path(self) -> Path:
+        """The one-line playlist mpv reads the stream URL from (0600, in the
+        0700 socket directory)."""
+        return self._sock.parent / STREAM_PLAYLIST
 
     def snapshot(self) -> tuple[int, bool]:
         """``(stop_gen, running)`` read atomically — what end-of-track detection

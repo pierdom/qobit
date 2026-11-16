@@ -2,6 +2,39 @@
 
 All keys, and how each tab works. The README has a short version.
 
+## Logging in
+
+`qobit auth` prints a Qobuz login link and opens it in your browser (when
+there is a display). Log in, and the browser comes back to qobit on
+`localhost`; the session token is saved in the system keyring (the macOS
+Keychain, or GNOME Keyring / KWallet on Linux), or in
+`~/.config/qobit/config.json` (readable only by you) where there's none,
+such as a headless machine. `QOBIT_KEYRING=0` keeps it in the file. Over SSH
+into a desktop machine the keyring isn't reachable: qobit asks you to log in
+there (that session then lives in the file).
+
+On a machine without a browser (over SSH, a headless box), open the link on
+any device and log in. The browser then lands on a `localhost` page that
+doesn't load: copy that page's address from the address bar and paste it into
+the terminal where `qobit auth` is waiting. The login waits 5 minutes.
+
+You can also log in from inside qobit: started without a session, or when
+the session expires, it opens a login dialog with the same link (`c` copies
+it, `o` opens it, or click it) and a field for the pasted address (pasting
+anywhere in the dialog works too). `Esc` closes it; `^p` → *Log in to
+Qobuz* opens it again. Your queue is kept either way.
+
+`qobit auth status` shows who is logged in and checks that the saved session
+still works.
+
+`qobit logout`, or `^p` → *Log out of Qobuz*, erases everything the account
+left on this machine: the session, the queue and its history, the last
+track, the mixes and the cached covers. Settings (audio device, theme,
+volume) stay; `qobit logout --all` deletes those too, leaving nothing of
+qobit. `qobit logout` refuses while qobit is running (it would write the
+queue back): log out from inside it instead. If a different account logs in
+after a session expires, the previous account's data is erased the same way.
+
 ## Global keys
 
 | Key | Action |
@@ -155,11 +188,16 @@ playerctl -p qobit metadata   # title / artist / album / artUrl while playing
 ## Files
 
 ```
-~/.config/qobit/config.json            login, audio device, theme, settings
+~/.config/qobit/config.json            login (the token itself: system keyring if any), audio device, theme, settings
 ~/.local/share/qobit/player_state.json last track + position
 ~/.local/share/qobit/queue_state.json  the queue (history, current, up next)
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ
 ~/.local/share/qobit/connect.lock      held while Qobuz Connect is on
+~/.local/share/qobit/qobit.lock        held while qobit runs (qobit logout refuses then)
 ~/.local/share/qobit/mpv.sock          mpv IPC socket
+~/.local/share/qobit/stream.m3u        the playing stream's URL, while playing
 ~/.cache/qobit/images/                 cover-art cache (safe to delete: qobit clear-cache)
 ```
+
+`qobit logout` erases the session, the three `.json` state files and the
+cover cache; `qobit logout --all` removes everything listed here.
