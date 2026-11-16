@@ -45,6 +45,8 @@ src/qobit/
     ├── themes.py        cyberdeck + ayu-dark/-mirage/-light; qobit-* variables
     ├── _images.py       image fetch: 6 concurrent, memory + disk cache
     ├── _now_playing.py  row/view mixins for the ▶/⏸ marker, heart_suffix()
+    ├── _filter.py       TypeToFilter: `/` filter shared by Tracks/Albums/
+    │                    Artists/Playlists (Enter keeps results, Esc clears)
     ├── widgets/lists.py PagedListView (page keys move the cursor; lazy rows)
     ├── widgets/transport.py  TransportBar (art, title, progress; click to
     │                    pause/seek)

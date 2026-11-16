@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from textual import events, on, work
+from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -11,6 +11,7 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
+from .._filter import TypeToFilter, filter_prompt
 from .._utils import readout, status_line
 from ..nav import Breadcrumb
 from .album_detail import AlbumDetailPanel, fit_artist_header
@@ -35,7 +36,7 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
 
-class ArtistsView(Widget):
+class ArtistsView(TypeToFilter, Widget):
     BINDINGS = [
         Binding("s", "cycle_sort", "Sort"),
         Binding("r", "toggle_reverse", "Rev"),
@@ -84,8 +85,6 @@ class ArtistsView(Widget):
     _loaded: bool = False
     _sort_key: str = "favorited_at"
     _sort_reverse: bool = True
-    _filter_active: bool = False
-    _filter_query: str = ""
     _render_version: int = 0
     _artists: list[Artist]
     _current_artist: Artist | None
@@ -153,6 +152,9 @@ class ArtistsView(Widget):
 
     # ── filter ───────────────────────────────────────────────────────────────
 
+    def _filter_allowed(self) -> bool:
+        return self._view == "grid"
+
     def can_navigate_back(self) -> bool:
         return self._view != "grid" or self._filter_active or bool(self._filter_query)
 
@@ -177,28 +179,6 @@ class ArtistsView(Widget):
             return True
         return False
 
-    def action_start_filter(self) -> None:
-        if self._view != "grid":
-            return
-        self._filter_active = True
-        self._update_subtitle()
-        self.refresh_bindings()
-
-    def on_key(self, event: events.Key) -> None:
-        if not self._filter_active or self._view != "grid":
-            return
-        if event.is_printable and event.character:
-            self._filter_query += event.character
-            event.stop()
-            self._update_subtitle()
-            self._schedule_filter()
-        elif event.key in ("backspace", "ctrl+h"):
-            if self._filter_query:
-                self._filter_query = self._filter_query[:-1]
-                event.stop()
-                self._update_subtitle()
-                self._schedule_filter()
-
     # ── sort ─────────────────────────────────────────────────────────────────
 
     def action_cycle_sort(self) -> None:
@@ -219,7 +199,7 @@ class ArtistsView(Widget):
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
         total = len(self._artists)
         if self._filter_active:
-            grid.border_subtitle = f"/ {self._filter_query}_"
+            grid.border_subtitle = filter_prompt(self._filter_query)
         elif self._filter_query:
             grid.border_subtitle = f"⌕ {self._filter_query}"
         else:

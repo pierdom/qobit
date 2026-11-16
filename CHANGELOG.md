@@ -23,6 +23,12 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Fixed
 
+- **Acting on a filtered result.** While typing a `/` filter every key went
+  into it (`i` too), and Enter played the highlighted track, replacing the
+  queue. Enter now ends the typing and keeps the results, so `i`, `f` and
+  Enter work on them; Escape clears the filter. The first result is
+  selected as you type (lists and grids had no selection after filtering,
+  so the menu found nothing). Tracks, Albums, Artists and Playlists.
 - An album or playlist opened with no track selected: no cursor to see,
   and the `i` menu offered only the album's favourite (no *Go to artist*,
   *Play next*…). The first track, or the one playing, is now selected. On

@@ -4,7 +4,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
-from textual import events, on, work
+from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
@@ -15,6 +15,7 @@ from textual.widgets import Label
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist
+from .._filter import TypeToFilter, filter_prompt
 from .._images import fetch_image
 from .._utils import readout, status_line
 from ..widgets.art import Art
@@ -23,7 +24,6 @@ from .artist_detail import (
     LIBRARY_TILE_MIN_W,
     _GridNav,
     _set_art_width,
-    select_card,
 )
 
 if TYPE_CHECKING:
@@ -182,29 +182,13 @@ class PlaylistGrid(_GridNav, ScrollableContainer):
         # so every mounted card is "visible" in the _GridNav sense.
         return list(self.query(PlaylistCard))
 
-    def _move_cursor(
-        self, idx: int, cards: list[PlaylistCard] | None = None, top: bool = False
-    ) -> None:
-        if cards is None:
-            cards = self._visible_cards()
-        if not cards or idx < 0 or idx >= len(cards):
-            return
-        if self._cursor >= 0 and self._cursor < len(cards):
-            select_card(cards[self._cursor], False)
-        self._cursor = idx
-        select_card(cards[idx], True)
-        if top:
-            cards[idx].scroll_visible(animate=False, top=True)
-        else:
-            cards[idx].scroll_visible()
-
     def action_open_selected(self) -> None:
         cards = self._visible_cards()
         if 0 <= self._cursor < len(cards):
             self.post_message(PlaylistCard.Selected(cards[self._cursor]._playlist))
 
 
-class PlaylistsView(Widget):
+class PlaylistsView(TypeToFilter, Widget):
     BINDINGS = [
         Binding("s", "cycle_sort", "Sort"),
         Binding("r", "toggle_reverse", "Rev"),
@@ -237,8 +221,6 @@ class PlaylistsView(Widget):
     _loaded: bool = False
     _sort_key: str = "updated_at"
     _sort_reverse: bool = True
-    _filter_active: bool = False
-    _filter_query: str = ""
     _render_version: int = 0
     _filter_timer: object | None = None
     _playlists: list[Playlist]
@@ -277,26 +259,6 @@ class PlaylistsView(Widget):
             return True
         return False
 
-    def action_start_filter(self) -> None:
-        self._filter_active = True
-        self._update_subtitle()
-        self.refresh_bindings()
-
-    def on_key(self, event: events.Key) -> None:
-        if not self._filter_active:
-            return
-        if event.is_printable and event.character:
-            self._filter_query += event.character
-            event.stop()
-            self._update_subtitle()
-            self._schedule_filter()
-        elif event.key in ("backspace", "ctrl+h"):
-            if self._filter_query:
-                self._filter_query = self._filter_query[:-1]
-                event.stop()
-                self._update_subtitle()
-                self._schedule_filter()
-
     def _schedule_filter(self) -> None:
         if self._filter_timer is not None:
             self._filter_timer.stop()  # type: ignore[union-attr]
@@ -322,7 +284,7 @@ class PlaylistsView(Widget):
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
         total = len(self._playlists)
         if self._filter_active:
-            grid.border_subtitle = f"/ {self._filter_query}_"
+            grid.border_subtitle = filter_prompt(self._filter_query)
         elif self._filter_query:
             grid.border_subtitle = f"⌕ {self._filter_query}"
         else:
@@ -359,8 +321,6 @@ class PlaylistsView(Widget):
 
     def _render_grid(self) -> None:
         self._render_version += 1
-        grid = self.query_one("#user-playlists-grid", PlaylistGrid)
-        grid._cursor = -1
         self._mount_cards(self._filtered_playlists(), self._render_version)
 
     @work
@@ -376,6 +336,7 @@ class PlaylistsView(Widget):
             await grid.mount(status_line(msg))
             return
         await grid.set_cards([PlaylistCard(p) for p in playlists])
+        grid.select_first()
 
     @work
     async def _load(self) -> None:

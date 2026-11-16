@@ -12,6 +12,7 @@ from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
+from .._filter import TypeToFilter, filter_prompt
 from .._now_playing import (
     GUTTER_ICON,
     NowPlayingRowMixin,
@@ -62,7 +63,7 @@ class FavTrackRow(NowPlayingRowMixin, ListItem):
         )
 
 
-class TracksView(NowPlayingViewMixin, Widget):
+class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
     BINDINGS = [
         Binding("s", "cycle_sort", "Sort"),
         Binding("r", "toggle_reverse", "Rev"),
@@ -98,8 +99,6 @@ class TracksView(NowPlayingViewMixin, Widget):
     _loaded: bool = False
     _sort_key: str = "favorited_at"
     _sort_reverse: bool = True
-    _filter_active: bool = False
-    _filter_query: str = ""
     _render_version: int = 0
     _tracks: list[Track]
     _filter_timer: Timer | None = None
@@ -145,26 +144,6 @@ class TracksView(NowPlayingViewMixin, Widget):
             return True
         return False
 
-    def action_start_filter(self) -> None:
-        self._filter_active = True
-        self._update_subtitle()
-        self.refresh_bindings()
-
-    def on_key(self, event: events.Key) -> None:
-        if not self._filter_active:
-            return
-        if event.is_printable and event.character:
-            self._filter_query += event.character
-            event.stop()
-            self._update_subtitle()
-            self._schedule_render()
-        elif event.key in ("backspace", "ctrl+h"):
-            if self._filter_query:
-                self._filter_query = self._filter_query[:-1]
-                event.stop()
-                self._update_subtitle()
-                self._schedule_render()
-
     # ── sort ─────────────────────────────────────────────────────────────────
 
     def action_cycle_sort(self) -> None:
@@ -184,7 +163,7 @@ class TracksView(NowPlayingViewMixin, Widget):
     def _update_subtitle(self) -> None:
         container = self.query_one("#tracks-container", Vertical)
         if self._filter_active:
-            container.border_subtitle = f"/ {self._filter_query}_"
+            container.border_subtitle = filter_prompt(self._filter_query)
         elif self._filter_query:
             matched = len(self._filtered_tracks())
             container.border_subtitle = f"⌕ {self._filter_query}  ·  {matched}"
@@ -224,7 +203,7 @@ class TracksView(NowPlayingViewMixin, Widget):
             if q in t.title.lower() or q in t.artist.lower() or q in t.album.lower()
         ]
 
-    def _schedule_render(self) -> None:
+    def _schedule_filter(self) -> None:
         """Coalesce a burst of filter keystrokes into a single rebuild."""
         if self._filter_timer is not None:
             self._filter_timer.stop()
@@ -258,6 +237,7 @@ class TracksView(NowPlayingViewMixin, Widget):
         rows = [FavTrackRow(t) for t in tracks]
         self._apply_now_playing(rows)
         await lv.set_rows(rows)  # type: ignore[attr-defined]
+        self._place_initial_cursor(lv)
         if keep_focus:
             self.call_after_refresh(lv.focus)
 

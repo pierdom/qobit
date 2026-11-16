@@ -616,6 +616,29 @@ class _GridNav:
         self._move_cursor(target, cards, top=True)  # type: ignore[attr-defined]
         self._near_end()
 
+    def _move_cursor(self, idx: int, cards: list | None = None, top: bool = False) -> None:
+        if cards is None:
+            cards = self._visible_cards()  # type: ignore[attr-defined]
+        if not cards or idx < 0 or idx >= len(cards):
+            return
+        if 0 <= self._cursor < len(cards):  # type: ignore[attr-defined]
+            select_card(cards[self._cursor], False)  # type: ignore[attr-defined]
+        self._cursor = idx
+        select_card(cards[idx], True)
+        if top:
+            cards[idx].scroll_visible(animate=False, top=True)
+        else:
+            cards[idx].scroll_visible()
+
+    def select_first(self) -> None:
+        """After a filter: the cursor on the first visible card, and no card
+        (hidden ones included) left looking selected. It was -1 (nothing
+        selected), so Enter and the ``i`` menu had no card to act on."""
+        for card in self.query(".-selected"):  # type: ignore[attr-defined]
+            select_card(card, False)
+        self._cursor = -1
+        self._move_cursor(0, top=True)
+
     def selected_card(self) -> Widget | None:
         """The card under the cursor, or None."""
         cards = self._visible_cards()  # type: ignore[attr-defined]
@@ -692,26 +715,10 @@ class AlbumGrid(_GridNav, ScrollableContainer):
             if bool(card.display) != vis:
                 card.display = vis
             any_visible = any_visible or vis
-        self._cursor = -1
         self.scroll_home(animate=False)
+        self.select_first()
         self.sync_visible_art()
         return any_visible
-
-    def _move_cursor(
-        self, idx: int, cards: list[AlbumCard] | None = None, top: bool = False
-    ) -> None:
-        if cards is None:
-            cards = self._visible_cards()
-        if not cards or idx < 0 or idx >= len(cards):
-            return
-        if self._cursor >= 0 and self._cursor < len(cards):
-            select_card(cards[self._cursor], False)
-        self._cursor = idx
-        select_card(cards[idx], True)
-        if top:
-            cards[idx].scroll_visible(animate=False, top=True)
-        else:
-            cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
         if isinstance(card := self.selected_card(), AlbumCard):
@@ -877,26 +884,10 @@ class ArtistGrid(_GridNav, ScrollableContainer):
             if bool(card.display) != vis:
                 card.display = vis
             any_visible = any_visible or vis
-        self._cursor = -1
         self.scroll_home(animate=False)
+        self.select_first()
         self.sync_visible_art()
         return any_visible
-
-    def _move_cursor(
-        self, idx: int, cards: list[ArtistCard] | None = None, top: bool = False
-    ) -> None:
-        if cards is None:
-            cards = self._visible_cards()
-        if not cards or idx < 0 or idx >= len(cards):
-            return
-        if self._cursor >= 0 and self._cursor < len(cards):
-            select_card(cards[self._cursor], False)
-        self._cursor = idx
-        select_card(cards[idx], True)
-        if top:
-            cards[idx].scroll_visible(animate=False, top=True)
-        else:
-            cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
         if isinstance(card := self.selected_card(), ArtistCard):

@@ -114,11 +114,12 @@ steps back in history after that.
 |-----|--------|
 | `s` | Cycle the sort key (Date Added → Artist/Name → Title/Album → Year → …) |
 | `r` | Reverse the sort |
-| `/` | Live filter: type to narrow the list |
-| `Escape` | Close the filter, then clear it |
+| `/` | Live filter: type to narrow the list (every letter goes into the filter, `i` and `f` too) |
+| `Enter` | While typing: done. The results stay, and `i`, `f`, Enter (play or open) act on them again |
+| `Escape` | Clear the filter |
 
-The border shows the filter: `/ query_` while typing, `⌕ query` while results
-are still narrowed. Favourite tracks show a `♥` in every track list except
+The border shows the filter: `/ query_  ·  ⏎ done` while typing, `⌕ query`
+while results are still narrowed. The first result is selected as you type. Favourite tracks show a `♥` in every track list except
 Tracks (where everything is one).
 
 An artist's page (from the Artists tab, Search, `g` or `i`) shows their **Top
