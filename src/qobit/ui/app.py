@@ -333,7 +333,7 @@ class QobitApp(App[None]):
     Screen.-transparent MixCard.-selected {
         background: $boost;
     }
-    Screen.-transparent NowPlayingListRow {
+    Screen.-transparent TimelineRow.-now {
         background: $accent 8%;
     }
     Screen.-transparent SectionHeader {
@@ -1363,7 +1363,6 @@ class QobitApp(App[None]):
         show) adds its favourite toggle; an artist (a card, or the artist page
         on show) adds follow/unfollow. Nothing to act on: no menu."""
         from .screens.context_menu import ContextMenu, album_option, artist_option, track_options
-        from .screens.queue import QueueTrackRow
 
         focused = self.focused
         if focused is None:
@@ -1375,7 +1374,9 @@ class QobitApp(App[None]):
             options = []
             if track is not None:
                 fav = str(track.id) in await self.ensure_favorite_ids()
-                options += track_options(favorite=fav, in_queue=isinstance(row, QueueTrackRow))
+                options += track_options(
+                    favorite=fav, in_queue=getattr(row, "role", None) == "next"
+                )
             if album is not None:
                 fav_albums = await self.ensure_favorite_albums()
                 options.append(album_option(any(a.id == album.id for a in fav_albums)))

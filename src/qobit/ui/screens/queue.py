@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
-from typing import TYPE_CHECKING
+from collections import defaultdict, deque
+from typing import TYPE_CHECKING, Literal
 
 from rich.text import Text
 from textual import on, work
@@ -39,7 +41,8 @@ class SectionHeader(ListItem):
     """A non-selectable, full-width divider labelling a queue section.
 
     The rule spans the list width (recomputed on resize) with the title on the
-    left and an optional count on the right: ``── Up Next ──────── 35 ──``."""
+    left and an optional count on the right: ``── Up Next ──────── 35 ──``.
+    ``set_count`` updates it in place (the list is reconciled, not rebuilt)."""
 
     DEFAULT_CSS = """
     SectionHeader { height: 1; padding: 0 1; background: $surface; }
@@ -54,26 +57,32 @@ class SectionHeader(ListItem):
 
     def __init__(self, title: str, count: int | None = None, spaced: bool = False) -> None:
         super().__init__(disabled=True)
-        self._title = title
+        self.section = title
         self._count = count
-        if spaced:
-            self.add_class("-spaced")
+        self._width = self._INITIAL_WIDTH_GUESS
+        self.set_class(spaced, "-spaced")
 
     def compose(self) -> ComposeResult:
-        yield Label(self._line(self._INITIAL_WIDTH_GUESS))
+        yield Label(self._line(self._width))
 
     def on_resize(self, event: Resize) -> None:
         # event.size is the border-box width; subtract our own horizontal padding
         # to get the Label's actual content width.
         pad = self.styles.padding.left + self.styles.padding.right
-        self.query_one(Label).update(self._line(event.size.width - pad))
+        self._width = event.size.width - pad
+        self.query_one(Label).update(self._line(self._width))
+
+    def set_count(self, count: int, spaced: bool) -> None:
+        self.set_class(spaced, "-spaced")
+        if count == self._count:
+            return
+        self._count = count
+        with contextlib.suppress(NoMatches):
+            self.query_one(Label).update(self._line(self._width))
 
     def _line(self, width: int) -> Text:
-        # Double rule + uppercase — the timeline reads as a console readout,
-        # distinct from the single-line rules used for plain list dividers
-        # elsewhere (there are none elsewhere; this is the only divider in
-        # the app, which is exactly why it gets the distinct treatment).
-        left = f"── {self._title.upper()} "
+        # Uppercase rule: the timeline reads as a console readout.
+        left = f"── {self.section.upper()} "
         right = f" {self._count} ──" if self._count is not None else "──"
         # `width` is the Label's content width; -1 leaves slack for the list's
         # scrollbar gutter so the rule never wraps onto a second line.
@@ -81,90 +90,80 @@ class SectionHeader(ListItem):
         return Text(left + "─" * fill + right, no_wrap=True, overflow="crop")
 
 
-class QueueTrackRow(ListItem):
+Role = Literal["history", "now", "next"]
+
+
+class TimelineRow(ListItem):
+    """One track of the Playback timeline. Its ``role`` says where it sits:
+    ``history`` (Recently Played, muted ``↺``), ``now`` (accent, ▶/⏸) or
+    ``next`` (Up Next, numbered). ``configure`` changes role, number, heart
+    and pause state in place, so when a track ends the same row just moves
+    from Up Next to now to history instead of the list being rebuilt."""
+
     DEFAULT_CSS = """
-    QueueTrackRow { height: 2; padding: 0 1; }
-    QueueTrackRow Label { width: 1fr; }
-    QueueTrackRow .row-title { text-style: bold; }
-    QueueTrackRow .row-meta { color: $text-muted; }
+    TimelineRow { height: 2; padding: 0 1; }
+    TimelineRow Label { width: 1fr; }
+    TimelineRow.-next .row-title { text-style: bold; }
+    TimelineRow.-next .row-meta { color: $text-muted; }
+    TimelineRow.-history .row-title { color: $text-muted; }
+    TimelineRow.-history .row-meta { color: $text-muted 60%; }
+    TimelineRow.-now { background: $accent 8%; }
+    TimelineRow.-now .row-title { text-style: bold; color: $accent; }
+    TimelineRow.-now .row-meta { color: $accent 60%; }
     """
 
-    def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
+    role: Role | None = None  # set by the first configure()
+    timeline_index: int = 0
+
+    def __init__(self, track: Track) -> None:
         super().__init__()
         self.track = track
-        self._number = number
-        self._favorite = favorite
+        self._number = 0
+        self._favorite = False
+        self._is_paused = False
+
+    def configure(
+        self,
+        role: Role,
+        *,
+        timeline_index: int,
+        number: int = 0,
+        favorite: bool = False,
+        paused: bool = False,
+    ) -> None:
+        self.timeline_index = timeline_index
+        if (role, number, favorite, paused) == (
+            self.role,
+            self._number,
+            self._favorite,
+            self._is_paused,
+        ):
+            return
+        for r in ("history", "now", "next"):
+            self.set_class(r == role, f"-{r}")
+        self.role, self._number, self._favorite, self._is_paused = (
+            role,
+            number,
+            favorite,
+            paused,
+        )
+        self._refresh_title()
 
     def _primary(self) -> Content:
         t = self.track
-        heart = heart_suffix(self._favorite)
+        lead = {
+            "history": "↺",
+            "now": "⏸" if self._is_paused else "▶",
+            "next": f"{self._number}.",
+        }[self.role]
         text = f"{t.artist} — {t.display_title}"
-        return playing_content(f"{self._number}.", text, False, False, heart, width=_GUTTER)
+        return playing_content(
+            lead, text, False, False, heart_suffix(self._favorite), width=_GUTTER
+        )
 
-    def compose(self) -> ComposeResult:
-        yield Label(self._primary(), classes="row-title")
-        yield Label(_meta(self.track), classes="row-meta", markup=False)
-
-    def set_favorite(self, favorite: bool) -> None:
-        self._favorite = favorite
-        self.query_one(".row-title", Label).update(self._primary())
-
-
-class HistoryTrackRow(ListItem):
-    """A previously-played track. Muted; selecting it replays the track without
-    disturbing the Up Next queue."""
-
-    DEFAULT_CSS = """
-    HistoryTrackRow { height: 2; padding: 0 1; }
-    HistoryTrackRow Label { width: 1fr; }
-    HistoryTrackRow .row-title { color: $text-muted; }
-    HistoryTrackRow .row-meta { color: $text-muted 60%; }
-    """
-
-    def __init__(self, track: Track, favorite: bool = False) -> None:
-        super().__init__()
-        self.track = track
-        self._favorite = favorite
-
-    def _primary(self) -> Content:
-        t = self.track
-        heart = heart_suffix(self._favorite)
-        text = f"{t.artist} — {t.display_title}"
-        return playing_content("↺", text, False, False, heart, width=_GUTTER)
-
-    def compose(self) -> ComposeResult:
-        yield Label(self._primary(), classes="row-title")
-        yield Label(_meta(self.track), classes="row-meta", markup=False)
-
-    def set_favorite(self, favorite: bool) -> None:
-        self._favorite = favorite
-        self.query_one(".row-title", Label).update(self._primary())
-
-
-class NowPlayingListRow(ListItem):
-    """The currently-playing track shown in the left timeline, at the tail of the
-    Recently Played region — the 'now' point flowing from history into Up Next.
-    Accent-styled with a live ▶/⏸ icon; favourite-able via the list's ``f``."""
-
-    DEFAULT_CSS = """
-    NowPlayingListRow { height: 2; padding: 0 1; background: $accent 8%; }
-    NowPlayingListRow Label { width: 1fr; }
-    NowPlayingListRow .row-title { text-style: bold; color: $accent; }
-    NowPlayingListRow .row-meta { color: $accent 60%; }
-    """
-
-    def __init__(self, track: Track, is_paused: bool = False, favorite: bool = False) -> None:
-        super().__init__()
-        self.track = track
-        self._is_paused = is_paused
-        self._favorite = favorite
-
-    def _primary(self) -> Content:
-        t = self.track
-        icon = "⏸" if self._is_paused else "▶"
-        heart = heart_suffix(self._favorite)
-        text = f"{t.artist} — {t.display_title}"
-        return playing_content(icon, text, False, False, heart, width=_GUTTER)
+    def _refresh_title(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.query_one(".row-title", Label).update(self._primary())
 
     def compose(self) -> ComposeResult:
         yield Label(self._primary(), classes="row-title")
@@ -172,11 +171,11 @@ class NowPlayingListRow(ListItem):
 
     def set_paused(self, paused: bool) -> None:
         self._is_paused = paused
-        self.query_one(".row-title", Label).update(self._primary())
+        self._refresh_title()
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
-        self.query_one(".row-title", Label).update(self._primary())
+        self._refresh_title()
 
 
 class NowPlayingHero(Widget):
@@ -393,6 +392,8 @@ class QueueView(Widget):
     """
 
     _render_version: int = 0
+    _refresh_lock: asyncio.Lock | None = None
+    _empty_item: ListItem | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="queue-body"):
@@ -423,8 +424,9 @@ class QueueView(Widget):
 
     def _on_paused_changed(self, paused: bool) -> None:
         # Flip the now-playing row's ▶/⏸ icon in place (no list re-render).
-        with contextlib.suppress(NoMatches):
-            self.query_one(NowPlayingListRow).set_paused(paused)
+        for row in self.query(TimelineRow):
+            if row.role == "now":
+                row.set_paused(paused)
 
     def action_clear_queue(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
@@ -436,78 +438,95 @@ class QueueView(Widget):
 
     @work
     async def _refresh_list(self, version: int) -> None:
-        if version != self._render_version:
-            return
-        app: QobitApp = self.app  # type: ignore[assignment]
+        # One reconcile at a time: each reads the list as the previous one left
+        # it. A request overtaken by a newer one (bursts of queue_version
+        # bumps) skips straight to the newest.
+        if self._refresh_lock is None:
+            self._refresh_lock = asyncio.Lock()
+        async with self._refresh_lock:
+            if version != self._render_version:
+                return
+            app: QobitApp = self.app  # type: ignore[assignment]
+            fav_ids = await app.ensure_favorite_ids()
+            if version != self._render_version:
+                return
+            await self._reconcile(app, fav_ids)
 
-        # Snapshot state and resolve async data while the list is still visible.
+    async def _reconcile(self, app: QobitApp, fav_ids: set[str]) -> None:
+        """Bring the list in line with the timeline without clearing it.
+
+        Rows are matched to tracks (by track id, in order, so repeats work),
+        reconfigured in place and moved only when out of order; only tracks
+        that are new get mounted and only rows that left get removed. When a
+        track ends, that is one row moving and three rows changing role,
+        instead of the whole list being remounted (which flickered and reset
+        the scroll position)."""
+        lv = self.query_one("#queue-list", ListView)
         now_playing = app.now_playing
         history = list(app._history)
         queue = list(app._play_queue)
-        fav_ids = await app.ensure_favorite_ids()
-        if version != self._render_version:
-            return
 
-        lv = self.query_one("#queue-list", ListView)
-        # Only the list should re-grab focus after a rebuild — and only if it
-        # already had it. Otherwise a refresh triggered by favouriting the
-        # now-playing track (f on the hero) would yank focus off the hero.
-        # Tab-entry focus is handled separately by activate().
-        keep_focus = self.app.focused is lv
-        # Where the user was: a row other than the playing one keeps the
-        # cursor after the rebuild (the track ending shouldn't lose your place
-        # in Up Next); on the playing row, or nowhere, it follows playback.
+        # Where the user was: a row other than the playing one keeps the cursor
+        # (a track ending shouldn't lose your place in Up Next); on the playing
+        # row, or nowhere, it follows playback.
         held = lv.highlighted_child
-        held_track = (
-            getattr(held, "track", None) if not isinstance(held, NowPlayingListRow) else None
-        )
-        await lv.clear()
-        if version != self._render_version:
-            return
+        follow = not isinstance(held, TimelineRow) or held.role == "now"
+        first_render = not any(isinstance(c, TimelineRow) for c in lv.children)
 
-        items: list[ListItem] = []
-        now_idx: int | None = None
+        pool: defaultdict[str, deque[TimelineRow]] = defaultdict(deque)
+        headers: dict[str, SectionHeader] = {}
+        for child in lv.children:
+            if isinstance(child, TimelineRow):
+                pool[str(child.track.id)].append(child)
+            elif isinstance(child, SectionHeader):
+                headers[child.section] = child
 
-        # The rendered track rows are exactly the app's timeline in order
-        # (history → now-playing → up-next), so a running counter over track
-        # rows is each row's timeline index. Selecting a row jumps the cursor
-        # there (see _on_queue_selected), which is why nothing is dropped when
-        # skipping around.
-        ti = 0
-
-        def _tag(row: ListItem) -> ListItem:
-            nonlocal ti
-            row.timeline_index = ti  # type: ignore[attr-defined]
-            ti += 1
+        def row_for(t: Track) -> TimelineRow:
+            rows = pool.get(str(t.id))
+            row = rows.popleft() if rows else TimelineRow(t)
+            row.track = t  # Connect mirrors rebuild Track objects: keep the newest
             return row
 
-        # Recently Played region: history, then the now-playing track as its tail
-        # (no separate section — it's the 'now' point of the timeline).
+        desired: list[ListItem] = []
+        ti = 0  # timeline index: history, then now, then Up Next, in order
+        now_row: TimelineRow | None = None
         if history:
-            items.append(SectionHeader("Recently Played", count=len(history)))
-            items.extend(_tag(HistoryTrackRow(t, str(t.id) in fav_ids)) for t in history)
+            header = headers.get("Recently Played") or SectionHeader("Recently Played")
+            header.set_count(len(history), spaced=False)
+            desired.append(header)
+            for t in history:
+                row = row_for(t)
+                row.configure("history", timeline_index=ti, favorite=str(t.id) in fav_ids)
+                desired.append(row)
+                ti += 1
         if now_playing:
-            now_idx = len(items)
-            items.append(
-                _tag(NowPlayingListRow(now_playing, app.is_paused, str(now_playing.id) in fav_ids))
+            now_row = row_for(now_playing)
+            now_row.configure(
+                "now",
+                timeline_index=ti,
+                favorite=str(now_playing.id) in fav_ids,
+                paused=app.is_paused,
             )
-
+            desired.append(now_row)
+            ti += 1
         if queue:
-            items.append(
-                SectionHeader("Up Next", count=len(queue), spaced=bool(history or now_playing))
-            )
-            items.extend(
-                _tag(QueueTrackRow(t, i, str(t.id) in fav_ids)) for i, t in enumerate(queue, 1)
-            )
+            header = headers.get("Up Next") or SectionHeader("Up Next")
+            header.set_count(len(queue), spaced=bool(history or now_playing))
+            desired.append(header)
+            for n, t in enumerate(queue, 1):
+                row = row_for(t)
+                row.configure("next", timeline_index=ti, number=n, favorite=str(t.id) in fav_ids)
+                desired.append(row)
+                ti += 1
+        if not desired:
+            if self._empty_item is None or not self._empty_item.is_attached:
+                self._empty_item = ListItem(
+                    status_line("Queue is empty. Pick a track anywhere and press Enter.")
+                )
+            desired.append(self._empty_item)
 
-        if not items:
-            await lv.append(
-                ListItem(status_line("Queue is empty. Pick a track anywhere and press Enter."))
-            )
-            lv.border_subtitle = ""
-            return
+        await self._apply(lv, desired)
 
-        await lv.mount(*items)
         parts: list[str] = []
         if history:
             parts.append(f"{len(history)} played")
@@ -515,26 +534,59 @@ class QueueView(Widget):
             parts.append(f"{len(queue)} queued")
         lv.border_subtitle = "  ·  ".join(parts)
 
-        # Back on the row the user held, if it's still there.
-        held_idx = next(
-            (
-                i
-                for i, row in enumerate(items)
-                if held_track is not None and getattr(row, "track", None) is held_track
-            ),
-            None,
-        )
-        if held_idx is not None:
-            lv.index = held_idx
-        # Else park the cursor on the now-playing row (PageUp walks into
-        # history, PageDown down the queue) and centre it.
-        elif now_idx is not None:
-            lv.index = now_idx
-            self.call_after_refresh(
-                lambda: lv.scroll_to_widget(items[now_idx], animate=False, center=True)
-            )
-        if self.display and keep_focus:
-            self.call_after_refresh(lv.focus)
+        target = now_row if follow or held not in desired else held
+        self._place_cursor(lv, target, center=first_render)
+
+    @staticmethod
+    async def _apply(lv: ListView, desired: list[ListItem]) -> None:
+        """Make ``lv``'s children exactly ``desired``: walk it in order, moving
+        rows already mounted, mounting runs of new ones in one call, and
+        removing what's left over at the end (so nothing disappears before
+        its replacement is in place)."""
+        current = list(lv.children)
+        mounted = {id(w) for w in current}
+        k = 0
+        while k < len(desired):
+            w = desired[k]
+            if k < len(current) and current[k] is w:
+                k += 1
+                continue
+            if id(w) in mounted:
+                lv.move_child(w, before=current[k])
+                current.remove(w)
+                current.insert(k, w)
+                k += 1
+                continue
+            run = []
+            j = k
+            while j < len(desired) and id(desired[j]) not in mounted:
+                run.append(desired[j])
+                j += 1
+            if k < len(current):
+                await lv.mount(*run, before=current[k])
+            else:
+                await lv.mount(*run)
+            current[k:k] = run
+            mounted.update(id(w) for w in run)
+            k = j
+        if stale := current[len(desired) :]:
+            await lv.remove_children(stale)
+
+    def _place_cursor(self, lv: ListView, target: ListItem | None, center: bool) -> None:
+        # Rows moved under a numeric index: drop any highlight left on the
+        # wrong row, then point the index at the target (re-set even when the
+        # number is unchanged, so the right row gets highlighted).
+        for child in lv.children:
+            if isinstance(child, ListItem) and child is not target:
+                child.highlighted = False
+        if target is None or target not in lv.children:
+            return
+        idx = list(lv.children).index(target)
+        if lv.index == idx:
+            lv.index = None
+        lv.index = idx
+        if center:  # first fill: put the playing track mid-list
+            self.call_after_refresh(lambda: lv.scroll_to_widget(target, animate=False, center=True))
 
     @on(ListView.Selected, "#queue-list")
     def _on_queue_selected(self, event: ListView.Selected) -> None:

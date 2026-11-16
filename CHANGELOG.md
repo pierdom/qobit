@@ -26,6 +26,9 @@ release from this entry.
   separators are `  ·  ` throughout.
 - Album and playlist panels are titled "Album" / "Playlist" instead of repeating
   the name shown right below.
+- The Playback list updates in place when a track ends or the queue changes,
+  instead of being cleared and rebuilt: no flicker, and the scroll position
+  stays.
 - Empty, loading and error states look the same in every tab; tabs show
   "loading…" while they fetch.
 
