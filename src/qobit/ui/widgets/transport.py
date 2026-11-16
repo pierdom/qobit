@@ -50,7 +50,7 @@ class _TransportContent(Widget):
             line1 = Text(self.label, no_wrap=True, overflow="ellipsis", style="bold")
         else:
             line1 = Text(
-                "No media playing  ·  search above and press Enter",
+                "Nothing playing  ·  Enter on any track plays it",
                 style="dim",
                 no_wrap=True,
             )

@@ -21,10 +21,18 @@ from textual_image.widget import TGPImage
 from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
-from .._now_playing import NowPlayingRowMixin, heart_suffix, playing_content
+from .._now_playing import (
+    GUTTER_ICON,
+    GUTTER_NUM,
+    NowPlayingRowMixin,
+    heart_suffix,
+    meta_indent,
+    playing_content,
+)
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
+from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -67,14 +75,23 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        prefix = f"{self._number}." if self._number else "♪"  # numbered lists: no ♪
-        text = f"{prefix}  {t.display_title}"
-        return playing_content(text, self._is_playing, self._is_paused, heart)
+        lead = f"{self._number}." if self._number else ICON_TRACK  # numbered lists: no ♪
+        return playing_content(
+            lead, t.display_title, self._is_playing, self._is_paused, heart, width=self._width
+        )
+
+    @property
+    def _width(self) -> int:
+        return GUTTER_NUM if self._number else GUTTER_ICON
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(
+            f"{meta_indent(self._width)}{t.album}  ·  {t.duration_str}",
+            classes="row-meta",
+            markup=False,
+        )
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -1168,7 +1185,7 @@ class ArtistScreen(Screen):
         self._album_view_active = False
 
     def compose(self) -> ComposeResult:
-        yield Label(f"← {self._source}", id="breadcrumb")
+        yield Label(f"← {self._source}", id="breadcrumb", markup=False)
         yield ArtistHeader(similar=True)
         with ContentSwitcher(initial="artist-view", id="main-content"):
             with Vertical(id="artist-view"):

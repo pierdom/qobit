@@ -16,12 +16,18 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist, Track
 from .._images import fetch_image
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
+from .._now_playing import (
+    GUTTER_NUM_LONG,
+    NowPlayingRowMixin,
+    NowPlayingViewMixin,
+    heart_suffix,
+    meta_indent,
+    playing_content,
+)
 from .._utils import DETAIL_HEADER_CSS, strip_html
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .artist_detail import _set_art_width
-from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -44,16 +50,25 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        if self._is_playing:
-            text = f"{self._number:3}.  {t.artist} — {t.display_title}"
-        else:
-            text = f"{self._number:3}. {ICON_TRACK}  {t.artist} — {t.display_title}"
-        return playing_content(text, self._is_playing, self._is_paused, heart)
+        # Numbered list: the number only, no ♪ (like the album tracklist).
+        text = f"{t.artist} — {t.display_title}"
+        return playing_content(
+            f"{self._number}.",
+            text,
+            self._is_playing,
+            self._is_paused,
+            heart,
+            width=GUTTER_NUM_LONG,
+        )
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"        {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(
+            f"{meta_indent(GUTTER_NUM_LONG)}{t.album}  ·  {t.duration_str}",
+            classes="row-meta",
+            markup=False,
+        )
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -115,7 +130,8 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         _set_art_width(self.query_one(".detail-art", TGPImage), 14)
-        self.query_one("#playlist-panel").border_title = "Loading…"
+        self.query_one("#playlist-panel").border_title = "Playlist"
+        self.query_one("#playlist-panel").border_subtitle = "loading…"
         self._wire_now_playing(PlaylistTrackRow, ".detail-tracklist")
         self._load()
 
@@ -127,8 +143,8 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         except Exception as e:
             if self.is_attached:
                 try:
-                    self.query_one("#playlist-panel").border_title = "Error"
-                    self.query_one(".detail-title", Label).update(f"[red]{escape(str(e))}[/red]")
+                    self.query_one("#playlist-panel").border_title = "Playlist"
+                    self.query_one(".detail-title", Label).update(f"[$error]{escape(str(e))}[/]")
                 except NoMatches:
                     pass
             return
@@ -138,7 +154,8 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
 
         try:
             panel = self.query_one("#playlist-panel")
-            panel.border_title = escape(playlist.name)
+            panel.border_subtitle = ""
+            panel.border_title = "Playlist"  # the name is in bold right below
 
             self.query_one(".detail-title", Label).update(escape(playlist.name))
 
@@ -147,7 +164,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
                 sub_parts.append(playlist.duration_str)
             if playlist.date_str:
                 sub_parts.append(playlist.date_str)
-            self.query_one(".detail-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+            self.query_one(".detail-sub", Label).update(f"[dim]{'  ·  '.join(sub_parts)}[/dim]")
 
             if playlist.description:
                 cleaned = escape(strip_html(playlist.description))

@@ -16,6 +16,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist
 from .._images import fetch_image
+from .._utils import status_line
 from .artist_detail import GRID_CARD_IMG_H, LIBRARY_TILE_MIN_W, _GridNav, _set_art_width
 
 if TYPE_CHECKING:
@@ -261,6 +262,9 @@ class PlaylistsView(Widget):
 
     # ── filter ───────────────────────────────────────────────────────────────
 
+    def can_navigate_back(self) -> bool:
+        return self._filter_active or bool(self._filter_query)
+
     def action_navigate_back(self) -> bool:
         if self._filter_active or self._filter_query:
             self._filter_active = False
@@ -273,6 +277,7 @@ class PlaylistsView(Widget):
     def action_start_filter(self) -> None:
         self._filter_active = True
         self._update_subtitle()
+        self.refresh_bindings()
 
     def on_key(self, event: events.Key) -> None:
         if not self._filter_active:
@@ -364,8 +369,8 @@ class PlaylistsView(Widget):
         if version != self._render_version:
             return
         if not playlists:
-            msg = "[dim]No matches.[/dim]" if self._filter_query else "[dim]No playlists yet.[/dim]"
-            await grid.mount(Label(msg, markup=True))
+            msg = "No matches." if self._filter_query else "No playlists yet."
+            await grid.mount(status_line(msg))
             return
         await grid.set_cards([PlaylistCard(p) for p in playlists])
 
@@ -373,10 +378,12 @@ class PlaylistsView(Widget):
     async def _load(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
+        grid.border_subtitle = "loading…"
         try:
             items = await app._client.get_all_user_playlists()
         except Exception as e:
-            await grid.mount(Label(f"[red]{e}[/red]", markup=True))
+            grid.border_subtitle = ""
+            await grid.mount(status_line(str(e), error=True))
             return
         self._playlists = [Playlist.from_api(raw) for raw in items]
         self._update_subtitle()

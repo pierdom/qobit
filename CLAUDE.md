@@ -160,7 +160,13 @@ mounts the lazy backlog first. Albums/Artists/Playlists share
 it. The Playback tab's id is `queue`. On activation the app calls the view's
 `activate()` (first load + focus); don't rely on `on_show` (Textual stopped
 sending Show after End on a long list). Views implement `action_navigate_back()
--> bool` for Escape (True = consumed).
+-> bool` for Escape (True = consumed) and `can_navigate_back()`: Escape has two
+app bindings, a footer-visible `back` that `App.check_action` enables only when
+something can go back, then the hidden `focus_tabs` it falls through to (a
+disabled action passes the key to the next binding; `-`/`=` use the same trick
+for the software-volume hint). Views hide keys that don't apply with
+`check_action` returning False (Sort/Filter while a detail view is open) and
+call `refresh_bindings()` when that state changes without a focus change.
 
 **The `i` menu** is one app binding (`action_track_menu`, a worker). From the
 focused widget it collects a track (a list row's `.track`), an album (a grid's
@@ -217,8 +223,19 @@ whenever a track is loaded (`-has-track`), not only while playing.
 `_flash_status()` for transient notices (auto-clears after ~3 s).
 
 **Labels.** Track rows build text with `Content.assemble(...)`, not markup
-(titles with `[`/`]` break markup); `heart_suffix()` is the only place the ♥
-part is built.
+(titles with `[`/`]` break markup); any Label fed API text (album, artist,
+breadcrumb, bio) is `markup=False`. `heart_suffix()` is the only place the ♥
+part is built. Row titles go through `playing_content(lead, text, …, width=)`:
+a fixed gutter (`GUTTER_ICON`/`GUTTER_NUM`/`GUTTER_NUM_LONG`) where ▶/⏸
+replaces the lead, and `meta_indent(width)` for the second line, one width per
+list (the Playback timeline uses `GUTTER_NUM` for all its rows). `.row-title`
+and `.row-meta` never wrap (ellipsis, in `QobitApp.CSS`). Empty and failed
+lists/grids use `_utils.status_line()`; a loading tab sets its border subtitle
+to `loading…`. Resolution is `models.quality_text()` (`24-BIT · 96 kHz`).
+
+**Cursor follows playback** only if it was on the playing row (or nowhere):
+`NowPlayingViewMixin` and the Playback list's rebuild keep a cursor the user
+moved.
 
 **Visual rules** (check every UI change on a rendered screenshot, never on
 computed styles: they misled three times):

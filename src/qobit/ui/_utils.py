@@ -48,3 +48,14 @@ DETAIL_HEADER_CSS = """
     border-top: round $accent 40%;
 }
 """
+
+
+def status_line(text: str, *, error: bool = False, id: str | None = None):  # -> Label
+    """The one look for an empty or failed list/grid: a muted line (``$error``
+    for failures; styled in QobitApp.CSS). Plain text, never markup: an
+    exception message or a search query may contain ``[``."""
+    from textual.widgets import Label
+
+    return Label(
+        text, classes="status-line -error" if error else "status-line", id=id, markup=False
+    )

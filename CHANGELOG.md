@@ -7,6 +7,33 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [Unreleased]
+
+### Changed
+
+- Track rows line up: the title and the album line start in the same column
+  in every list, and the playing row's ▶/⏸ takes the place of its number or
+  `♪` instead of pushing the row to the right.
+- Long album names end in `…` instead of wrapping onto the next row.
+- The footer shows only the keys that apply: `esc Back` when there's somewhere
+  to go back to, no Sort/Filter while an album or artist is open, and `-`/`=`
+  only once software volume is turned on.
+- When a track ends, a list's cursor follows playback only if it was on the
+  playing track, so browsing a list (or Up Next) no longer loses your place.
+- The Now Playing panel shows the stream's resolution, and its lines no longer
+  wrap.
+- Resolution is written the same way everywhere (`24-BIT · 96 kHz`), and
+  separators are `  ·  ` throughout.
+- Album and playlist panels are titled "Album" / "Playlist" instead of repeating
+  the name shown right below.
+- Empty, loading and error states look the same in every tab; tabs show
+  "loading…" while they fetch.
+
+### Fixed
+
+- Album names, artist names and titles containing `[…]` lost that part (it was
+  read as markup) in list rows, breadcrumbs and the Now Playing panel.
+
 ## [0.6.0] - 2026-11-15
 
 ### Added

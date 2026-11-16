@@ -11,6 +11,7 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Label
 
 from ...qobuz.models import Album, Artist
+from .._utils import status_line
 from .album_detail import AlbumDetailPanel
 from .artist_detail import (
     LIBRARY_TILE_MIN_W,
@@ -128,7 +129,7 @@ class ArtistsView(Widget):
                         yield ArtistTracks()
                         yield ArtistReleases("artist-albums-grid")
                     with Vertical(id="artist-album-detail-view"):
-                        yield Label("", id="album-breadcrumb")
+                        yield Label("", id="album-breadcrumb", markup=False)
                         yield AlbumDetailPanel(id="album-panel")
 
     def on_mount(self) -> None:
@@ -164,6 +165,15 @@ class ArtistsView(Widget):
 
     # ── filter ───────────────────────────────────────────────────────────────
 
+    def can_navigate_back(self) -> bool:
+        return self._view != "grid" or self._filter_active or bool(self._filter_query)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        # Sort and filter act on the grid: hide them on an artist or album page.
+        if action in ("cycle_sort", "toggle_reverse", "start_filter"):
+            return self._view == "grid"
+        return True
+
     def action_navigate_back(self) -> bool:
         if self._view == "album":
             self._show_artist_content()
@@ -184,6 +194,7 @@ class ArtistsView(Widget):
             return
         self._filter_active = True
         self._update_subtitle()
+        self.refresh_bindings()
 
     def on_key(self, event: events.Key) -> None:
         if not self._filter_active or self._view != "grid":
@@ -263,7 +274,7 @@ class ArtistsView(Widget):
     def _set_empty(self, grid: ArtistGrid, show: bool) -> None:
         existing = list(grid.query("#grid-empty"))
         if show and not existing:
-            grid.mount(Label("[dim]No matches.[/dim]", id="grid-empty", markup=True))
+            grid.mount(status_line("No matches.", id="grid-empty"))
         elif not show and existing:
             existing[0].remove()
 
@@ -285,7 +296,7 @@ class ArtistsView(Widget):
         if version != self._render_version:
             return
         if not artists:
-            await grid.mount(Label("[dim]No favourite artists yet.[/dim]", markup=True))
+            await grid.mount(status_line("No favourite artists yet."))
             return
         await grid.set_cards([ArtistCard(a) for a in artists])
         self._apply_filter()
@@ -294,10 +305,12 @@ class ArtistsView(Widget):
     async def _load(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
+        grid.border_subtitle = "loading…"
         try:
             self._artists = list(await app.ensure_favorite_artists())
         except Exception as e:
-            await grid.mount(Label(f"[red]{e}[/red]", markup=True))
+            grid.border_subtitle = ""
+            await grid.mount(status_line(str(e), error=True))
             return
         self._update_subtitle()
         self._render_grid()

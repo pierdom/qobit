@@ -6,19 +6,44 @@ from textual.content import Content
 from textual.css.query import NoMatches
 from textual.widgets import Label, ListView
 
+# Every track row is a fixed-width gutter, then the text: ``  ♪  title`` or
+# `` 12.  title``, with the second (meta) line indented to the text column.
+# The gutter holds the row's lead mark (♪, ↺ or its number) right-aligned in
+# ``width`` cells; on the playing row ▶/⏸ takes the lead's place, so nothing
+# shifts. Lists pick one width for all their rows so the columns line up.
+GUTTER_ICON = 1  # ♪ / ↺ lists
+GUTTER_NUM = 3  # numbered lists up to 99 (" 1." … "99.")
+GUTTER_NUM_LONG = 4  # playlists (up to "999.")
+_GUTTER_GAP = "  "
+
+
+def gutter(lead: str, width: int) -> str:
+    """The lead cell of a row: ``lead`` right-aligned in ``width``, then the gap."""
+    return f"{lead:>{width}}{_GUTTER_GAP}"
+
+
+def meta_indent(width: int) -> str:
+    """Indent for a row's second line, so it starts under the title text."""
+    return " " * (width + len(_GUTTER_GAP))
+
 
 def playing_content(
-    text: str, is_playing: bool, is_paused: bool, *suffix: tuple[str, str] | str
+    lead: str,
+    text: str,
+    is_playing: bool,
+    is_paused: bool,
+    *suffix: tuple[str, str] | str,
+    width: int = GUTTER_ICON,
 ) -> Content:
-    """Assemble a Content for a track-row primary label.
+    """Assemble a track row's primary label: gutter + text + ``suffix`` parts.
 
-    When is_playing, prepends ▶/⏸ in accent colour and wraps text in accent.
-    suffix elements are forwarded to Content.assemble (e.g. a heart-icon tuple).
+    On the playing row ▶/⏸ replaces ``lead`` in the gutter and the text turns
+    accent. ``suffix`` parts go to Content.assemble (e.g. ``heart_suffix``).
     """
     if is_playing:
         icon = "⏸" if is_paused else "▶"
-        return Content.assemble((f"{icon}  {text}", "$accent"), *suffix)
-    return Content.assemble(text, *suffix)
+        return Content.assemble((gutter(icon, width) + text, "$accent"), *suffix)
+    return Content.assemble(gutter(lead, width) + text, *suffix)
 
 
 def heart_suffix(favorite: bool, pad: str = "  ") -> tuple[str, str] | str:
@@ -77,6 +102,14 @@ class NowPlayingViewMixin:
 
         # O(1): clear the previously-playing row via stored reference.
         prev = self._np_playing_row
+        # The cursor follows playback only if it was on the playing row (or
+        # nowhere): moving it on every track change lost your place while
+        # browsing a list that's playing.
+        follow = True
+        if self._np_list_sel is not None:
+            with contextlib.suppress(NoMatches):
+                lv = self.query_one(self._np_list_sel, ListView)  # type: ignore[attr-defined]
+                follow = lv.index is None or lv.highlighted_child is prev
         if prev is not None:
             with contextlib.suppress(Exception):
                 prev.set_playing(False)  # type: ignore[attr-defined]
@@ -97,7 +130,7 @@ class NowPlayingViewMixin:
                     if isinstance(row, self._np_row_cls) and row.track.id == now_id:
                         row.set_playing(True, paused=paused)
                         self._np_playing_row = row
-                        if idx < len(lv.children):
+                        if follow and idx < len(lv.children):
                             lv.index = idx
                         break
                 return

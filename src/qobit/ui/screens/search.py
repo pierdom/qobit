@@ -12,7 +12,16 @@ from textual.widgets import Input, Label, ListItem, ListView
 
 from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Playlist, Track
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
+from .._now_playing import (
+    GUTTER_ICON,
+    NowPlayingRowMixin,
+    NowPlayingViewMixin,
+    gutter,
+    heart_suffix,
+    meta_indent,
+    playing_content,
+)
+from .._utils import status_line
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
@@ -44,16 +53,17 @@ class TrackItem(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        if self._is_playing:
-            text = f"{t.artist} — {t.display_title}"
-        else:
-            text = f"{ICON_TRACK}  {t.artist} — {t.display_title}"
-        return playing_content(text, self._is_playing, self._is_paused, heart)
+        text = f"{t.artist} — {t.display_title}"
+        return playing_content(ICON_TRACK, text, self._is_playing, self._is_paused, heart)
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(
+            f"{meta_indent(GUTTER_ICON)}{t.album}  ·  {t.duration_str}",
+            classes="row-meta",
+            markup=False,
+        )
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -75,8 +85,12 @@ class AlbumItem(ListItem):
     def compose(self) -> ComposeResult:
         a = self.album
         year = str(a.year) if a.year else "—"
-        yield Label(f"{ICON_ALBUM}  {a.title}", classes="row-title")
-        yield Label(f"     {a.artist}  ·  {year}  ·  {a.tracks_count} tracks", classes="row-meta")
+        yield Label(gutter(ICON_ALBUM, GUTTER_ICON) + a.title, classes="row-title", markup=False)
+        yield Label(
+            f"{meta_indent(GUTTER_ICON)}{a.artist}  ·  {year}  ·  {a.tracks_count} tracks",
+            classes="row-meta",
+            markup=False,
+        )
 
 
 class ArtistItem(ListItem):
@@ -95,8 +109,8 @@ class ArtistItem(ListItem):
         a = self.artist
         n = a.albums_count
         sub = f"{n} album{'' if n == 1 else 's'}" if n else ""
-        yield Label(f"{ICON_ARTIST}  {a.name}", classes="row-title")
-        yield Label(f"     {sub}", classes="row-meta")
+        yield Label(gutter(ICON_ARTIST, GUTTER_ICON) + a.name, classes="row-title", markup=False)
+        yield Label(f"{meta_indent(GUTTER_ICON)}{sub}", classes="row-meta", markup=False)
 
 
 class PlaylistItem(ListItem):
@@ -113,8 +127,12 @@ class PlaylistItem(ListItem):
 
     def compose(self) -> ComposeResult:
         p = self.playlist
-        yield Label(f"{ICON_PLAYLIST}  {p.name}", classes="row-title")
-        yield Label(f"     {p.owner}  ·  {p.tracks_count} tracks", classes="row-meta")
+        yield Label(gutter(ICON_PLAYLIST, GUTTER_ICON) + p.name, classes="row-title", markup=False)
+        yield Label(
+            f"{meta_indent(GUTTER_ICON)}{p.owner}  ·  {p.tracks_count} tracks",
+            classes="row-meta",
+            markup=False,
+        )
 
 
 # ── search view ───────────────────────────────────────────────────────────────
@@ -195,7 +213,7 @@ class SearchView(NowPlayingViewMixin, Widget):
                 return
             msg = str(e)
             await asyncio.gather(lv_artists.clear(), lv_tracks.clear(), lv_albums.clear())
-            await lv_artists.append(ListItem(Label(f"[red]{msg}[/red]", markup=True)))
+            await lv_artists.append(ListItem(status_line(msg, error=True)))
             lv_artists.focus()
             return
 
@@ -224,7 +242,7 @@ class SearchView(NowPlayingViewMixin, Widget):
         if first_non_empty is not None:
             first_non_empty.focus()
         else:
-            await lv_artists.append(ListItem(Label("[dim]No results.[/dim]", markup=True)))
+            await lv_artists.append(ListItem(status_line("No results.")))
             lv_artists.focus()
 
     @on(ListView.Selected)

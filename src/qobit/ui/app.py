@@ -259,6 +259,20 @@ class QobitApp(App[None]):
     ListItem.-highlight > Label {
         background: transparent;
     }
+    /* Empty and failed lists/grids (_utils.status_line): one look everywhere. */
+    .status-line {
+        width: 1fr;
+        padding: 0 1;
+        color: $text-muted;
+        text-style: italic;
+    }
+    .status-line.-error { color: $error; text-style: none; }
+    /* Row lines never wrap: a long album name wrapped into the next row's
+       space (or onto a stray third line). Cut it with an ellipsis instead. */
+    .row-title, .row-meta {
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
+    }
     /* Active-tab underline in the accent colour too (Textual draws it with
        $block-cursor-background, i.e. the theme's primary). */
     Tabs Underline > .underline--bar {
@@ -339,17 +353,23 @@ class QobitApp(App[None]):
         Binding("R", "start_radio", "Radio"),
         Binding("i", "track_menu", "Menu", show=False),
         Binding("g", "goto_menu", "Go to", show=False),
-        # No-op (with an explanatory flash) until software volume is turned on
-        # via the command palette — see action_toggle_software_volume.
+        # Software volume (off by default; see action_toggle_software_volume).
+        # The first pair shows in the footer only while it's on (check_action);
+        # while it's off the key falls through to the hidden second pair,
+        # which explains how to turn it on.
         Binding("minus", "volume_down", "Vol-"),
         Binding("equals_sign", "volume_up", "Vol+"),
+        Binding("minus,equals_sign", "volume_off_hint", show=False),
         # 1-7 match the tab bar's "[N]" labels (generated from _TABS); escape
         # brings focus to Tabs from anywhere.
         *[
             Binding(str(n), f"switch_tab('{tid}')", name, show=False)
             for n, (tid, name) in enumerate(_TABS, 1)
         ],
-        # priority=True so this fires even when an Input has focus
+        # priority=True so these fire even when an Input has focus. "Back"
+        # applies (and shows in the footer) only when there's somewhere to go
+        # back to; otherwise Escape falls through to focusing the tab bar.
+        Binding("escape", "back", "Back", priority=True),
         Binding("escape", "focus_tabs", "Nav", show=False, priority=True),
     ]
 
@@ -538,23 +558,43 @@ class QobitApp(App[None]):
     def action_switch_tab(self, tab_id: str) -> None:
         self.query_one("#nav-tabs", Tabs).active = tab_id
 
-    def action_focus_tabs(self) -> None:
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action in ("volume_down", "volume_up"):
+            return self.software_volume_enabled
+        if action == "back":
+            return self._can_go_back()
+        return True
+
+    def _active_view(self) -> Widget | None:
+        try:
+            cs = self.query_one(ContentSwitcher)
+            return self.query_one(f"#{cs.current}") if cs.current else None
+        except NoMatches:
+            return None
+
+    def _can_go_back(self) -> bool:
+        """A page or menu on top, or the active tab has a detail view open or
+        a filter set (each view's ``can_navigate_back``)."""
+        if len(self.screen_stack) > 1:
+            return True
+        view = self._active_view()
+        return bool(view is not None and getattr(view, "can_navigate_back", lambda: False)())
+
+    def action_back(self) -> None:
         if len(self.screen_stack) > 1:
             screen = self.screen
             if hasattr(screen, "action_navigate_back"):
                 screen.action_navigate_back()
             else:
                 self.pop_screen()
-        else:
-            cs = self.query_one(ContentSwitcher)
-            if cs.current:
-                try:
-                    active = self.query_one(f"#{cs.current}")
-                    if hasattr(active, "action_navigate_back") and active.action_navigate_back():
-                        return
-                except Exception:
-                    pass
-            self.query_one("#nav-tabs", Tabs).focus()
+            return
+        view = self._active_view()
+        if view is not None and hasattr(view, "action_navigate_back"):
+            view.action_navigate_back()
+        self.refresh_bindings()
+
+    def action_focus_tabs(self) -> None:
+        self.query_one("#nav-tabs", Tabs).focus()
 
     _hl_item: object = None
 
@@ -895,6 +935,7 @@ class QobitApp(App[None]):
             else:
                 self._player._volume = None
             self._flash_status("Software volume off — bit-perfect restored")
+        self.refresh_bindings()  # Vol-/Vol+ show in the footer only while on
 
     def action_volume_down(self) -> None:
         self._adjust_volume(-self._VOLUME_STEP)
@@ -902,9 +943,11 @@ class QobitApp(App[None]):
     def action_volume_up(self) -> None:
         self._adjust_volume(self._VOLUME_STEP)
 
+    def action_volume_off_hint(self) -> None:
+        self._flash_status("Software volume is off — turn it on from the command palette (^p)")
+
     def _adjust_volume(self, delta: int) -> None:
         if not self.software_volume_enabled:
-            self._flash_status("Software volume is off — turn it on from the command palette (^p)")
             return
         self.volume = max(0, min(100, self.volume + delta))
         set_saved_volume(self.volume)

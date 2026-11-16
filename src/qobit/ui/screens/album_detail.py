@@ -20,7 +20,13 @@ from textual_image.widget import TGPImage
 from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
+from .._now_playing import (
+    GUTTER_NUM,
+    NowPlayingRowMixin,
+    NowPlayingViewMixin,
+    heart_suffix,
+    playing_content,
+)
 from .._utils import (
     DETAIL_HEADER_CSS,
     HIDE_ARTIST_BELOW,
@@ -51,9 +57,11 @@ class TrackRow(NowPlayingRowMixin, ListItem):
         t = self.track
         heart = heart_suffix(self._favorite)
         # Numbered lists show the number only (no ♪), like the Up Next queue;
-        # the ▶/⏸ marker for the playing row comes from playing_content.
-        text = f"{self._number:2}.  {t.display_title}  ·  {t.duration_str}"
-        return playing_content(text, self._is_playing, self._is_paused, heart)
+        # on the playing row ▶/⏸ takes the number's place.
+        text = f"{t.display_title}  ·  {t.duration_str}"
+        return playing_content(
+            f"{self._number}.", text, self._is_playing, self._is_paused, heart, width=GUTTER_NUM
+        )
 
     def compose(self) -> ComposeResult:
         yield Label(self._primary(), classes="row-title")
@@ -146,13 +154,13 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     def load(self, album: Album) -> None:
         """Populate the panel with album data and start async loading."""
         self.album = album
-        self.border_title = escape(album.title)
+        self.border_title = "Album"  # the title is in bold right below
         year = str(album.year) if album.year else "—"
         parts: list[str] = [escape(album.artist), year]
         if album.genre:
             parts.append(escape(album.genre))
         self.query_one(".detail-title", Label).update(escape(album.title))
-        self.query_one(".detail-sub", Label).update(f"[dim]{' · '.join(parts)}[/dim]")
+        self.query_one(".detail-sub", Label).update(f"[dim]{'  ·  '.join(parts)}[/dim]")
         for cls in (".ap-version", ".ap-badges", ".ap-awards", ".detail-desc"):
             self._set_optional(cls, "")
         self.query_one(".detail-tracklist", ListView).clear()
@@ -185,7 +193,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         except Exception:
             if self.is_attached:
                 with contextlib.suppress(NoMatches):
-                    self._set_optional(".detail-desc", "[dim]Failed to load album details.[/dim]")
+                    self._set_optional(".detail-desc", "[dim]Couldn't load album details.[/dim]")
             return
 
         if not self.is_attached or self.album is None or self.album.id != full.id:
@@ -203,7 +211,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
                 sub_parts.append(escape(full.genre))
             if dur := full.total_duration_str:
                 sub_parts.append(dur)
-            self.query_one(".detail-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+            self.query_one(".detail-sub", Label).update(f"[dim]{'  ·  '.join(sub_parts)}[/dim]")
 
             badge_parts: list[str] = []
             if full.label:
@@ -213,7 +221,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
             if full.popularity is not None:
                 badge_parts.append(f"★ {full.popularity}")
             self._set_optional(
-                ".ap-badges", f"[dim]{' · '.join(badge_parts)}[/dim]" if badge_parts else ""
+                ".ap-badges", f"[dim]{'  ·  '.join(badge_parts)}[/dim]" if badge_parts else ""
             )
 
             self._set_optional(
@@ -295,7 +303,7 @@ class AlbumScreen(Screen):
         # AlbumDetailPanel from this module at the top level.
         from .artist_detail import ArtistHeader
 
-        yield Label(f"← {self._source}", id="breadcrumb")
+        yield Label(f"← {self._source}", id="breadcrumb", markup=False)
         yield ArtistHeader()
         yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()

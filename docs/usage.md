@@ -17,13 +17,17 @@ All keys, and how each tab works. The README has a short version.
 | `↑` `↓` `←` `→` | Move in lists and grids |
 | `PageUp` / `PageDown` | Move the selection a page at a time |
 | `Home` / `End` | First / last item |
-| `Escape` | Back / close filter / focus the tab bar |
+| `Escape` | Back: close a page or detail view, or clear the filter (the footer shows `esc Back` when there's somewhere to go back to); otherwise focus the tab bar |
+| `-` / `=` | Software volume down / up, only once it's turned on from `Ctrl+P` (they appear in the footer then) |
 | `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Qobuz Connect, software volume |
+| `q` | Quit |
+
+The footer lists only the keys that apply where you are: Sort and Filter
+disappear while an album or artist is open, for example.
 
 Themes: qobit's own `qobit-cyberdeck`, `ayu-dark`, `ayu-mirage` and `ayu-light`
 (colours from the official [ayu palette](https://github.com/ayu-theme/ayu-colors)),
 plus Textual's built-in themes. `Ctrl+P` → *Theme*; the choice is saved.
-| `q` | Quit |
 
 ## Playback (`1`)
 
@@ -35,10 +39,12 @@ The **left** side is one list: **Recently Played** (`↺`), then the
 there without removing anything. Tracks you skip stay under Recently Played; if
 you jump back, the tracks in between return to Up Next.
 Playing an album or playlist from the library replaces Up Next and keeps your
-history.
+history. When a track ends, the cursor moves with playback only if it was on
+the playing track; if you've moved it, it stays where you put it. The same goes
+for every other list.
 
 The **right** side is the **Now Playing** panel: cover art, title and artist,
-`album · year`, `genre · label`, the stream's resolution, and the artist's
+`album · year`, `genre · label`, the stream's resolution (`[ 24-BIT · 96 kHz ]`), and the artist's
 biography (scroll with the mouse wheel). Below ~100 columns the panel is hidden
 and the timeline takes the full width.
 

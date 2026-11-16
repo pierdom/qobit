@@ -18,7 +18,15 @@ from textual.widgets import Label, ListItem, ListView
 from ...qobuz.models import Track
 from ...store import load as load_state
 from ...store import save as save_state
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
+from .._now_playing import (
+    GUTTER_NUM,
+    NowPlayingRowMixin,
+    NowPlayingViewMixin,
+    heart_suffix,
+    meta_indent,
+    playing_content,
+)
+from .._utils import status_line
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
@@ -75,10 +83,9 @@ class MixCard(Widget, can_focus=True):
 
     def compose(self) -> ComposeResult:
         name = "DailyQ" if self._kind == "daily" else "WeeklyQ"
-        desc = "Personalised daily mix" if self._kind == "daily" else "Personalised weekly mix"
-        note = "(refreshed daily)" if self._kind == "daily" else "(refreshed weekly)"
+        every = "day" if self._kind == "daily" else "week"
         yield Label(name, classes="mix-name")
-        yield Label(f"{desc}  {note}", classes="mix-desc")
+        yield Label(f"Made for you  ·  new every {every}", classes="mix-desc")
         yield Label("", classes="mix-status")
 
     def update_status(self, track_count: int) -> None:
@@ -118,13 +125,19 @@ class MixTrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        body = f"{self._number:>2}.  {t.artist} — {t.display_title}"
-        return playing_content(body, self._is_playing, self._is_paused, heart)
+        body = f"{t.artist} — {t.display_title}"
+        return playing_content(
+            f"{self._number}.", body, self._is_playing, self._is_paused, heart, width=GUTTER_NUM
+        )
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(
+            f"{meta_indent(GUTTER_NUM)}{t.album}  ·  {t.duration_str}",
+            classes="row-meta",
+            markup=False,
+        )
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -239,8 +252,8 @@ class MixesView(NowPlayingViewMixin, Widget):
             self._load_cached(tracks, kind, version)
         else:
             tl = self.query_one("#mix-track-list", TrackListView)
-            tl.border_title = "Generating…"
-            tl.border_subtitle = ""
+            tl.border_title = "DailyQ" if kind == "daily" else "WeeklyQ"
+            tl.border_subtitle = "generating…"
             self._generate(kind, version)
 
     @work
@@ -268,8 +281,8 @@ class MixesView(NowPlayingViewMixin, Widget):
 
         if not tracks:
             try:
-                tl.border_title = "No results"
-                tl.border_subtitle = "Play some tracks first to seed the mix"
+                tl.border_subtitle = ""
+                await tl.mount(ListItem(status_line("No mix yet: play some tracks first.")))
             except Exception:
                 pass
             return
@@ -295,7 +308,7 @@ class MixesView(NowPlayingViewMixin, Widget):
             return
         name = "DailyQ" if kind == "daily" else "WeeklyQ"
         refreshed = "today" if kind == "daily" else "this week"
-        tl.border_title = f"{name} — {len(tracks)} tracks"
+        tl.border_title = f"{name}  ·  {len(tracks)} tracks"
         tl.border_subtitle = f"refreshed {refreshed}"
 
         fav_ids: set[str] = set()

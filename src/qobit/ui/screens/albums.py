@@ -12,7 +12,7 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Label
 
 from ...qobuz.models import Album, Artist
-from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW
+from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, status_line
 from .album_detail import AlbumDetailPanel
 from .artist_detail import LIBRARY_TILE_MIN_W, AlbumCard, AlbumGrid, ArtistHeader
 
@@ -132,6 +132,15 @@ class AlbumsView(Widget):
 
     # ── filter ───────────────────────────────────────────────────────────────
 
+    def can_navigate_back(self) -> bool:
+        return self._album_view_active or self._filter_active or bool(self._filter_query)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        # Sort and filter act on the grid: hide them while an album is open.
+        if action in ("cycle_sort", "toggle_reverse", "start_filter"):
+            return not self._album_view_active
+        return True
+
     def action_navigate_back(self) -> bool:
         if self._album_view_active:
             self._show_grid()
@@ -149,6 +158,7 @@ class AlbumsView(Widget):
             return
         self._filter_active = True
         self._update_subtitle()
+        self.refresh_bindings()
 
     def on_key(self, event: events.Key) -> None:
         if not self._filter_active or self._album_view_active:
@@ -239,7 +249,7 @@ class AlbumsView(Widget):
     def _set_empty(self, grid: AlbumGrid, show: bool) -> None:
         existing = list(grid.query("#grid-empty"))
         if show and not existing:
-            grid.mount(Label("[dim]No matches.[/dim]", id="grid-empty", markup=True))
+            grid.mount(status_line("No matches.", id="grid-empty"))
         elif not show and existing:
             existing[0].remove()
 
@@ -261,7 +271,7 @@ class AlbumsView(Widget):
         if version != self._render_version:
             return
         if not albums:
-            await grid.mount(Label("[dim]No favourite albums yet.[/dim]", markup=True))
+            await grid.mount(status_line("No favourite albums yet."))
             return
         await grid.set_cards([AlbumCard(a, show_artist=True) for a in albums])
         self._apply_filter()
@@ -270,10 +280,12 @@ class AlbumsView(Widget):
     async def _load(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
+        grid.border_subtitle = "loading…"
         try:
             self._albums = list(await app.ensure_favorite_albums())
         except Exception as e:
-            await grid.mount(Label(f"[red]{e}[/red]", markup=True))
+            grid.border_subtitle = ""
+            await grid.mount(status_line(str(e), error=True))
             return
         self._update_subtitle()
         self._render_grid()

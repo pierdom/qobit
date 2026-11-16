@@ -18,12 +18,21 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Track
 from .._images import fetch_image
-from .._now_playing import heart_suffix
-from .._utils import strip_html
+from .._now_playing import GUTTER_NUM, heart_suffix, meta_indent, playing_content
+from .._utils import status_line, strip_html
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
     from ..app import QobitApp
+
+
+# One gutter for the whole timeline (↺ history, ▶ now, numbered Up Next), so
+# every row's text starts in the same column.
+_GUTTER = GUTTER_NUM
+
+
+def _meta(t: Track) -> str:
+    return f"{meta_indent(_GUTTER)}{t.album}  ·  {t.duration_str}"
 
 
 class SectionHeader(ListItem):
@@ -89,12 +98,12 @@ class QueueTrackRow(ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        return Content.assemble(f"{self._number:>2}.  {t.artist} — {t.display_title}", heart)
+        text = f"{t.artist} — {t.display_title}"
+        return playing_content(f"{self._number}.", text, False, False, heart, width=_GUTTER)
 
     def compose(self) -> ComposeResult:
-        t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(_meta(self.track), classes="row-meta", markup=False)
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -120,12 +129,12 @@ class HistoryTrackRow(ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        return Content.assemble(f"↺  {t.artist} — {t.display_title}", heart)
+        text = f"{t.artist} — {t.display_title}"
+        return playing_content("↺", text, False, False, heart, width=_GUTTER)
 
     def compose(self) -> ComposeResult:
-        t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(_meta(self.track), classes="row-meta", markup=False)
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -154,12 +163,12 @@ class NowPlayingListRow(ListItem):
         t = self.track
         icon = "⏸" if self._is_paused else "▶"
         heart = heart_suffix(self._favorite)
-        return Content.assemble(f"{icon}  {t.artist} — {t.display_title}", heart)
+        text = f"{t.artist} — {t.display_title}"
+        return playing_content(icon, text, False, False, heart, width=_GUTTER)
 
     def compose(self) -> ComposeResult:
-        t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(_meta(self.track), classes="row-meta", markup=False)
 
     def set_paused(self, paused: bool) -> None:
         self._is_paused = paused
@@ -226,6 +235,12 @@ class NowPlayingHero(Widget):
     NowPlayingHero .hero-meta {
         width: 1fr; text-align: center; color: $accent 45%;
     }
+    NowPlayingHero .hero-quality {
+        width: 1fr; text-align: center; color: $accent; margin-top: 1;
+    }
+    /* One line each, cut with an ellipsis: a centred line that wrapped
+       ("Alternativa & Indie · Recordings" / "Catalogue") read as two items. */
+    NowPlayingHero Label { text-wrap: nowrap; text-overflow: ellipsis; }
     NowPlayingHero #hero-bio {
         width: 1fr; height: 1fr; margin-top: 1; scrollbar-size-vertical: 1;
     }
@@ -238,11 +253,12 @@ class NowPlayingHero(Widget):
         with Horizontal(id="hero-art-row"):
             yield TGPImage(id="hero-art")
         yield Label("", classes="hero-title")
-        yield Label("", classes="hero-artist")
-        yield Label("", classes="hero-album")
-        yield Label("", classes="hero-meta")
+        yield Label("", classes="hero-artist", markup=False)
+        yield Label("", classes="hero-album", markup=False)
+        yield Label("", classes="hero-meta", markup=False)
+        yield Label("", classes="hero-quality", markup=False)
         with VerticalScroll(id="hero-bio", can_focus=False):
-            yield Static("", classes="hero-bio")
+            yield Static("", classes="hero-bio", markup=False)
 
     def on_mount(self) -> None:
         cell = get_cell_size()
@@ -253,6 +269,7 @@ class NowPlayingHero(Widget):
         self.watch(app, "is_playing", self._on_is_playing, init=True)
         self.watch(app, "now_playing_album", self._on_details, init=True)
         self.watch(app, "now_playing_bio", self._on_bio, init=True)
+        self.watch(app, "quality_label", self._on_quality, init=True)
         # toggle_favorite bumps queue_version: keeps the heart right when the
         # track is (un)favourited from a list or the `i` menu.
         self.watch(app, "queue_version", lambda _: self._refresh_favorite(), init=False)
@@ -272,6 +289,10 @@ class NowPlayingHero(Widget):
     def _on_details(self, _: object) -> None:
         self._render_meta()
 
+    def _on_quality(self, label: str) -> None:
+        # The stream's resolution, as in the transport's readout.
+        self.query_one(".hero-quality", Label).update(label if self.app.now_playing else "")
+
     def _on_bio(self, bio: str) -> None:
         self.query_one(".hero-bio", Static).update(strip_html(bio) if bio else "")
         self.query_one("#hero-bio", VerticalScroll).scroll_home(animate=False)
@@ -283,7 +304,7 @@ class NowPlayingHero(Widget):
         t = app.now_playing
         if not t:
             self.query_one(".hero-title", Label).update("No media playing")
-            for cls in (".hero-artist", ".hero-album", ".hero-meta"):
+            for cls in (".hero-artist", ".hero-album", ".hero-meta", ".hero-quality"):
                 self.query_one(cls, Label).update("")
             return
 
@@ -433,6 +454,13 @@ class QueueView(Widget):
         # now-playing track (f on the hero) would yank focus off the hero.
         # Tab-entry focus is handled separately by activate().
         keep_focus = self.app.focused is lv
+        # Where the user was: a row other than the playing one keeps the
+        # cursor after the rebuild (the track ending shouldn't lose your place
+        # in Up Next); on the playing row, or nowhere, it follows playback.
+        held = lv.highlighted_child
+        held_track = (
+            getattr(held, "track", None) if not isinstance(held, NowPlayingListRow) else None
+        )
         await lv.clear()
         if version != self._render_version:
             return
@@ -473,7 +501,9 @@ class QueueView(Widget):
             )
 
         if not items:
-            await lv.append(ListItem(Label("[dim]Queue is empty.[/dim]", markup=True)))
+            await lv.append(
+                ListItem(status_line("Queue is empty. Pick a track anywhere and press Enter."))
+            )
             lv.border_subtitle = ""
             return
 
@@ -485,9 +515,20 @@ class QueueView(Widget):
             parts.append(f"{len(queue)} queued")
         lv.border_subtitle = "  ·  ".join(parts)
 
-        # Park the cursor on the now-playing row (PageUp walks into history,
-        # PageDown down the queue) and centre it; fall back to the top.
-        if now_idx is not None:
+        # Back on the row the user held, if it's still there.
+        held_idx = next(
+            (
+                i
+                for i, row in enumerate(items)
+                if held_track is not None and getattr(row, "track", None) is held_track
+            ),
+            None,
+        )
+        if held_idx is not None:
+            lv.index = held_idx
+        # Else park the cursor on the now-playing row (PageUp walks into
+        # history, PageDown down the queue) and centre it.
+        elif now_idx is not None:
             lv.index = now_idx
             self.call_after_refresh(
                 lambda: lv.scroll_to_widget(items[now_idx], animate=False, center=True)

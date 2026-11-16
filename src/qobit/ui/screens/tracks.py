@@ -12,7 +12,14 @@ from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, playing_content
+from .._now_playing import (
+    GUTTER_ICON,
+    NowPlayingRowMixin,
+    NowPlayingViewMixin,
+    meta_indent,
+    playing_content,
+)
+from .._utils import status_line
 from ..widgets.lists import TrackListView
 from .search import ICON_TRACK
 
@@ -42,14 +49,17 @@ class FavTrackRow(NowPlayingRowMixin, ListItem):
 
     def _primary(self) -> Content:
         t = self.track
-        if self._is_playing:
-            return playing_content(f"{t.artist} — {t.display_title}", True, self._is_paused)
-        return playing_content(f"{ICON_TRACK}  {t.artist} — {t.display_title}", False, False)
+        text = f"{t.artist} — {t.display_title}"
+        return playing_content(ICON_TRACK, text, self._is_playing, self._is_paused)
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(
+            f"{meta_indent(GUTTER_ICON)}{t.album}  ·  {t.duration_str}",
+            classes="row-meta",
+            markup=False,
+        )
 
 
 class TracksView(NowPlayingViewMixin, Widget):
@@ -123,6 +133,9 @@ class TracksView(NowPlayingViewMixin, Widget):
 
     # ── filter ───────────────────────────────────────────────────────────────
 
+    def can_navigate_back(self) -> bool:
+        return self._filter_active or bool(self._filter_query)
+
     def action_navigate_back(self) -> bool:
         if self._filter_active or self._filter_query:
             self._filter_active = False
@@ -135,6 +148,7 @@ class TracksView(NowPlayingViewMixin, Widget):
     def action_start_filter(self) -> None:
         self._filter_active = True
         self._update_subtitle()
+        self.refresh_bindings()
 
     def on_key(self, event: events.Key) -> None:
         if not self._filter_active:
@@ -237,12 +251,8 @@ class TracksView(NowPlayingViewMixin, Widget):
         if version != self._render_version:
             return
         if not tracks:
-            msg = (
-                "[dim]No matches.[/dim]"
-                if self._filter_query
-                else "[dim]No favourite tracks yet.[/dim]"
-            )
-            await lv.append(ListItem(Label(msg, markup=True)))
+            msg = "No matches." if self._filter_query else "No favourite tracks yet."
+            await lv.append(ListItem(status_line(msg)))
             return
         # Mounts the first page; the rest follows as the cursor nears it.
         rows = [FavTrackRow(t) for t in tracks]
@@ -255,10 +265,12 @@ class TracksView(NowPlayingViewMixin, Widget):
     async def _load(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         lv = self.query_one("#fav-tracks", ListView)
+        self.query_one("#tracks-container", Vertical).border_subtitle = "loading…"
         try:
             items = await app.ensure_favorite_tracks()
         except Exception as e:
-            await lv.append(ListItem(Label(f"[red]{e}[/red]", markup=True)))
+            self.query_one("#tracks-container", Vertical).border_subtitle = ""
+            await lv.append(ListItem(status_line(str(e), error=True)))
             return
         self._tracks = list(items)
         self._update_subtitle()
