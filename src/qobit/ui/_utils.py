@@ -29,7 +29,6 @@ DETAIL_HEADER_CSS = """
     height: 16;
     layout: horizontal;
     padding: 1 2;
-    background: $boost;
 }
 .detail-art {
     width: 16;

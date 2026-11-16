@@ -66,13 +66,12 @@ class MixCard(Widget, can_focus=True):
         padding: 1 2;
         border: round $accent 40%;
     }
-    MixCard.-selected {
-        border: round $accent;
-        background: $boost;
-    }
+    /* The open mix: accent border and name. The keyboard cursor (focus): the
+       selection fill, like a selected grid card. No other background. */
+    MixCard.-selected { border: round $accent; }
     MixCard .mix-name { text-style: bold; height: 2; }
     MixCard.-selected .mix-name { color: $accent; }
-    MixCard:focus { border: round $accent; }
+    MixCard:focus { border: round $accent; background: $qobit-select; }
     MixCard .mix-desc { color: $text-muted; height: 1; }
     MixCard .mix-status { color: $text-muted; height: 1; }
     """

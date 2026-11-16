@@ -291,6 +291,15 @@ computed styles: they misled three times):
   tint changes it, so every image behind the menu vanished.
 - qobit's chrome uses `$accent`. Rich `Text` doesn't resolve `$variables`: read
   `app.theme_variables["accent"]`.
+- Backgrounds: page sections paint none (no bands, no panel fills, no
+  footer bar, no Input fill, no scrollbar track): panels are set apart by
+  their round borders, so the theme background (or the terminal's, with it
+  off) shows through and both modes look alike. The only fills: state (the
+  selection `$qobit-select`, the now-playing row, a focused mix card) and
+  floating layers (the `i`/`g` menu, the command palette). A new fill needs a
+  matching `Screen.-transparent` rule in `QobitApp.CSS` (and its Labels
+  `transparent`), or it shows in one mode only. Check with a background audit
+  of rendered strips in both modes, not by reading CSS.
 - Lists are `background: transparent` (Textual's `$surface` boxes them).
 - List highlight targets Textual 8's `-highlight` class: `$accent 35%` focused,
   `12%` unfocused, labels transparent. Grid cards share `.grid-card` in

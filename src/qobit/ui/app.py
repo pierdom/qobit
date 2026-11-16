@@ -194,13 +194,15 @@ class QobitApp(App[None]):
          the image id. Tinting the page behind a modal changed those colours,
          and every image vanished while the menu was open. */
     ModalScreen { padding: 0; background: transparent; }
-    /* Unified scrollbar design across every scrollable widget / page. */
+    /* Unified scrollbar design across every scrollable widget / page: a
+       thumb on no track (a $surface track was a stripe of background that
+       stayed with the theme background off). */
     * {
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 1;
-        scrollbar-background: $surface;
-        scrollbar-background-hover: $surface;
-        scrollbar-background-active: $surface;
+        scrollbar-background: $background 0%;
+        scrollbar-background-hover: $background 0%;
+        scrollbar-background-active: $background 0%;
         scrollbar-color: $surface-lighten-2;
         scrollbar-color-hover: $surface-lighten-2;
         scrollbar-color-active: $accent;
@@ -220,6 +222,14 @@ class QobitApp(App[None]):
        lighter box, larger than its rounded border. (Popups that want a
        surface, like the `i` menu, set it explicitly and win on specificity.) */
     ListView { background: transparent; }
+    /* Backgrounds: page sections paint none (panels are set apart by their
+       round borders), so the theme background, or the terminal's with it
+       off, shows through everywhere and both modes look alike. The only
+       fills are state (the selection, the now-playing row) and floating
+       layers that must stay readable over the page (the i/g menu, the
+       command palette). Textual's footer and Input bring their own fills:
+       cleared here. */
+    Footer, Footer > *, Input { background: transparent; }
 
     /* List highlight: the accent tint, like the grid cards' selection.
        Textual 8 marks the row with `-highlight` (it was `--highlight` in
@@ -291,7 +301,8 @@ class QobitApp(App[None]):
         background: $qobit-select;
     }
     .grid-card.-selected .card-info,
-    .grid-card.-selected .card-info > Label {
+    .grid-card.-selected .card-info > Label,
+    .grid-card.-selected TGPImage {
         background: transparent;
     }
     .grid-card.-selected .card-primary {
@@ -313,8 +324,11 @@ class QobitApp(App[None]):
        modal's legibility — not page background, and losing them silently
        under transparency is worse than the terminal not showing through
        there specifically. */
-    Screen.-transparent MixCard.-selected {
-        background: $boost;
+    Screen.-transparent MixCard:focus {
+        background: $qobit-select;
+    }
+    Screen.-transparent MixCard:focus Label {
+        background: transparent;
     }
     Screen.-transparent TimelineRow.-now {
         background: $accent 8%;
@@ -322,8 +336,7 @@ class QobitApp(App[None]):
     /* ...and their labels see-through, or `Screen.-transparent *` paints them
        ansi_default and the tint shows only in the 1-col padding at each end
        (same fix as .grid-card.-selected). */
-    Screen.-transparent TimelineRow.-now Label,
-    Screen.-transparent MixCard.-selected Label {
+    Screen.-transparent TimelineRow.-now Label {
         background: transparent;
     }
     Screen.-transparent,

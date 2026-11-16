@@ -113,18 +113,19 @@ class ContextMenu(ModalScreen[str | None]):
         background: $surface;
         padding: 0;
     }
+    /* One fill for the whole menu (a floating layer needs one to stay
+       readable over the page); a rule under the header, not a second band. */
     ContextMenu #menu-header {
         width: 1fr;
         height: auto;
         padding: 1 2 0 2;  /* title and artist on consecutive lines */
-        background: $boost;
         color: $accent;
         text-style: bold;
     }
     ContextMenu #menu-sub {
         width: 1fr;
-        padding: 0 2 1 2;
-        background: $boost;
+        padding: 0 2 0 2;
+        border-bottom: round $accent 40%;
         color: $text-muted;
     }
     ContextMenu ListView {

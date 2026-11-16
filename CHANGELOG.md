@@ -68,10 +68,11 @@ release from this entry.
 
 ### Fixed
 
-- Backgrounds meant to set panels apart (the album/playlist header, the
-  selected mix card, the `i` menu header, the transport's hover) never showed
-  in qobit's themes: Textual drops a theme's `boost` when it also sets
-  `panel`.
+- Backgrounds are consistent: no page section paints one (the album and
+  artist headers, the footer, the search box, scrollbar tracks and cover
+  placeholders did, some only with the theme background on, some even with
+  it off). Panels are set apart by their borders; the only fills left are the
+  selection, the now-playing row and the `i`/`g` menu, the same in both modes.
 - `1`–`7` on an album, artist or playlist page switched the hidden tab under
   it, so Escape then landed somewhere unexpected. They now close the page and
   switch tab.

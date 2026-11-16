@@ -214,8 +214,9 @@ class TransportBar(Widget):
         border: round $accent;
         border-title-color: $qobit-readout;
     }
+    /* Clickable (pause, seek): hovering lights the border, no fill. */
     TransportBar:hover {
-        background: $boost;
+        border: round $accent;
     }
     TransportBar TGPImage {
         width: 8;

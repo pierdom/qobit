@@ -1012,7 +1012,6 @@ class ArtistHeader(Widget):
     ArtistHeader {
         height: 8;
         padding: 1 0 0 0;
-        background: $boost;
         layout: horizontal;
     }
     ArtistHeader .ah-image {
@@ -1041,7 +1040,6 @@ class ArtistHeader(Widget):
         width: 32;
         height: 7;
         margin-left: 1;
-        background: transparent;
         border: round $accent 40%;
         border-title-color: $accent 40%;
         border-title-style: bold;

@@ -53,9 +53,10 @@ class Art(TGPImage, Renderable=TGPRenderable):
             return ""
         mark = initials(self._placeholder)[: max(0, width - 2)]
         middle = height // 2
-        # A solid $panel tile with a lighter ░ texture: the initials sit on
-        # the tile (on the plain background they looked like a hole in it).
-        texture, letters = "$panel-lighten-1 on $panel", "bold $accent on $panel"
+        # Glyphs only, no background (qobit's sections paint none, and this
+        # stays the same with the theme background off): a ░ texture in the
+        # panel colour, the initials in the accent.
+        texture, letters = "$panel-lighten-2", "bold $accent"
         lines: list[Content] = []
         for y in range(height):
             if y == middle and mark:
