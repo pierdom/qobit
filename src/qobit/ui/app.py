@@ -336,6 +336,13 @@ class QobitApp(App[None]):
     Screen.-transparent TimelineRow.-now {
         background: $accent 8%;
     }
+    /* ...and their labels see-through, or `Screen.-transparent *` paints them
+       ansi_default and the tint shows only in the 1-col padding at each end
+       (same fix as .grid-card.-selected). */
+    Screen.-transparent TimelineRow.-now Label,
+    Screen.-transparent MixCard.-selected Label {
+        background: transparent;
+    }
     Screen.-transparent,
     Screen.-transparent * {
         background: ansi_default;
