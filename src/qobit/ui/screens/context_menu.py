@@ -85,9 +85,9 @@ class MenuOption(ListItem):
 
     def _content(self) -> Content:
         content = Content.assemble(
-            (f"{self._icon}   ", "$accent"),
+            (f"{self._icon}   ", "$qobit-accent-text"),
             f"{self._label:<{self._label_w}}",
-            (str(self._number), "$text-muted"),
+            (str(self._number), "$qobit-muted"),
         )
         return plain_if_highlighted(self, content)
 
@@ -130,14 +130,14 @@ class ContextMenu(ModalScreen[str | None]):
         width: 1fr;
         height: auto;
         padding: 1 2 0 2;  /* title and artist on consecutive lines */
-        color: $accent;
+        color: $qobit-accent-text;
         text-style: bold;
     }
     ContextMenu #menu-sub {
         width: 1fr;
         padding: 0 2 0 2;
         border-bottom: round $accent 40%;
-        color: $text-muted;
+        color: $qobit-muted;
     }
     ContextMenu ListView {
         height: auto;

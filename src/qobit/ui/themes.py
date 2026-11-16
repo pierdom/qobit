@@ -15,7 +15,6 @@ again through ``variables``.
 from __future__ import annotations
 
 from textual.color import Color
-from textual.design import DEFAULT_DARK_BACKGROUND, DEFAULT_LIGHT_BACKGROUND
 from textual.theme import Theme
 
 # qobit's own theme variables (Theme.variables). Themes that don't set them,
@@ -34,6 +33,7 @@ SELECT_TEXT = "qobit-select-text"  # all text on a selection
 SELECT_DIM = "qobit-select-dim"  # an unfocused list's highlighted row
 NOW = "qobit-now"  # the now-playing row's tint
 ACCENT_TEXT = "qobit-accent-text"  # accent-coloured text (the playing row)
+MUTED = "qobit-muted"  # secondary text (meta lines, inactive tabs, hints)
 
 _MIN_CONTRAST = 4.5  # WCAG AA for body text
 
@@ -84,13 +84,16 @@ def qobit_variable_defaults(theme: Theme) -> dict[str, str]:
             SELECT_TEXT: theme.variables.get("block-cursor-foreground", "ansi_black"),
             SELECT_DIM: "transparent",
             NOW: "transparent",
+            # Grey reads on a dark terminal; on a light one only the default does.
+            MUTED: "ansi_bright_black" if theme.dark else "ansi_default",
         }
-    dark = theme.dark
-    bg = Color.parse(
-        theme.background or (DEFAULT_DARK_BACKGROUND if dark else DEFAULT_LIGHT_BACKGROUND)
-    )
-    accent = Color.parse(accent_name)
-    fg = Color.parse(theme.foreground) if theme.foreground else bg.inverse
+    # The colours Textual actually generates for the theme (a theme may leave
+    # its background unset: textual-light's is #E0E0E0, not the default).
+    system = theme.to_color_system().generate()
+    bg = Color.parse(system["background"])
+    surface = Color.parse(system["surface"])
+    accent = Color.parse(system["accent"])
+    fg = Color.parse(system["foreground"])
     own = theme.variables.get(SELECT)
     tint = Color.parse(own) if own else accent.with_alpha(0.35)
     select = bg.blend(tint.with_alpha(1), tint.a)
@@ -102,8 +105,24 @@ def qobit_variable_defaults(theme: Theme) -> dict[str, str]:
     now = bg.blend(accent, 0.08)
     # Readable on the now-playing row's tint as well as on the page (the
     # playing row's text sits on the tint).
-    accent_text = _readable(_readable(accent, bg), now)
-    warning = Color.parse(theme.warning) if theme.warning else accent
+    select_dim = bg.blend(accent, 0.10)
+    # Every surface text sits on: the page, the playing row's tint, an
+    # unfocused highlight and the i/g menu ($surface).
+    surfaces = (bg, now, select_dim, surface)
+    accent_text = accent
+    for under in surfaces:
+        accent_text = _readable(accent_text, under)
+    # Secondary text: the theme's own muted colour if it sets a real one
+    # (cyberdeck), else the foreground at 60%, then moved until it reads on
+    # the page, an unfocused highlight and the playing row. Never Textual's
+    # "auto 60%": that picks black or white against the widget's background,
+    # which with the theme background off is the terminal's, assumed dark, so
+    # light themes got white-on-white muted text.
+    own_muted = theme.variables.get("text-muted", "")
+    muted = Color.parse(own_muted) if own_muted.startswith("#") else bg.blend(fg, 0.6)
+    for under in surfaces:
+        muted = _readable(muted, under)
+    warning = Color.parse(system["warning"])
     return {
         BAR_START: accent.hex,
         BAR_END: accent.hex,
@@ -113,7 +132,8 @@ def qobit_variable_defaults(theme: Theme) -> dict[str, str]:
         ACCENT_TEXT: accent_text.hex,
         SELECT: select.hex,
         SELECT_TEXT: select_text.hex,
-        SELECT_DIM: bg.blend(accent, 0.10).hex,  # 12% dimmed muted text below 4.5:1
+        SELECT_DIM: select_dim.hex,  # 10%: 12% dimmed muted text below 4.5:1
+        MUTED: muted.hex,
         NOW: now.hex,
     }
 
@@ -122,6 +142,17 @@ def theme_color(app: object, name: str, fallback: str = "accent") -> str:
     """A theme variable's colour, falling back to a standard one."""
     variables = getattr(app, "theme_variables", {})
     return variables.get(name) or variables.get(fallback, "")
+
+
+def theme_text_color(app: object, name: str, fallback: str = "accent") -> str:
+    """A theme colour used as text, moved until it reads on the page (the
+    lamp's success/error green and red were 1.4:1 on light themes). ANSI
+    colours pass through: the terminal's palette decides."""
+    value = theme_color(app, name, fallback)
+    background = getattr(app, "theme_variables", {}).get("background", "")
+    if value.startswith("#") and background.startswith("#"):
+        return _readable(Color.parse(value), Color.parse(background)).hex
+    return value
 
 
 CYBERDECK_THEME = Theme(

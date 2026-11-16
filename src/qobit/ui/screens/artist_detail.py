@@ -81,7 +81,7 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     ArtistTrackRow { height: 2; padding: 0 1; }
     ArtistTrackRow Label { width: 1fr; }
-    ArtistTrackRow .row-meta { color: $text-muted; }
+    ArtistTrackRow .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, track: Track, number: int | None, favorite: bool = False) -> None:
@@ -192,12 +192,12 @@ class ArtistTracks(_TitleSwitch, Widget):
         width: 1fr;
         height: 1fr;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
     ArtistTracks TrackListView:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     ArtistTracks.-columns #artist-favs { margin-left: 1; }
     """
@@ -389,7 +389,7 @@ class AlbumCard(Widget):
         display: none;
         height: 1;
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     AlbumCard.full .card-artist {
@@ -398,7 +398,7 @@ class AlbumCard(Widget):
     AlbumCard .card-year {
         height: 1;
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     /* Selected state: shared by every grid card (.grid-card) and defined
@@ -917,13 +917,13 @@ class ArtistReleases(_TitleSwitch, Widget):
         height: 1fr;
         grid-rows: 5;  /* GRID_CARD_IMG_H */
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
     }
     ArtistReleases #similar-artists:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     """
 
@@ -1056,16 +1056,16 @@ class ArtistHeader(Widget):
         width: 1fr;
         height: 7;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
     ArtistHeader .ah-bio-section:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     ArtistHeader .ah-bio {
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
     }
     ArtistHeader .ah-similar {
         display: none;
@@ -1073,13 +1073,13 @@ class ArtistHeader(Widget):
         height: 7;
         margin-left: 1;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
     }
     ArtistHeader .ah-similar:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     ArtistHeader.-similar .ah-similar { display: block; }
     ArtistHeader .ah-similar ListItem { height: 1; padding: 0 1; }
@@ -1189,13 +1189,13 @@ class ArtistScreen(Screen):
         height: 1fr;
         margin: 0;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
 
     ArtistScreen #albums:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
 
     ArtistScreen #album-view {

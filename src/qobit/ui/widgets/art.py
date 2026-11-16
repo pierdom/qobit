@@ -34,7 +34,7 @@ class Art(TGPImage, Renderable=TGPRenderable):
     text colour on a selected card)."""
 
     DEFAULT_CSS = """
-    Art { color: $accent; }
+    Art { color: $qobit-accent-text; }
     """
 
     def __init__(self, placeholder: str = "", **kwargs: object) -> None:

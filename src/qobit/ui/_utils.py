@@ -40,8 +40,8 @@ DETAIL_HEADER_CSS = """
    overflowing to the right (the description in particular). */
 .detail-meta Label { width: 1fr; }
 .detail-title { height: auto; text-style: bold; }
-.detail-sub   { height: auto; color: $text-muted; margin-top: 1; }
-.detail-desc  { height: auto; color: $text-muted; margin-top: 1; }
+.detail-sub   { height: auto; color: $qobit-muted; margin-top: 1; }
+.detail-desc  { height: auto; color: $qobit-muted; margin-top: 1; }
 .detail-tracklist {
     height: 1fr;
     border-top: round $accent 40%;

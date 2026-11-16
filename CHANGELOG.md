@@ -68,6 +68,19 @@ release from this entry.
 
 ### Fixed
 
+- With the theme background off, the cursor on the playing track lost its
+  highlight and its text turned the selection's text colour on the bare
+  terminal (black on black in `ansi-dark`). The playing row now highlights
+  like any other.
+- Readability across all 25 themes (checked automatically in both background
+  modes): unfocused panel titles, inactive tabs, secondary text, the album
+  page's details, the transport's album line, the bit-perfect lamp and the
+  footer were too faint in many themes (down to 1.0:1: Solarized Light's
+  footer, and light themes' muted text with the background off). Secondary
+  text now uses a colour qobit checks per theme, and everything reads at
+  4.5:1 or better except a few of the themes' own colours.
+- After switching theme, the bit-perfect lamp and the transport readout kept
+  the previous theme's colours until the next track.
 - A selected row, card or menu option is readable in every theme. Its text
   was the accent on an accent tint, unreadable in most of Textual's themes
   and every light one, and in ANSI themes (`ansi-dark`) the same colour as

@@ -70,14 +70,14 @@ class MixCard(Widget, can_focus=True):
        selection fill, like a selected grid card. No other background. */
     MixCard.-selected { border: round $accent; }
     MixCard .mix-name { text-style: bold; height: 2; }
-    MixCard.-selected .mix-name { color: $accent; }
+    MixCard.-selected .mix-name { color: $qobit-accent-text; }
     MixCard:focus { border: round $accent; background: $qobit-select; }
     /* After .-selected .mix-name (same specificity: the later rule wins). */
     MixCard:focus .mix-name, MixCard:focus .mix-desc, MixCard:focus .mix-status {
         color: $qobit-select-text;
     }
-    MixCard .mix-desc { color: $text-muted; height: 1; }
-    MixCard .mix-status { color: $text-muted; height: 1; }
+    MixCard .mix-desc { color: $qobit-muted; height: 1; }
+    MixCard .mix-status { color: $qobit-muted; height: 1; }
     """
 
     def __init__(self, kind: MixKind) -> None:
@@ -116,7 +116,7 @@ class MixTrackRow(NowPlayingRowMixin, ListItem):
     MixTrackRow { height: 2; padding: 0 1; }
     MixTrackRow Label { width: 1fr; }
     MixTrackRow .row-title { text-style: bold; }
-    MixTrackRow .row-meta { color: $text-muted; }
+    MixTrackRow .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -172,17 +172,17 @@ class MixesView(NowPlayingViewMixin, Widget):
     MixesView #mix-track-list {
         height: 1fr;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
         padding: 0 1;
         margin-bottom: 1;
     }
     MixesView #mix-track-list:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     """
 

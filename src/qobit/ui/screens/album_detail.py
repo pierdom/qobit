@@ -93,17 +93,17 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         height: 1fr;
         layout: vertical;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
     AlbumDetailPanel:focus-within {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     /* Album-specific extras the shared .detail-* header doesn't cover. */
-    AlbumDetailPanel .ap-version { height: auto; color: $text-muted; text-style: italic; }
-    AlbumDetailPanel .ap-badges { height: auto; color: $text-muted; }
-    AlbumDetailPanel .ap-awards { height: auto; color: $accent 70%; margin-top: 1; }
+    AlbumDetailPanel .ap-version { height: auto; color: $qobit-muted; text-style: italic; }
+    AlbumDetailPanel .ap-badges { height: auto; color: $qobit-muted; }
+    AlbumDetailPanel .ap-awards { height: auto; color: $qobit-accent-text; margin-top: 1; }
     AlbumDetailPanel:focus-within .detail-tracklist {
         border-top: round $accent;
     }
@@ -163,7 +163,9 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         if album.genre:
             parts.append(escape(album.genre))
         self.query_one(".detail-title", Label).update(escape(album.title))
-        self.query_one(".detail-sub", Label).update(f"[dim]{'  ·  '.join(parts)}[/dim]")
+        # Plain: the CSS gives these lines the muted colour ([dim] on top
+        # halved it, 1.5:1 on light themes).
+        self.query_one(".detail-sub", Label).update("  ·  ".join(parts))
         for cls in (".ap-version", ".ap-badges", ".ap-awards", ".detail-desc"):
             self._set_optional(cls, "")
         self.query_one(".detail-tracklist", ListView).clear()
@@ -196,7 +198,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         except Exception:
             if self.is_attached:
                 with contextlib.suppress(NoMatches):
-                    self._set_optional(".detail-desc", "[dim]Couldn't load album details.[/dim]")
+                    self._set_optional(".detail-desc", "Couldn't load album details.")
             return
 
         if not self.is_attached or self.album is None or self.album.id != full.id:
@@ -206,7 +208,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         try:
             self._set_optional(
                 ".ap-version",
-                f"[dim italic]{escape(full.version)}[/dim italic]" if full.version else "",
+                f"[italic]{escape(full.version)}[/italic]" if full.version else "",
             )
             year = str(full.year) if full.year else "—"
             sub_parts: list[str] = [escape(full.artist), year]
@@ -214,19 +216,17 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
                 sub_parts.append(escape(full.genre))
             if dur := full.total_duration_str:
                 sub_parts.append(dur)
-            self.query_one(".detail-sub", Label).update(f"[dim]{'  ·  '.join(sub_parts)}[/dim]")
+            self.query_one(".detail-sub", Label).update("  ·  ".join(sub_parts))
 
             badge_parts: list[str] = []
             if full.label:
                 badge_parts.append(escape(full.label))
             if q := full.quality_badge:
                 # HI-RES in the theme's hi-res colour, like the transport.
-                badge_parts.append(q.replace("HI-RES ", "[/][b $qobit-hires]HI-RES[/][dim] ", 1))
+                badge_parts.append(q.replace("HI-RES ", "[b $qobit-hires]HI-RES[/] ", 1))
             if full.popularity is not None:
                 badge_parts.append(f"★ {full.popularity}")
-            self._set_optional(
-                ".ap-badges", f"[dim]{'  ·  '.join(badge_parts)}[/dim]" if badge_parts else ""
-            )
+            self._set_optional(".ap-badges", "  ·  ".join(badge_parts))
 
             self._set_optional(
                 ".ap-awards", "  ".join(escape(a) for a in full.awards) if full.awards else ""

@@ -54,8 +54,11 @@ def test_menu_options_wrap_around():
 
     options = track_options(favorite=False)
 
+    class _App(App):
+        get_theme_variable_defaults = QobitApp.get_theme_variable_defaults  # qobit-* vars
+
     async def run():
-        app = App()
+        app = _App()
         async with app.run_test() as pilot:
             app.push_screen(ContextMenu("Title", "Artist", options))
             await pilot.pause()

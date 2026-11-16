@@ -60,7 +60,7 @@ class SectionHeader(ListItem):
        Label goes ansi_default there), and lists sit on their panel anyway. */
     SectionHeader { height: 1; padding: 0 1; background: transparent; }
     SectionHeader.-spaced { margin-top: 1; }
-    SectionHeader Label { width: 1fr; color: $accent; text-style: bold; }
+    SectionHeader Label { width: 1fr; color: $qobit-accent-text; text-style: bold; }
     """
 
     # Arbitrary placeholder width for the single frame between compose() (no
@@ -117,9 +117,9 @@ class TimelineRow(ListItem):
     TimelineRow { height: 2; padding: 0 1; }
     TimelineRow Label { width: 1fr; }
     TimelineRow.-next .row-title { text-style: bold; }
-    TimelineRow.-next .row-meta { color: $text-muted; }
-    TimelineRow.-history .row-title { color: $text-muted; }
-    TimelineRow.-history .row-meta { color: $text-muted 60%; }
+    TimelineRow.-next .row-meta { color: $qobit-muted; }
+    TimelineRow.-history .row-title { color: $qobit-muted; }
+    TimelineRow.-history .row-meta { color: $qobit-muted; }  /* 60% was 4.1–4.3:1 */
     /* Accent text in its readable variant ($qobit-accent-text: darker in a
        light theme), on a tint that's none in ANSI themes (they can't blend). */
     TimelineRow.-now { background: $qobit-now; }
@@ -247,20 +247,20 @@ class NowPlayingHero(Widget):
     /* Whenever a track is loaded, also paused or restored after a restart. */
     NowPlayingHero.-has-track #hero-art-row { display: block; }
     NowPlayingHero .hero-title {
-        width: 1fr; text-align: center; text-style: bold; color: $accent;
+        width: 1fr; text-align: center; text-style: bold; color: $qobit-accent-text;
     }
     NowPlayingHero .hero-artist {
-        width: 1fr; text-align: center; color: $accent 80%;
+        width: 1fr; text-align: center; color: $qobit-accent-text;
     }
     NowPlayingHero .hero-album {
-        width: 1fr; text-align: center; color: $accent 75%; margin-top: 1;
+        width: 1fr; text-align: center; color: $qobit-accent-text; margin-top: 1;
     }
-    /* $text-muted, not a fainter accent: $accent 45% was 2.8–3.2:1. */
+    /* $qobit-muted, not a fainter accent: $accent 45% was 2.8–3.2:1. */
     NowPlayingHero .hero-meta {
-        width: 1fr; text-align: center; color: $text-muted;
+        width: 1fr; text-align: center; color: $qobit-muted;
     }
     NowPlayingHero .hero-quality {
-        width: 1fr; text-align: center; color: $accent; margin-top: 1;
+        width: 1fr; text-align: center; color: $qobit-accent-text; margin-top: 1;
     }
     NowPlayingHero .hero-lamp { width: 1fr; text-align: center; }
     /* One line each, cut with an ellipsis: a centred line that wrapped
@@ -270,7 +270,7 @@ class NowPlayingHero(Widget):
         width: 1fr; height: 1fr; margin-top: 1; scrollbar-size-vertical: 1;
     }
     NowPlayingHero .hero-bio {
-        width: 1fr; color: $text-muted; text-align: left;
+        width: 1fr; color: $qobit-muted; text-align: left;
     }
     """
 
@@ -298,7 +298,9 @@ class NowPlayingHero(Widget):
         self.watch(app, "quality_label", self._on_quality, init=True)
         self.watch(app, "signal", self._on_quality, init=False)
         self.watch(app, "volume", self._on_quality, init=False)
-        self.watch(app, "theme", self._on_quality, init=False)
+        # After the refresh: theme_variables lag the theme reactive (see
+        # TransportBar._on_theme).
+        self.watch(app, "theme", lambda _: self.call_after_refresh(self._on_quality), init=False)
         # toggle_favorite bumps queue_version: keeps the heart right when the
         # track is (un)favourited from a list or the `i` menu.
         self.watch(app, "queue_version", lambda _: self._refresh_favorite(), init=False)
@@ -410,15 +412,15 @@ class QueueView(Widget):
         width: 3fr;
         margin-right: 1;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
     }
     QueueView #queue-list:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     /* Narrow terminals: hide the hero, list takes the full width. */
     QueueView.-narrow #now-hero { display: none; }

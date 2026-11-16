@@ -42,7 +42,7 @@ class TrackItem(NowPlayingRowMixin, ListItem):
     TrackItem { height: 2; padding: 0 1; }
     TrackItem Label { width: 1fr; }
     TrackItem .row-title { text-style: bold; }
-    TrackItem .row-meta { color: $text-muted; }
+    TrackItem .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, track: Track, favorite: bool = False) -> None:
@@ -75,7 +75,7 @@ class AlbumItem(ListItem):
     AlbumItem { height: 2; padding: 0 1; }
     AlbumItem Label { width: 1fr; }
     AlbumItem .row-title { text-style: bold; }
-    AlbumItem .row-meta { color: $text-muted; }
+    AlbumItem .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, album: Album) -> None:
@@ -98,7 +98,7 @@ class ArtistItem(ListItem):
     ArtistItem { height: 2; padding: 0 1; }
     ArtistItem Label { width: 1fr; }
     ArtistItem .row-title { text-style: bold; }
-    ArtistItem .row-meta { color: $text-muted; }
+    ArtistItem .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, artist: Artist) -> None:
@@ -118,7 +118,7 @@ class PlaylistItem(ListItem):
     PlaylistItem { height: 2; padding: 0 1; }
     PlaylistItem Label { width: 1fr; }
     PlaylistItem .row-title { text-style: bold; }
-    PlaylistItem .row-meta { color: $text-muted; }
+    PlaylistItem .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, playlist: Playlist) -> None:
@@ -152,7 +152,7 @@ class SearchView(NowPlayingViewMixin, Widget):
         margin: 0;
         border: round $accent 40%;
         border-subtitle-align: right;
-        border-subtitle-color: $text-muted;
+        border-subtitle-color: $qobit-muted;
     }
     SearchView Input:focus {
         border: round $accent;
@@ -161,12 +161,12 @@ class SearchView(NowPlayingViewMixin, Widget):
         height: 1fr;
         margin: 0;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
     #artists-results:focus, #tracks-results:focus, #albums-results:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     """
 

@@ -40,7 +40,7 @@ class FavTrackRow(NowPlayingRowMixin, ListItem):
     FavTrackRow { height: 2; padding: 0 0 0 1; }
     FavTrackRow Label { width: 1fr; }
     FavTrackRow .row-title { text-style: bold; }
-    FavTrackRow .row-meta { color: $text-muted; }
+    FavTrackRow .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, track: Track) -> None:
@@ -78,16 +78,16 @@ class TracksView(NowPlayingViewMixin, Widget):
         height: 1fr;
         layout: vertical;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
         margin: 0;
     }
     TracksView #tracks-container.-focused {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     TracksView ListView {
         height: 1fr;

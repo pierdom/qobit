@@ -7,6 +7,8 @@ Runs the real QobitApp headless (the ``ui_app`` fixture in conftest.py)."""
 from __future__ import annotations
 
 import asyncio
+
+import pytest
 import random
 
 from qobit.qobuz.models import Track
@@ -131,3 +133,40 @@ def test_reconcile_tracks_the_timeline(ui_app):
             assert _actual(lv) == _expected(app)
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("theme", ["ansi-dark", "qobit-cyberdeck"])
+def test_selection_shows_on_the_playing_row_with_background_off(ui_app, theme):
+    """With the theme background off, the cursor on the playing row lost the
+    selection's background (the row's own transparent-mode rule won) while
+    keeping its text colour: black text on a dark terminal in ansi-dark."""
+    app = ui_app
+
+    def bg_of(text):
+        for strip in app.screen._compositor.render_strips():
+            if text in strip.text:
+                seg = next(s for s in strip if text.split()[0] in s.text)
+                return seg.style.bgcolor
+        return None
+
+    async def run():
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.theme = theme
+            app._timeline, app._cursor, app.now_playing = POOL[:6], 2, POOL[2]
+            app.queue_version += 1
+            await pilot.pause(0.2)
+            app.action_toggle_background()
+            lv = app.query_one("#queue-list")
+            lv.focus()
+            now = next(i for i, c in enumerate(lv.children) if getattr(c, "role", "") == "now")
+            lv.index = now
+            await pilot.pause(0.2)
+            on_playing = bg_of("A — T2")
+            lv.index = now + 2  # an Up Next row
+            await pilot.pause(0.2)
+            return on_playing, bg_of("A — T3")
+
+    on_playing, on_next = asyncio.run(run())
+    assert on_playing is not None and on_playing.type.name != "DEFAULT"
+    assert on_playing == on_next  # the same selection, whichever row

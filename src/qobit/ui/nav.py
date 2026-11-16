@@ -82,7 +82,7 @@ class Breadcrumb(Widget):
     Breadcrumb {
         height: 1;
         padding: 0 1;
-        color: $text-muted;
+        color: $qobit-muted;
     }
     """
 
@@ -100,10 +100,10 @@ class Breadcrumb(Widget):
         x = 0
         for i, crumb in enumerate(crumbs):
             if i:
-                parts.append((_SEP, "$text-muted"))
+                parts.append((_SEP, "$qobit-muted"))
                 x += len(_SEP)
             last = i == len(crumbs) - 1
-            parts.append((crumb.label, "bold $accent" if last else "$text-muted"))
+            parts.append((crumb.label, "bold $qobit-accent-text" if last else "$qobit-muted"))
             spans.append((x, x + len(crumb.label), crumb))
             x += len(crumb.label)
         self._spans = spans
@@ -176,7 +176,7 @@ class Wordmark(Widget):
         self.display = width >= self.MIN_WIDTH
 
     def render(self) -> Content:
-        return Content.assemble(("◢◤", "$accent"), (" qobit", "bold $text-muted"))
+        return Content.assemble(("◢◤", "$qobit-accent-text"), (" qobit", "bold $qobit-muted"))
 
 
 def page_header(app: QobitApp) -> list[Widget]:

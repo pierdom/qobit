@@ -39,7 +39,7 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
     PlaylistTrackRow { height: 2; padding: 0 1; }
     PlaylistTrackRow Label { width: 1fr; }
     PlaylistTrackRow .row-title { text-style: bold; }
-    PlaylistTrackRow .row-meta { color: $text-muted; }
+    PlaylistTrackRow .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -90,12 +90,12 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         margin: 0 0 1 0;
         layout: vertical;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
     PlaylistScreen #playlist-panel:focus-within {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     PlaylistScreen #playlist-panel:focus-within .detail-tracklist {
         border-top: round $accent;
@@ -167,11 +167,11 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
                 sub_parts.append(playlist.duration_str)
             if playlist.date_str:
                 sub_parts.append(playlist.date_str)
-            self.query_one(".detail-sub", Label).update(f"[dim]{'  ·  '.join(sub_parts)}[/dim]")
+            self.query_one(".detail-sub", Label).update("  ·  ".join(sub_parts))
 
             if playlist.description:
                 cleaned = escape(strip_html(playlist.description))
-                self.query_one(".detail-desc", Label).update(f"[dim]{cleaned}[/dim]")
+                self.query_one(".detail-desc", Label).update(cleaned)
         except NoMatches:
             return
 

@@ -289,8 +289,12 @@ computed styles: they misled three times):
 - Never tint behind a modal (`ModalScreen { background: transparent }`): Kitty
   images are placeholder cells whose text colour encodes the image id, and a
   tint changes it, so every image behind the menu vanished.
-- qobit's chrome uses `$accent`. Rich `Text` doesn't resolve `$variables`: read
-  `app.theme_variables["accent"]`.
+- qobit's chrome uses `$accent` for lines (borders, rules); text in the accent
+  colour uses `$qobit-accent-text` (the accent where it reads, darker or
+  lighter where it doesn't: light themes). Unfocused titles and subtitles are
+  `$text-muted`, never a faded accent (`$accent 40%` was 2.6:1); no text
+  colour with an alpha (`$x 60%`): use a variable that is readable as is.
+  Rich `Text` doesn't resolve `$variables`: read `app.theme_variables[...]`.
 - Backgrounds: page sections paint none (no bands, no panel fills, no
   footer bar, no Input fill, no scrollbar track): panels are set apart by
   their round borders, so the theme background (or the terminal's, with it
@@ -311,7 +315,21 @@ computed styles: they misled three times):
   highlighted row's title drops its span colours (`plain_if_highlighted`,
   rows' `watch_highlighted`), selected cards too (`select_card()` →
   `refresh_selected()`); no `dim` style on card text (CSS gives the muted
-  colour). The list highlight targets Textual 8's `-highlight` class. Grid
+  colour). Secondary text is `$qobit-muted` (computed, readable on the page,
+  the tints and the menu surface), never Textual's `$text-muted`: that is
+  "auto 60%", picked against the widget's background, which with the theme
+  background off is the terminal's, assumed dark (white-on-white muted text
+  in light themes). The defaults use the theme's generated colour system
+  (`theme.to_color_system().generate()`), not its raw fields. Any rule that
+  fills a row in transparent mode must not out-rank the selection: the
+  `Screen.-transparent ListView… -highlight` rules carry an extra type
+  selector for that (the playing row once lost its highlight and kept black
+  text). Widgets that resolve theme colours to values in Python (transport
+  readout, Now Playing lamp) redraw on a theme change with
+  `call_after_refresh`: the `theme` reactive fires before `theme_variables`
+  is recomputed. Footer text sits on the page (no bar): keys
+  `$qobit-readout`, descriptions `$foreground`, whatever the theme sets for
+  its own bar. The list highlight targets Textual 8's `-highlight` class. Grid
   cards share `.grid-card` in `QobitApp.CSS`; never add per-card
   `.-selected` rules. `tests/test_themes.py` holds every theme, Textual's
   included, to 4.5:1.

@@ -13,6 +13,7 @@ from qobit.ui.themes import (
     ACCENT_TEXT,
     HEART,
     HIRES,
+    MUTED,
     NOW,
     QOBIT_THEMES,
     READOUT,
@@ -38,8 +39,13 @@ def _resolved(name):
     theme = _APP.available_themes[name]
     _APP.theme = name
     variables = {**qobit_variable_defaults(theme), **theme.variables}
-    background = Color.parse(_APP.get_css_variables()["background"])
-    return theme, variables, background
+    css = _APP.get_css_variables()
+    return theme, variables, Color.parse(css["background"])
+
+
+def _surface(name):
+    _APP.theme = name
+    return Color.parse(_APP.get_css_variables()["surface"])
 
 
 def _solid(value, background):
@@ -61,10 +67,19 @@ def test_selection_text_reads_on_the_selection(name):
 
 
 @pytest.mark.parametrize("name", [n for n in _NAMES if not _APP.available_themes[n].ansi])
-@pytest.mark.parametrize("var", [HEART, HIRES, READOUT, ACCENT_TEXT])
+@pytest.mark.parametrize("var", [HEART, HIRES, READOUT, ACCENT_TEXT, MUTED])
 def test_coloured_text_reads_on_the_page(name, var):
     _, v, background = _resolved(name)
     assert contrast(_solid(v[var], background), background) >= 4.5
+
+
+@pytest.mark.parametrize("name", [n for n in _NAMES if not _APP.available_themes[n].ansi])
+@pytest.mark.parametrize("var", [ACCENT_TEXT, MUTED])
+def test_text_reads_in_the_menu(name, var):
+    """The i/g menu sits on $surface, not the page background."""
+    _, v, background = _resolved(name)
+    surface = _surface(name)
+    assert contrast(_solid(v[var], background), surface) >= 4.5
 
 
 @pytest.mark.parametrize("name", [n for n in _NAMES if not _APP.available_themes[n].ansi])

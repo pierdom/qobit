@@ -53,16 +53,16 @@ class ArtistsView(Widget):
         height: 1fr;
         grid-rows: 5;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
         padding: 0 1 0 1;
     }
     ArtistsView ArtistGrid:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     ArtistsView #artist-detail-view { height: 1fr; }
     ArtistsView #artist-content-switcher { height: 1fr; }
@@ -70,13 +70,13 @@ class ArtistsView(Widget):
         height: 1fr;
         grid-rows: 4;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
         padding: 0 1 0 1;
     }
     ArtistsView #artist-albums-grid:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     """
 

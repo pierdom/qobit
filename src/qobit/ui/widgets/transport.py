@@ -19,7 +19,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import quality_text
 from .._images import fetch_image
-from ..themes import BAR_END, BAR_START, HIRES, READOUT, theme_color
+from ..themes import BAR_END, BAR_START, HIRES, MUTED, READOUT, theme_color, theme_text_color
 from .art import Art
 
 if TYPE_CHECKING:
@@ -90,11 +90,13 @@ class _TransportContent(Widget):
         else:
             line1 = Text(
                 "Nothing playing  ·  Enter on any track plays it",
-                style="dim",
+                style=theme_color(self.app, MUTED),
                 no_wrap=True,
             )
-
-        line2 = Text(self.album, no_wrap=True, overflow="ellipsis", style="dim")
+        # The muted colour, not `dim` (dim halves whatever colour it gets).
+        line2 = Text(
+            self.album, no_wrap=True, overflow="ellipsis", style=theme_color(self.app, MUTED)
+        )
 
         time_str = f" {_fmt(self.position)} / {_fmt(self.duration)}"
         bar_w = max(1, w - len(time_str))
@@ -143,7 +145,7 @@ def is_hires(bit_depth: int | None, sampling_rate_hz: float) -> bool:
 def _lamp(app: QobitApp) -> tuple[str, str] | None:
     """The bit-perfect lamp, or None while unchecked. Software volume below
     100% is DSP: then the lamp says so, whatever mpv reports."""
-    colour = lambda name: f"bold {theme_color(app, name)}"  # noqa: E731
+    colour = lambda name: f"bold {theme_text_color(app, name)}"  # noqa: E731
     if app.software_volume_enabled and app.volume < 100:
         return (f"◌ SOFTWARE VOLUME {app.volume}%", colour("warning"))
     signal = app.signal
@@ -201,11 +203,11 @@ class TransportBar(Widget):
         border: round $accent 40%;
         /* top-left: play/pause status, in the readout colour (amber LEDs in
            cyberdeck) */
-        border-title-color: $qobit-readout 40%;
+        border-title-color: $qobit-muted;  /* readable while nothing plays */
         border-title-align: left;
         border-title-style: bold;
         /* bottom-right: audio resolution of the current track */
-        border-subtitle-color: $accent;
+        border-subtitle-color: $qobit-accent-text;
         border-subtitle-align: right;
         layout: horizontal;
         padding: 0 1;
@@ -311,8 +313,14 @@ class TransportBar(Widget):
         self._update_subtitle()
 
     def _on_theme(self, _: object) -> None:
-        self._update_subtitle()
-        self.query_one(_TransportContent).refresh()
+        # The theme reactive fires before Textual recomputes theme_variables:
+        # redraw after the refresh, or the readout keeps the old theme's
+        # colours (it resolves them to values: border titles need them).
+        def redraw() -> None:
+            self._update_subtitle()
+            self.query_one(_TransportContent).refresh()
+
+        self.call_after_refresh(redraw)
 
     def _update_subtitle(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]

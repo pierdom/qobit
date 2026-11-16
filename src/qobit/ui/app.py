@@ -229,6 +229,29 @@ class QobitApp(App[None]):
        command palette). Textual's footer and Input bring their own fills:
        cleared here. */
     Footer, Footer > *, Input { background: transparent; }
+    /* With no footer bar, the footer's text sits on the page: use colours
+       that read there. Themes colour it for their own bar (solarized-light:
+       near-white on blue, so with the bar gone it was invisible). Keys take
+       the readout colour (amber in cyberdeck), descriptions the foreground. */
+    FooterKey .footer-key--key {
+        color: $qobit-readout;
+        background: transparent;
+    }
+    FooterKey .footer-key--description {
+        color: $foreground;
+        background: transparent;
+    }
+    /* Tab labels: Textual fades the inactive ones to $foreground 50% (dim
+       too in ANSI themes), 1.6:1 in some themes. Inactive: qobit's readable
+       muted colour; active: the foreground, bold. With the bar focused,
+       Textual's block-cursor pair still draws the active tab. */
+    Tabs Tab { color: $qobit-muted; text-style: none; }
+    Tabs Tab:hover, Tabs Tab.-active { color: $foreground; }
+    Tabs Tab.-active { text-style: bold; }
+    Tabs:focus Tab.-active {
+        color: $block-cursor-foreground;
+        background: $block-cursor-background;
+    }
 
     /* List highlight. Textual 8 marks the row with `-highlight` (it was
        `--highlight` in older Textual; a rule on the old name silently
@@ -257,7 +280,7 @@ class QobitApp(App[None]):
     .status-line {
         width: 1fr;
         padding: 0 1;
-        color: $text-muted;
+        color: $qobit-muted;
         text-style: italic;
     }
     .status-line.-error { color: $error; text-style: none; }
@@ -270,7 +293,7 @@ class QobitApp(App[None]):
     /* Active-tab underline in the accent colour too (Textual draws it with
        $block-cursor-background, i.e. the theme's primary). */
     Tabs Underline > .underline--bar {
-        color: $accent;
+        color: $qobit-accent-text;
     }
     /* The footer scrolls horizontally when its key hints don't fit (narrow
        terminals), and its scrollbar then covers the hints. Hide it: the
@@ -337,6 +360,18 @@ class QobitApp(App[None]):
        (same fix as .grid-card.-selected). */
     Screen.-transparent TimelineRow.-now Label {
         background: transparent;
+    }
+    /* The selection wins over a row's own state fill (the now-playing tint)
+       in transparent mode too. The -now rule above has the same specificity
+       as the plain highlight rules and comes later, so on the playing row
+       the selection's background vanished while its text colour stayed:
+       black text on a dark terminal in ansi-dark. These carry one more type
+       selector than any row-state rule, whatever their order. */
+    Screen.-transparent ListView > ListItem.-highlight {
+        background: $qobit-select-dim;
+    }
+    Screen.-transparent ListView:focus > ListItem.-highlight {
+        background: $qobit-select;
     }
     Screen.-transparent,
     Screen.-transparent * {

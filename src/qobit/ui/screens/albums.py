@@ -48,16 +48,16 @@ class AlbumsView(Widget):
         grid-rows: 5;  /* GRID_CARD_IMG_H */
         grid-gutter: 1 2;  /* same gaps as the Artists and Playlists grids */
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
         padding: 0 1 0 1;
     }
     AlbumsView AlbumGrid:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     """
 

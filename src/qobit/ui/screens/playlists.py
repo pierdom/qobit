@@ -71,19 +71,19 @@ class PlaylistCard(Widget):
     PlaylistCard .card-owner {
         height: 1;
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     PlaylistCard .card-meta {
         height: 1;
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     PlaylistCard .card-date {
         height: 1;
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     /* Selected state: shared .grid-card rules in QobitApp.CSS. */
@@ -221,16 +221,16 @@ class PlaylistsView(Widget):
         height: 1fr;
         grid-rows: 5;  /* GRID_CARD_IMG_H */
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
         padding: 0 1 0 1;
     }
     PlaylistsView PlaylistGrid:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     """
 
