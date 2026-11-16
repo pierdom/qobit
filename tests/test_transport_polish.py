@@ -176,7 +176,15 @@ def test_colours_loop_seamlessly():
         assert max(abs(x - y) for x, y in zip(ra, rb, strict=True)) <= 12
 
 
-def test_wordmark_cycles_only_while_playing(ui_app):
+def _hold_play_state(app, monkeypatch) -> None:
+    """No playback poll: every 0.5 s it sees no mpv in a test and turns
+    is_playing off, racing the assertions (it failed CI). The tests set
+    the play state themselves."""
+    monkeypatch.setattr(app, "_poll_player", lambda: None)
+
+
+def test_wordmark_cycles_only_while_playing(ui_app, monkeypatch):
+    _hold_play_state(ui_app, monkeypatch)
     asyncio.run(_wordmark_cycles(ui_app))
 
 
@@ -198,8 +206,9 @@ async def _wordmark_cycles(ui_app):
         assert mark.render().spans == static
 
 
-def test_the_mark_glyphs_share_one_colour(ui_app):
+def test_the_mark_glyphs_share_one_colour(ui_app, monkeypatch):
     """◢◤ is one shape: cycled per character, the gradient split it."""
+    _hold_play_state(ui_app, monkeypatch)
     asyncio.run(_mark_one_colour(ui_app))
 
 
