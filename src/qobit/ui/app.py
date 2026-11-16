@@ -44,7 +44,7 @@ from ..config import (
     token_location,
 )
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
-from ..qobuz.models import Album, Artist, StreamUrl, Track
+from ..qobuz.models import Album, Artist, NoStreamError, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
 from ._now_playing import tick
@@ -1354,7 +1354,10 @@ class QobitApp(App[None]):
                 raise
             except QobuzError:
                 continue
-            stream = StreamUrl.from_api(data)
+            try:
+                stream = StreamUrl.from_api(data)
+            except NoStreamError:
+                continue  # restricted at this quality; maybe not at the next
             if stream.sample:
                 return stream
             self._track_quality_cache[track_id] = quality

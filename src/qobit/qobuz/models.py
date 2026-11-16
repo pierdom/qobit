@@ -15,6 +15,10 @@ def quality_text(bit_depth: int, khz: float) -> str:
     return f"{bit_depth}-BIT · {_khz_str(khz)} kHz"
 
 
+class NoStreamError(Exception):
+    """A stream request answered without a URL (restriction codes only)."""
+
+
 @dataclass
 class StreamUrl:
     url: str
@@ -29,8 +33,15 @@ class StreamUrl:
 
     @classmethod
     def from_api(cls, data: dict) -> "StreamUrl":
+        """Raises NoStreamError when Qobuz sends no URL: it answers some
+        tracks with only restriction codes (SampleRestrictedByRightHolders),
+        and a KeyError there closed the app."""
+        url = data.get("url")
+        if not url:
+            codes = [r.get("code", "") for r in data.get("restrictions") or [] if r]
+            raise NoStreamError(", ".join(c for c in codes if c) or "no stream URL")
         return cls(
-            url=data["url"],
+            url=url,
             format_id=data.get("format_id", 6),
             sampling_rate=float(data.get("sampling_rate", 44.1)) * 1000,
             bit_depth=data.get("bit_depth"),

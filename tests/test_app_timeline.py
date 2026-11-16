@@ -303,6 +303,46 @@ def test_resolve_stream_none_when_every_quality_fails(app):
     assert asyncio.run(app._resolve_stream("42")) is None
 
 
+# What Qobuz sent for a track the account can't stream, not even as a
+# preview: no URL, only a restriction code. The KeyError closed the app.
+_RESTRICTED = {
+    "track_id": 31052309,
+    "duration": 219,
+    "restrictions": [{"code": "SampleRestrictedByRightHolders"}],
+    "sampling_rate": 192,
+    "bit_depth": 24,
+}
+
+
+def test_resolve_stream_none_when_every_quality_is_restricted(app):
+    app._client = _FakeClient(
+        {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _RESTRICTED, "FLAC_CD": _RESTRICTED}
+    )
+    assert asyncio.run(app._resolve_stream("42")) is None
+    assert app._client.calls == ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
+    assert "42" not in app._track_quality_cache
+
+
+def test_resolve_stream_falls_back_past_a_restricted_quality(app):
+    app._client = _FakeClient({"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _FLAC})
+    stream = asyncio.run(app._resolve_stream("42"))
+    assert stream is not None and stream.url == "u"
+    assert app._track_quality_cache["42"] == "FLAC_24_96"
+
+
+def test_play_stream_reports_a_restricted_track_unplayable(app):
+    """The whole path the Next key took: no crash, "none" for the caller to
+    skip, and nothing handed to mpv."""
+    app._client = _FakeClient(
+        {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _RESTRICTED, "FLAC_CD": _RESTRICTED}
+    )
+    played: list = []
+    app._player.play = lambda *a, **k: played.append(a)
+    track = Track(id="42", title="t", artist="a", album="b", album_id="c", duration=1)
+    assert asyncio.run(app._play_stream(track)) == "none"
+    assert played == []
+
+
 def test_resolve_stream_propagates_auth_expired(app):
     from qobit.qobuz.client import AuthExpiredError
 

@@ -33,7 +33,7 @@ from .config import (
     token_location,
 )
 from .qobuz.client import AuthExpiredError, QobuzClient, QobuzError
-from .qobuz.models import StreamUrl, Track
+from .qobuz.models import NoStreamError, StreamUrl, Track
 from .qobuz.oauth import LoginPrompt
 
 _QUALITY_FALLBACK = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
@@ -140,7 +140,7 @@ async def cmd_play(args: argparse.Namespace) -> int:
                     return 1
                 print(f"OK ({stream.quality_badge})")
                 break
-            except QobuzError as e:
+            except (QobuzError, NoStreamError) as e:
                 print(f"unavailable ({e})")
 
         if stream is None:
