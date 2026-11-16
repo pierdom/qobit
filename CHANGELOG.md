@@ -23,6 +23,11 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Fixed
 
+- **qobit closed when a track had no stream at all.** For some tracks
+  Qobuz answers with only a restriction (`SampleRestrictedByRightHolders`:
+  not even a preview), and reaching one (Next, Enter, autoplay) crashed
+  the app. It's now treated as unavailable and skipped, like a preview;
+  `qobit play` reports it too.
 - **Albums on short terminals.** An album opened from the Artists tab, Search
   or `g` showed its art and the artist header but not a single track at 32
   rows. The tracklist now always keeps at least 8 rows (and half the album
