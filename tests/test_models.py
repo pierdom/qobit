@@ -9,7 +9,9 @@ be a silent, hard-to-notice display bug, not a crash.
 
 from __future__ import annotations
 
-from qobit.qobuz.models import Album, Artist, Playlist, StreamUrl, Track
+import pytest
+
+from qobit.qobuz.models import Album, Artist, NoStreamError, Playlist, StreamUrl, Track
 
 # ── Track ──────────────────────────────────────────────────────────────────
 
@@ -412,3 +414,11 @@ def test_saved_tracks_without_artist_ids_still_load():
     """queue_state.json written before artist ids existed must still restore."""
     t = Track(id="1", title="T", artist="A", album="B", album_id="b", duration=1)
     assert t.artist_id is None and not t.by_artist("1")
+
+
+def test_stream_url_without_url_raises_no_stream_with_the_codes():
+    data = {"track_id": 1, "restrictions": [{"code": "SampleRestrictedByRightHolders"}]}
+    with pytest.raises(NoStreamError, match="SampleRestrictedByRightHolders"):
+        StreamUrl.from_api(data)
+    with pytest.raises(NoStreamError, match="no stream URL"):
+        StreamUrl.from_api({"url": ""})

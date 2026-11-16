@@ -3,18 +3,27 @@ from __future__ import annotations
 import html as _html
 import re
 
-# Responsive thresholds shared by every album-detail-based view (AlbumsView,
-# ArtistsView, AlbumScreen). As the terminal gets shorter the layout
-# progressively reclaims space: hide the artist header, then halve the album
-# art, then switch the tracklist to two columns.
-HIDE_ARTIST_BELOW = 32
-SMALL_ART_BELOW = 24
-TWO_COL_BELOW = 17
+_BLOCK_TAG = re.compile(r"</?(?:p|br|div|li|ul|ol|h[1-6]|tr|td|blockquote)\b[^>]*>", re.I)
+_ANY_TAG = re.compile(r"<[^>]+>")
+
+
+def within(widget: object, css_class: str) -> bool:
+    """Whether ``widget`` (e.g. a click's) is, or sits inside, a widget with
+    ``css_class``."""
+    return widget is not None and any(
+        w.has_class(css_class)
+        for w in widget.ancestors_with_self  # type: ignore[attr-defined]
+    )
 
 
 def strip_html(text: str) -> str:
-    """Strip HTML tags and decode HTML entities to plain text."""
-    return _html.unescape(re.sub(r"<[^>]+>", " ", text)).strip()
+    """Strip HTML tags and decode HTML entities to plain text. Block and
+    break tags (p, br, div, li) separate words with a space; inline ones
+    (b, i, a, span…) just go ("<b>Alton</b>, IL" read "Alton , IL").
+    Runs of spaces collapse to one; line breaks stay."""
+    spaced = _BLOCK_TAG.sub(" ", text)
+    plain = _html.unescape(_ANY_TAG.sub("", spaced))
+    return re.sub(r"[ \t]+", " ", plain).strip()
 
 
 # Shared "art + metadata header" layout used by both AlbumDetailPanel

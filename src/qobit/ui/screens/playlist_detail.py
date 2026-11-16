@@ -4,7 +4,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
-from textual import on, work
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.content import Content
@@ -23,7 +23,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import DETAIL_HEADER_CSS, readout, strip_html
+from .._utils import DETAIL_HEADER_CSS, readout, strip_html, within
 from ..nav import page_header
 from ..widgets.art import Art
 from ..widgets.lists import TrackListView
@@ -119,13 +119,19 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         with Vertical(id="playlist-panel"):
             with Horizontal(classes="detail-header"):
                 yield Art(classes="detail-art")
-                with VerticalScroll(classes="detail-meta"):
+                # Not focusable (see AlbumDetailPanel): a click on the header
+                # selects the tracklist instead.
+                with VerticalScroll(classes="detail-meta", can_focus=False):
                     yield Label("", classes="detail-title", markup=True)
                     yield Label("", classes="detail-sub", markup=True)
                     yield Label("", classes="detail-desc", markup=True)
             yield TrackListView(classes="detail-tracklist")
         yield TransportBar()
         yield Footer()
+
+    def on_click(self, event: events.Click) -> None:
+        if within(event.widget, "detail-header"):
+            self.query_one(".detail-tracklist").focus()
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
@@ -193,6 +199,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             ]
             self._apply_now_playing(rows)
             await lv.set_rows(rows)  # type: ignore[attr-defined]  # lazy: playlists can be long
+            self._place_initial_cursor(lv)
         except NoMatches:
             return
 

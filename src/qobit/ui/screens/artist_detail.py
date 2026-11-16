@@ -30,13 +30,14 @@ from .._now_playing import (
     plain_if_highlighted,
     playing_content,
 )
-from .._utils import readout
+from .._utils import readout, strip_html
 from ..nav import page_header
+from ..themes import HEART, theme_color
 from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
-from .search import ICON_TRACK
+from .search import ICON_FAV, ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -615,6 +616,29 @@ class _GridNav:
         self._move_cursor(target, cards, top=True)  # type: ignore[attr-defined]
         self._near_end()
 
+    def _move_cursor(self, idx: int, cards: list | None = None, top: bool = False) -> None:
+        if cards is None:
+            cards = self._visible_cards()  # type: ignore[attr-defined]
+        if not cards or idx < 0 or idx >= len(cards):
+            return
+        if 0 <= self._cursor < len(cards):  # type: ignore[attr-defined]
+            select_card(cards[self._cursor], False)  # type: ignore[attr-defined]
+        self._cursor = idx
+        select_card(cards[idx], True)
+        if top:
+            cards[idx].scroll_visible(animate=False, top=True)
+        else:
+            cards[idx].scroll_visible()
+
+    def select_first(self) -> None:
+        """After a filter: the cursor on the first visible card, and no card
+        (hidden ones included) left looking selected. It was -1 (nothing
+        selected), so Enter and the ``i`` menu had no card to act on."""
+        for card in self.query(".-selected"):  # type: ignore[attr-defined]
+            select_card(card, False)
+        self._cursor = -1
+        self._move_cursor(0, top=True)
+
     def selected_card(self) -> Widget | None:
         """The card under the cursor, or None."""
         cards = self._visible_cards()  # type: ignore[attr-defined]
@@ -691,26 +715,10 @@ class AlbumGrid(_GridNav, ScrollableContainer):
             if bool(card.display) != vis:
                 card.display = vis
             any_visible = any_visible or vis
-        self._cursor = -1
         self.scroll_home(animate=False)
+        self.select_first()
         self.sync_visible_art()
         return any_visible
-
-    def _move_cursor(
-        self, idx: int, cards: list[AlbumCard] | None = None, top: bool = False
-    ) -> None:
-        if cards is None:
-            cards = self._visible_cards()
-        if not cards or idx < 0 or idx >= len(cards):
-            return
-        if self._cursor >= 0 and self._cursor < len(cards):
-            select_card(cards[self._cursor], False)
-        self._cursor = idx
-        select_card(cards[idx], True)
-        if top:
-            cards[idx].scroll_visible(animate=False, top=True)
-        else:
-            cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
         if isinstance(card := self.selected_card(), AlbumCard):
@@ -876,26 +884,10 @@ class ArtistGrid(_GridNav, ScrollableContainer):
             if bool(card.display) != vis:
                 card.display = vis
             any_visible = any_visible or vis
-        self._cursor = -1
         self.scroll_home(animate=False)
+        self.select_first()
         self.sync_visible_art()
         return any_visible
-
-    def _move_cursor(
-        self, idx: int, cards: list[ArtistCard] | None = None, top: bool = False
-    ) -> None:
-        if cards is None:
-            cards = self._visible_cards()
-        if not cards or idx < 0 or idx >= len(cards):
-            return
-        if self._cursor >= 0 and self._cursor < len(cards):
-            select_card(cards[self._cursor], False)
-        self._cursor = idx
-        select_card(cards[idx], True)
-        if top:
-            cards[idx].scroll_visible(animate=False, top=True)
-        else:
-            cards[idx].scroll_visible()
 
     def action_open_selected(self) -> None:
         if isinstance(card := self.selected_card(), ArtistCard):
@@ -1100,6 +1092,7 @@ class ArtistHeader(Widget):
 
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), 7)
+        self.watch(self.app, "theme", self._on_theme, init=False)
 
     artist: Artist | None = None
     """The artist shown, once ``populate`` has run."""
@@ -1116,14 +1109,43 @@ class ArtistHeader(Widget):
 
     def populate(self, artist: Artist) -> None:
         self.artist = artist
-        self.query_one(".ah-bio-section").border_title = escape(readout(artist.name))
+        self.refresh_heart()
+        self._load_heart(artist.id)
         self.query_one(Art).placeholder = artist.name
         if artist.biography:
-            self.query_one(".ah-bio", Label).update(escape(artist.biography))
+            # API HTML (<p>, <br/>, entities) as plain text, like the Now
+            # Playing bio; then escaped, the Label takes markup.
+            self.query_one(".ah-bio", Label).update(escape(strip_html(artist.biography)))
         if artist.image_url:
             self._fetch_image(artist.image_url)
         if self._similar:
             self._load_similar(artist.id)
+
+    def refresh_heart(self) -> None:
+        """The bio panel's title: the name, with a ♥ when followed. A border
+        title doesn't resolve $variables, so the colour is the theme's value
+        (redrawn on a theme change)."""
+        if self.artist is None:
+            return
+        app: QobitApp = self.app  # type: ignore[assignment]
+        title = escape(readout(self.artist.name))
+        if app.is_followed_artist(self.artist.id):
+            title += f"  [{theme_color(self.app, HEART)}]{ICON_FAV}[/]"
+        self.query_one(".ah-bio-section").border_title = title
+
+    @work(exclusive=True, group="_load_heart")  # a newer artist cancels a stale one
+    async def _load_heart(self, artist_id: str) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        try:
+            await app.ensure_favorite_artists()
+        except QobuzError:
+            return
+        if self.is_attached and self.artist is not None and self.artist.id == artist_id:
+            self.refresh_heart()
+
+    def _on_theme(self, _: object) -> None:
+        # theme fires before theme_variables is recomputed (see CLAUDE.md).
+        self.call_after_refresh(self.refresh_heart)
 
     @work(exclusive=True, group="_load_similar")  # a newer artist cancels a stale one
     async def _load_similar(self, artist_id: str) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
-from textual import events, on, work
+from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -12,9 +12,10 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
-from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, readout, status_line
+from .._filter import TypeToFilter, filter_prompt
+from .._utils import readout, status_line
 from ..nav import Breadcrumb
-from .album_detail import AlbumDetailPanel
+from .album_detail import AlbumDetailPanel, fit_artist_header
 from .artist_detail import LIBRARY_TILE_MIN_W, AlbumCard, AlbumGrid, ArtistHeader
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
 
-class AlbumsView(Widget):
+class AlbumsView(TypeToFilter, Widget):
     BINDINGS = [
         Binding("s", "cycle_sort", "Sort"),
         Binding("r", "toggle_reverse", "Rev"),
@@ -65,8 +66,6 @@ class AlbumsView(Widget):
     _loaded: bool = False
     _sort_key: str = "favorited_at"
     _sort_reverse: bool = True
-    _filter_active: bool = False
-    _filter_query: str = ""
     _render_version: int = 0
     _albums: list[Album]
     _filter_timer: Timer | None = None
@@ -114,17 +113,15 @@ class AlbumsView(Widget):
 
     # ── vertical responsiveness ────────────────────────────────────────────────
 
-    def on_resize(self, event: events.Resize) -> None:
-        self._apply_responsive(event.size.height)
-
-    def _apply_responsive(self, height: int) -> None:
-        self.query_one(ArtistHeader).display = height >= HIDE_ARTIST_BELOW
-        self.query_one("#album-panel", AlbumDetailPanel).set_compact(
-            small_art=height < SMALL_ART_BELOW,
-            two_col=height < TWO_COL_BELOW,
+    def on_album_detail_panel_resized(self, _: AlbumDetailPanel.Resized) -> None:
+        fit_artist_header(
+            self.query_one(ArtistHeader), self.query_one("#album-panel", AlbumDetailPanel)
         )
 
     # ── filter ───────────────────────────────────────────────────────────────
+
+    def _filter_allowed(self) -> bool:
+        return not self._album_view_active
 
     def can_navigate_back(self) -> bool:
         return self._album_view_active or self._filter_active or bool(self._filter_query)
@@ -147,28 +144,6 @@ class AlbumsView(Widget):
             return True
         return False
 
-    def action_start_filter(self) -> None:
-        if self._album_view_active:
-            return
-        self._filter_active = True
-        self._update_subtitle()
-        self.refresh_bindings()
-
-    def on_key(self, event: events.Key) -> None:
-        if not self._filter_active or self._album_view_active:
-            return
-        if event.is_printable and event.character:
-            self._filter_query += event.character
-            event.stop()
-            self._update_subtitle()
-            self._schedule_filter()
-        elif event.key in ("backspace", "ctrl+h"):
-            if self._filter_query:
-                self._filter_query = self._filter_query[:-1]
-                event.stop()
-                self._update_subtitle()
-                self._schedule_filter()
-
     # ── sort ─────────────────────────────────────────────────────────────────
 
     def action_cycle_sort(self) -> None:
@@ -189,7 +164,7 @@ class AlbumsView(Widget):
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
         total = len(self._albums)
         if self._filter_active:
-            grid.border_subtitle = f"/ {self._filter_query}_"
+            grid.border_subtitle = filter_prompt(self._filter_query)
         elif self._filter_query:
             grid.border_subtitle = f"⌕ {self._filter_query}"
         else:
@@ -321,7 +296,6 @@ class AlbumsView(Widget):
 
         self.query_one("#albums-switcher", ContentSwitcher).current = "albums-album-view"
         self._album_view_active = True
-        self._apply_responsive(self.size.height)
         panel.focus_tracklist()
         self.app.nav_changed()  # type: ignore[attr-defined]
 

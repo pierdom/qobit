@@ -270,6 +270,20 @@ class _FakeClient:
         return answer
 
 
+class _FakePlayer:
+    running = False
+
+    def __init__(self):
+        self.played = []
+
+    def stop(self):
+        self.running = False
+
+    def play(self, url, start=0.0):
+        self.played.append(url)
+        self.running = True
+
+
 _FLAC = {"url": "u", "format_id": 7, "sampling_rate": 96, "bit_depth": 24}
 _PREVIEW = {"url": "p", "format_id": 5, "sample": True, "sampling_rate": 44.1}
 
@@ -301,6 +315,89 @@ def test_resolve_stream_none_when_every_quality_fails(app):
     err = QobuzError("nope")
     app._client = _FakeClient({"FLAC_24_192": err, "FLAC_24_96": err, "FLAC_CD": err})
     assert asyncio.run(app._resolve_stream("42")) is None
+
+
+# What Qobuz sent for a track the account can't stream, not even as a
+# preview: no URL, only a restriction code. The KeyError closed the app.
+_RESTRICTED = {
+    "track_id": 31052309,
+    "duration": 219,
+    "restrictions": [{"code": "SampleRestrictedByRightHolders"}],
+    "sampling_rate": 192,
+    "bit_depth": 24,
+}
+
+
+def test_resolve_stream_raises_when_every_quality_is_restricted(app):
+    from qobit.qobuz.models import NoStreamError
+
+    app._client = _FakeClient(
+        {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _RESTRICTED, "FLAC_CD": _RESTRICTED}
+    )
+    with pytest.raises(NoStreamError, match="SampleRestrictedByRightHolders"):
+        asyncio.run(app._resolve_stream("42"))
+    assert app._client.calls == ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
+    assert "42" not in app._track_quality_cache
+
+
+def test_resolve_stream_restricted_plus_failures_is_just_none(app):
+    """A request failure might hide a playable quality: not "unavailable",
+    so nothing skips on a flaky network."""
+    from qobit.qobuz.client import QobuzError
+
+    app._client = _FakeClient(
+        {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": QobuzError("x"), "FLAC_CD": _RESTRICTED}
+    )
+    assert asyncio.run(app._resolve_stream("42")) is None
+
+
+def test_resolve_stream_falls_back_past_a_restricted_quality(app):
+    app._client = _FakeClient({"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _FLAC})
+    stream = asyncio.run(app._resolve_stream("42"))
+    assert stream is not None and stream.url == "u"
+    assert app._track_quality_cache["42"] == "FLAC_24_96"
+
+
+def _all_restricted(app, monkeypatch) -> _FakePlayer:
+    app._client = _FakeClient(
+        {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _RESTRICTED, "FLAC_CD": _RESTRICTED}
+    )
+    player = _FakePlayer()
+    monkeypatch.setattr(app, "_player", player)
+    return player
+
+
+def test_play_stream_reports_a_restricted_track_unavailable(app, monkeypatch):
+    """The path the Next key took: no crash, "unavailable", nothing to mpv."""
+    player = _all_restricted(app, monkeypatch)
+    assert asyncio.run(app._play_stream(_track("42"))) == "unavailable"
+    assert player.played == []
+
+
+def test_a_restricted_track_is_skipped_like_a_preview(app, monkeypatch):
+    """Next onto a restricted track left the old song playing under the new
+    cursor ("No stream available"); it's skipped instead."""
+    _all_restricted(app, monkeypatch)
+    advanced = []
+    monkeypatch.setattr(app, "_advance_queue", lambda: advanced.append(True))
+    flashes = []
+    monkeypatch.setattr(app, "_flash_status", flashes.append)
+    app._timeline = [_track("1"), _track("42"), _track("3")]
+    app._cursor = 1
+    asyncio.run(app._do_play(app._timeline[1]))
+    assert advanced == [True]
+    assert flashes == ["Not available on Qobuz: Track 42"]
+
+
+def test_a_restricted_last_track_stops(app, monkeypatch):
+    player = _all_restricted(app, monkeypatch)
+    player.running = True  # the previous song
+    monkeypatch.setattr(app, "_advance_queue", lambda: pytest.fail("nothing to skip to"))
+    monkeypatch.setattr(app, "_flash_status", lambda _m: None)
+    app._timeline = [_track("1"), _track("42")]
+    app._cursor = 1
+    asyncio.run(app._do_play(app._timeline[1]))
+    assert player.running is False
 
 
 def test_resolve_stream_propagates_auth_expired(app):
@@ -385,20 +482,6 @@ def test_queue_with_nothing_played_yet_restores_without_now_playing(app, monkeyp
 # ── overlapping play requests ───────────────────────────────────────────────
 
 
-class _FakePlayer:
-    running = False
-
-    def __init__(self):
-        self.played = []
-
-    def stop(self):
-        self.running = False
-
-    def play(self, url, start=0.0):
-        self.played.append(url)
-        self.running = True
-
-
 def test_slow_stream_resolve_does_not_override_a_newer_pick(app, monkeypatch):
     """Pick A then B quickly; A's URL arrives last. It must not stop B and play
     A (the cursor would say B while A plays)."""
@@ -443,3 +526,45 @@ def test_failed_favourites_fetch_is_retried_not_cached(app, monkeypatch):
     monkeypatch.setattr(app._client, "get_all_favorite_tracks", fetch)
     assert asyncio.run(app.ensure_favorite_ids()) == set()
     assert asyncio.run(app.ensure_favorite_ids()) == {"7"}
+
+
+# ── "Play radio" from the i menu ────────────────────────────────────────────
+
+
+def _radio_calls(app, monkeypatch) -> list:
+    calls: list = []
+    monkeypatch.setattr(
+        app, "play_track", lambda t, start=0.0, **_: calls.append(("play", t.id, start))
+    )
+    monkeypatch.setattr(app, "_start_radio", lambda t: calls.append(("radio", t.id)))
+    return calls
+
+
+@pytest.mark.parametrize("paused", [False, True])
+def test_play_radio_on_the_current_track_keeps_it_playing(app, monkeypatch, paused):
+    """It restarted the song: only Up Next should become the station."""
+    calls = _radio_calls(app, monkeypatch)
+    app.now_playing = _track("7")
+    app.is_playing = True
+    app.is_paused = paused
+    app._on_track_menu("radio", _track("7"))
+    assert calls == [("radio", "7")]
+
+
+def test_play_radio_on_another_track_plays_it_first(app, monkeypatch):
+    calls = _radio_calls(app, monkeypatch)
+    app.now_playing = _track("7")
+    app.is_playing = True
+    app._on_track_menu("radio", _track("9"))
+    assert calls == [("play", "9", 0.0), ("radio", "9")]
+
+
+def test_play_radio_on_the_restored_track_resumes_it(app, monkeypatch):
+    """Restored at startup, shown paused but not in mpv yet: it starts where
+    it was left, not from 0:00."""
+    calls = _radio_calls(app, monkeypatch)
+    app.now_playing = _track("7")
+    app.is_paused = True  # what the restore sets; is_playing stays False
+    app._pending_resume = (app.now_playing, 83.0)
+    app._on_track_menu("radio", _track("7"))
+    assert calls == [("play", "7", 83.0), ("radio", "7")]

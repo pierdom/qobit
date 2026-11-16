@@ -7,6 +7,55 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Changed
+
+- A ♥ marks a favourite album (after its title) and a followed artist (in
+  the artist header's title), and follows changes from the `i` menu
+  straight away.
+- The player's second line shows the album's year: *Kind of Blue (1959)*.
+- While a track plays, the `◢◤ qobit` mark in the top right slowly cycles
+  through the theme's progress-bar colours (the accent and HI-RES colours in
+  themes whose bar is a single colour).
+- The progress bar's moving tip no longer shows a dark gap: the unfilled
+  part of its cell takes the shaded track's colour.
+
+### Fixed
+
+- **Acting on a filtered result.** While typing a `/` filter every key went
+  into it (`i` too), and Enter played the highlighted track, replacing the
+  queue. Enter now ends the typing and keeps the results, so `i`, `f` and
+  Enter work on them; Escape clears the filter. The first result is
+  selected as you type (lists and grids had no selection after filtering,
+  so the menu found nothing). Tracks, Albums, Artists and Playlists.
+- An album or playlist opened with no track selected: no cursor to see,
+  and the `i` menu offered only the album's favourite (no *Go to artist*,
+  *Play next*…). The first track, or the one playing, is now selected. On
+  an album card, `i` also offers *Go to artist*.
+- *Play radio* from the `i` menu on the track that's playing restarted it;
+  now only Up Next becomes the station (as with `R`). On the track restored
+  at startup it resumes where you left off.
+- **qobit closed when a track had no stream at all.** For some tracks
+  Qobuz answers with only a restriction (`SampleRestrictedByRightHolders`:
+  not even a preview), and reaching one (Next, Enter, autoplay) crashed
+  the app. Such a track is now skipped with *Not available on Qobuz*, like
+  a preview-only one (or playback stops if nothing follows it); `qobit
+  play` reports it too.
+- **Albums on short terminals.** An album opened from the Artists tab, Search
+  or `g` showed its art and the artist header but not a single track at 32
+  rows. The tracklist now always keeps at least 8 rows (and half the album
+  panel); the art shrinks to fit, the artist header steps aside when there's
+  no room for it, and on very short terminals the art goes and the
+  tracklist splits into two columns.
+- In an album or playlist, Tab (or a click on the cover or album info) left
+  focus on the header, with no sign of it, and the tracks needed one more
+  Tab. Tab and clicks now go straight to the track list.
+- Artist pages showed the biography's HTML (`<p>…`) as text; it's plain
+  text now, as in the Now Playing panel. Text from Qobuz HTML (bios,
+  album and playlist descriptions) no longer gets stray double spaces or a
+  space before punctuation where a tag was.
+
 ## [0.10.0] - 2026-11-16
 
 ### Changed

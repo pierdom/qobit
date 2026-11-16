@@ -15,6 +15,10 @@ def quality_text(bit_depth: int, khz: float) -> str:
     return f"{bit_depth}-BIT · {_khz_str(khz)} kHz"
 
 
+class NoStreamError(Exception):
+    """A stream request answered without a URL (restriction codes only)."""
+
+
 @dataclass
 class StreamUrl:
     url: str
@@ -29,8 +33,15 @@ class StreamUrl:
 
     @classmethod
     def from_api(cls, data: dict) -> "StreamUrl":
+        """Raises NoStreamError when Qobuz sends no URL: it answers some
+        tracks with only restriction codes (SampleRestrictedByRightHolders),
+        and a KeyError there closed the app."""
+        url = data.get("url")
+        if not url:
+            codes = [r["code"] for r in data.get("restrictions") or [] if r and r.get("code")]
+            raise NoStreamError(", ".join(codes) or "no stream URL")
         return cls(
-            url=data["url"],
+            url=url,
             format_id=data.get("format_id", 6),
             sampling_rate=float(data.get("sampling_rate", 44.1)) * 1000,
             bit_depth=data.get("bit_depth"),
@@ -42,6 +53,13 @@ class StreamUrl:
         """Console-readout style for the transport bar, e.g. [ 24-BIT · 192 kHz ]."""
         bd = self.bit_depth or 16
         return f"[ {quality_text(bd, self.sampling_rate / 1000)} ]"
+
+
+def release_year(album: dict) -> int | None:
+    """An album's original release year, from ``release_date_original``
+    ("1959-08-17"); None when the API doesn't give one."""
+    release = album.get("release_date_original") or ""
+    return int(release[:4]) if len(release) >= 4 and release[:4].isdigit() else None
 
 
 @dataclass
@@ -59,6 +77,9 @@ class Track:
     # soundtracks. The artist page's "Your favourites" matches either.
     artist_id: str | None = None
     album_artist_id: str | None = None
+    # The album's original release year (the transport shows "Album (1959)").
+    # None in queues saved before it existed: they load unchanged.
+    album_year: int | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "Track":
@@ -89,6 +110,7 @@ class Track:
             favorited_at=data.get("favorited_at") or None,
             artist_id=str(performer["id"]) if performer.get("id") else None,
             album_artist_id=str(album_artist["id"]) if album_artist.get("id") else None,
+            album_year=release_year(album),
         )
 
     def by_artist(self, artist_id: str) -> bool:
@@ -154,12 +176,12 @@ class Album:
         # controls) and "Go to album" need them when a track is played
         # straight from the album view or its play queue.
         album_id = str(data["id"])
+        year = release_year(data)
         for t in tracks:
             t.image_url = t.image_url or img_url
             t.album = t.album or data.get("title", "")
             t.album_id = t.album_id or album_id
-        release = data.get("release_date_original", "") or ""
-        year = int(release[:4]) if len(release) >= 4 and release[:4].isdigit() else None
+            t.album_year = t.album_year or year
         awards = [
             name
             for a in (data.get("awards") or [])

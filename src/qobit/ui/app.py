@@ -44,12 +44,12 @@ from ..config import (
     token_location,
 )
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
-from ..qobuz.models import Album, Artist, StreamUrl, Track
+from ..qobuz.models import Album, Artist, NoStreamError, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
 from ._now_playing import tick
 from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, Wordmark, page_screens, tab_label
-from .play_context import ConnectPlayContext, LocalPlayContext
+from .play_context import UNPLAYABLE, ConnectPlayContext, LocalPlayContext, unplayable_notice
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
 from .screens.mixes import MixesView
@@ -937,6 +937,25 @@ class QobitApp(App[None]):
                 self._fav_artists = [Artist.from_api(r) for r in raw]
             return self._fav_artists
 
+    def is_favorite_album(self, album_id: str) -> bool:
+        """From the cache: False until ensure_favorite_albums has loaded it."""
+        return any(a.id == album_id for a in self._fav_albums or ())
+
+    def is_followed_artist(self, artist_id: str) -> bool:
+        """From the cache: False until ensure_favorite_artists has loaded it."""
+        return any(a.id == artist_id for a in self._fav_artists or ())
+
+    def _refresh_hearts(self) -> None:
+        """Redraw the ♥ on every open album panel and artist header (pages
+        included) after a favourite or follow changed."""
+        from .screens.album_detail import AlbumDetailPanel
+        from .screens.artist_detail import ArtistHeader
+
+        for screen in self.screen_stack:
+            for widget in (*screen.query(AlbumDetailPanel), *screen.query(ArtistHeader)):
+                with contextlib.suppress(NoMatches):  # not composed yet
+                    widget.refresh_heart()
+
     async def toggle_favorite_album(self, album: Album) -> None:
         albums = await self.ensure_favorite_albums()
         on = not any(a.id == album.id for a in albums)
@@ -951,6 +970,7 @@ class QobitApp(App[None]):
         else:
             albums[:] = [a for a in albums if a.id != album.id]
             self._flash_status(f"Removed from favourites: {album.title}")
+        self._refresh_hearts()
         with contextlib.suppress(Exception):
             self.query_one(AlbumsView).favorites_changed()
 
@@ -968,6 +988,7 @@ class QobitApp(App[None]):
         else:
             artists[:] = [a for a in artists if a.id != artist.id]
             self._flash_status(f"Unfollowed {artist.name}")
+        self._refresh_hearts()
         with contextlib.suppress(Exception):
             self.query_one(ArtistsView).favorites_changed()
         from .screens.artist_detail import ArtistCard
@@ -1117,6 +1138,10 @@ class QobitApp(App[None]):
     def _clear_flash(self, msg: str) -> None:
         if self.status_msg == msg:  # only clear if nothing newer replaced it
             self.status_msg = ""
+
+    def _is_loaded(self, track: Track) -> bool:
+        """Whether ``track`` is the one in the player (playing or paused)."""
+        return self.is_playing and self.now_playing is not None and self.now_playing.id == track.id
 
     def action_start_radio(self) -> None:
         seed = self.now_playing or (self._pending_resume[0] if self._pending_resume else None)
@@ -1317,7 +1342,9 @@ class QobitApp(App[None]):
         """Walk the quality fallback chain and return the first stream Qobuz
         hands back, or None. A preview (``stream.sample``) is returned as-is
         and ends the walk: Qobuz returns the same preview at every quality, so
-        trying the rest would only cost round-trips. Raises AuthExpiredError."""
+        trying the rest would only cost round-trips. Raises AuthExpiredError,
+        and NoStreamError when every quality was refused by a restriction (no
+        URL, no preview): unavailable, unlike a network failure (None)."""
         # Prefer the quality that worked last time for this track; fall through to
         # the full list on first play or if the cached quality fails.
         all_qualities = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
@@ -1326,30 +1353,40 @@ class QobitApp(App[None]):
             qualities = [cached] + [q for q in all_qualities if q != cached]
         else:
             qualities = all_qualities
+        restricted: NoStreamError | None = None
+        failed = False
         for quality in qualities:
             try:
                 data = await self._client.get_streaming_url(track_id, quality)
             except AuthExpiredError:
                 raise
             except QobuzError:
+                failed = True
                 continue
-            stream = StreamUrl.from_api(data)
+            try:
+                stream = StreamUrl.from_api(data)
+            except NoStreamError as e:
+                restricted = e
+                continue  # restricted at this quality; maybe not at the next
             if stream.sample:
                 return stream
             self._track_quality_cache[track_id] = quality
             if len(self._track_quality_cache) > 1000:
                 del self._track_quality_cache[next(iter(self._track_quality_cache))]
             return stream
+        if restricted is not None and not failed:
+            raise restricted
         return None
 
     async def _do_play(self, track: Track, start: float = 0.0) -> None:
         """Local-context playback: start ``track``; on a preview, skip forward."""
         result = await self._play_stream(track, start)
-        if result == "sample":
+        if result in UNPLAYABLE:
             # Never play a preview: it's a 30 s MP3, not the FLAC. Treat the track
             # as unavailable — skip forward like the official apps do, or stop
-            # if nothing is queued after it.
-            self._flash_status(f"Not streamable (preview only): {track.display_title}")
+            # if nothing is queued after it. Same for a track Qobuz refuses
+            # outright (restricted: no URL, no preview).
+            self._flash_status(unplayable_notice(track, result))
             if self._cursor + 1 < len(self._timeline) or self.radio_mode:
                 self._advance_queue()
             elif self._player.running:
@@ -1357,22 +1394,29 @@ class QobitApp(App[None]):
 
     async def _play_stream(self, track: Track, start: float = 0.0) -> str:
         """Resolve and start ``track`` in mpv. Returns "ok", "sample" (preview
-        only — nothing started), "none" (no stream), "auth" (session expired)
+        only — nothing started), "unavailable" (Qobuz refuses the track: no
+        URL, no preview), "none" (no stream: request failures), "auth" (session expired)
         or "stale" (another track was requested while this one resolved; it
         took over, nothing started). Shared by both play contexts; skipping
         policy is the caller's."""
         self._play_gen += 1
         gen = self._play_gen
         self.status_msg = f"Loading {track.display_title}…"
+        restricted = False
         try:
             stream = await self._resolve_stream(str(track.id))
         except AuthExpiredError:
             self.status_msg = "Session expired: log in again"
             return "auth"
+        except NoStreamError:
+            stream, restricted = None, True
         if gen != self._play_gen:
             # Picking A then B quickly: if A's URL arrives last it would stop B
             # and play A while the queue's cursor says B.
             return "stale"
+        if restricted:
+            self.status_msg = ""  # the caller flashes why
+            return "unavailable"
 
         if stream is None:
             self.status_msg = "No stream available"
@@ -1601,7 +1645,13 @@ class QobitApp(App[None]):
         row gets the track actions; an album (a grid card or the album page on
         show) adds its favourite toggle; an artist (a card, or the artist page
         on show) adds follow/unfollow. Nothing to act on: no menu."""
-        from .screens.context_menu import ContextMenu, album_option, artist_option, track_options
+        from .screens.context_menu import (
+            ContextMenu,
+            album_artist_option,
+            album_option,
+            artist_option,
+            track_options,
+        )
 
         focused = self.focused
         if focused is None:
@@ -1619,6 +1669,8 @@ class QobitApp(App[None]):
             if album is not None:
                 fav_albums = await self.ensure_favorite_albums()
                 options.append(album_option(any(a.id == album.id for a in fav_albums)))
+                if track is None and artist is None:  # not already on its artist's page
+                    options.append(album_artist_option())
             if artist is not None:
                 followed = await self.ensure_favorite_artists()
                 options.append(artist_option(any(a.id == artist.id for a in followed)))
@@ -1677,6 +1729,8 @@ class QobitApp(App[None]):
             self.run_worker(self.toggle_favorite_album(album))
         elif action == "follow_artist" and artist is not None:
             self.run_worker(self.toggle_follow_artist(artist))
+        elif action == "album_artist" and album is not None:
+            self._open_album_artist(album)
         elif track is None:
             return
         elif action == "favorite":
@@ -1691,7 +1745,13 @@ class QobitApp(App[None]):
             if self.queue_last(track):
                 self._flash_status(f"Added to queue: {track.display_title}")
         elif action == "radio":
-            self.play_track(track)
+            # The track already playing (or paused) keeps going: only Up Next
+            # becomes the station, as with R. play_track would restart it; the
+            # one restored at startup resumes where it was.
+            if not self._is_loaded(track):
+                resume = self._pending_resume
+                start = resume[1] if resume and resume[0].id == track.id else 0.0
+                self.play_track(track, start=start)
             self._start_radio(track)
         elif action == "artist":
             self._open_artist(track)
@@ -1748,6 +1808,22 @@ class QobitApp(App[None]):
             self._flash_status("Artist not available")
             return
         self.open_artist(str(artist_id))
+
+    @work
+    async def _open_album_artist(self, album: Album) -> None:
+        """An album from a grid or a search may be lean (no artist id): the
+        full record has it (cached by the client)."""
+        artist_id = album.artist_id
+        if not artist_id:
+            try:
+                artist_id = Album.from_api(await self._client.get_album(album.id)).artist_id
+            except QobuzError:
+                self._flash_status("Couldn't open artist")
+                return
+        if not artist_id:
+            self._flash_status("Artist not available")
+            return
+        self.open_artist(artist_id)
 
     def open_artist(self, artist_id: str) -> None:
         """Open an artist page over the current one (`g`, `i`, Similar); the

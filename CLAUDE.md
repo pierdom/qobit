@@ -45,6 +45,8 @@ src/qobit/
     ├── themes.py        cyberdeck + ayu-dark/-mirage/-light; qobit-* variables
     ├── _images.py       image fetch: 6 concurrent, memory + disk cache
     ├── _now_playing.py  row/view mixins for the ▶/⏸ marker, heart_suffix()
+    ├── _filter.py       TypeToFilter: `/` filter shared by Tracks/Albums/
+    │                    Artists/Playlists (Enter keeps results, Esc clears)
     ├── widgets/lists.py PagedListView (page keys move the cursor; lazy rows)
     ├── widgets/transport.py  TransportBar (art, title, progress; click to
     │                    pause/seek)
@@ -120,9 +122,13 @@ so two qobits on one host are one device; when either leaves, Qobuz drops both.
 second instance joining, and `ConnectSession` rejoins on
 `SRVR_CTRL_REMOVE_RENDERER` for its own id (at most once per 10 s).
 
-**`_play_stream()`** returns "ok", "sample", "none", "auth" or "stale" and never
-skips; skip policy is the caller's (`_do_play` locally, the renderer in
-Connect). It bumps `_play_gen`; a call overtaken while resolving its URL returns
+**`_play_stream()`** returns "ok", "sample", "unavailable", "none", "auth" or
+"stale" and never skips; skip policy is the caller's (`_do_play` locally, the
+renderer in Connect). "unavailable": every quality answered with restriction
+codes and no URL (`StreamUrl.from_api` raises `NoStreamError`; a bare
+`data["url"]` once closed the app); skipped like "sample". "none" is request
+failures and is never auto-skipped (a flaky network would race through the
+queue). It bumps `_play_gen`; a call overtaken while resolving its URL returns
 "stale" without touching mpv (picking A then B fast could play A under B's
 cursor). Connect treats "stale" as handled, not unplayable.
 
@@ -160,6 +166,16 @@ or scroll nears the end; End mounts everything. Whole-list code reads
 `PagedListView.rows` (mounted + backlog). A hard 200 cap once hid most of a
 library: don't add one back.
 
+**Album panel height.** `AlbumDetailPanel` sizes itself from its own height
+(`_fit`, on resize and on load): the tracklist keeps half the panel and at
+least `MIN_TRACK_ROWS`, the art gets the rest (`ART_MIN`–`ART_MAX`), and
+below `ART_MIN` the art goes (`-no-art`; two columns when wide). It posts
+`Resized`; each host with an `ArtistHeader` above it (AlbumScreen, Albums,
+Artists while an album is open) calls `fit_artist_header`, which decides
+from the panel's height *with* the header so it can't oscillate. Never key
+this on the terminal height: three hosts with different chrome broke that.
+`tests/test_album_fit.py` checks all three at 24/32/45 rows.
+
 **Grids.** The container holds focus and `_cursor`, toggling `-selected` on
 cards; `selected_card()` returns the current one. Filtering hides/shows cards
 (`filter_cards`) instead of remounting, so Kitty images aren't re-sent; it
@@ -186,7 +202,11 @@ focused widget it collects a track (a list row's `.track`), an album (a grid's
 selected card, a Search `AlbumItem`, or the enclosing
 `AlbumDetailPanel.album`) and an artist (a card/`ArtistItem`, or an ancestor's
 `page_artist`: `ArtistScreen`, `ArtistsView` with an artist open). Any mix
-works; nothing to act on, no menu. `ContextMenu` dismisses with an action id
+works; nothing to act on, no menu. An album with no track (a grid card)
+also gets "Go to artist" (`album_artist`, resolving a lean album's artist
+id via `get_album`), unless an artist page is already the subject. Lists
+filled by a view get a cursor (`_place_initial_cursor`: the playing row,
+else the first): focused with no row, the menu found no track at all. `ContextMenu` dismisses with an action id
 and `_on_track_menu` dispatches. "Remove from queue" appears only on Up Next
 rows (removes by identity). **`g`** opens `GoToMenu` for the playing (or
 restored) track through the same dispatch. "Go to artist" needs `get_track`
@@ -233,6 +253,12 @@ closes pages first; Escape (`action_back`) goes up one level. The app's own
 `screen_stack[0]` (`base_tab()`, `_base_view()`). Never derive a tab id from a
 display name.
 
+**Hearts on pages.** `AlbumDetailPanel` (after the title, `heart_suffix`) and
+`ArtistHeader` (bio panel's border title; `theme_color(HEART)`, redrawn on a
+theme change) show ♥ from `is_favorite_album` / `is_followed_artist` (cache
+reads), after awaiting `ensure_favorite_*` in a `_load_heart` worker. The
+album/artist toggles call `_refresh_hearts()`, which walks every screen.
+
 **Favourites.** `ensure_favorite_tracks/albums/artists()` fetch once each (one
 lock per list, loaded in parallel at startup); a failed load isn't cached.
 `toggle_favorite`, `toggle_favorite_album` and `toggle_follow_artist` update
@@ -269,6 +295,18 @@ whenever a track is loaded (`-has-track`), not only while playing.
 - Panel titles go through `_utils.readout()` (uppercase, same length).
 - `nav.Wordmark` sits on the Screen's `overlay` layer, docked right with height
   1, so it shares the tab bar's row; it hides below `Wordmark.MIN_WIDTH`.
+  While playing (not paused) it cycles the progress bar's gradient along its
+  letters, `◢◤` as one unit (`WORDMARK_UNITS`; `wordmark_palette`: bar
+  start/end, else accent text ↔ HI-RES; ANSI themes stay static) on its own
+  ~12 fps timer, paused otherwise; the phase comes from `time.monotonic()`
+  so every page's copy is in step. Textual's
+  `Content ==` compares text only: tests compare `.spans`.
+- The progress bar's tip (the partial block) gets a background
+  (`_tip_background`: theme background + `TIP_TINT` of the accent, the
+  colour the dim `░` track reads as: Textual's `DIM_FACTOR` × the shade's
+  ~25% coverage; measured on rendered cells, `dim` is not 50%) so its bare part isn't a dark gap. Not
+  with the theme background off (the terminal's colour is unknown) or on
+  ANSI themes. A `─` track was tried and rejected for its look.
 
 **Status line.** `status_msg` is the transport's `artist — title` line; use
 `_flash_status()` for transient notices (auto-clears after ~3 s).
@@ -479,6 +517,9 @@ uv run pytest
   never start mpv (the socket path is shared), stub `set_saved_theme`.
 - Verify UI headless: `app.save_screenshot()` → `rsvg-convert` → PNG (Kitty
   images show as garbage there; real captures need a Kitty-protocol terminal).
+  The PNG collapses or widens spaces between differently styled runs
+  ("HI-RES24-BIT", "Kind of Blue♥" that were fine): check spacing on the
+  rendered text, `screen._compositor.render_strips()` → `strip.text`.
 - Releasing: version only in `pyproject.toml`. Bump, CHANGELOG entry, `uv lock`,
   commit `chore(release): X.Y.Z`, merge to main, annotated tag `vX.Y.Z`, push
   the tag. `.github/workflows/release.yml` then runs CI, checks the tag matches
