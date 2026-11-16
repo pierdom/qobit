@@ -7,7 +7,7 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
-## [Unreleased]
+## [0.8.0] - 2026-11-16
 
 ### Security
 
