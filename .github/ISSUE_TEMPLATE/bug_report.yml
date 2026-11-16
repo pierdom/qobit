@@ -1,0 +1,49 @@
+name: Bug report
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: qobit version
+      description: Output of `qobit --version`.
+      placeholder: qobit 0.9.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04 / Fedora 41 / macOS 15
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal
+      description: And whether you run qobit inside tmux.
+      placeholder: kitty 0.40 / Ghostty 1.2
+    validations:
+      required: true
+  - type: textarea
+    id: audio
+    attributes:
+      label: Audio output
+      description: >-
+        For playback problems: the output of `qobit devices`, the device you
+        chose, and what the lamp in the transport bar shows.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Screenshot or error output
+      description: >-
+        A screenshot helps with UI problems. Remove anything personal (your
+        account name, tokens) before posting.

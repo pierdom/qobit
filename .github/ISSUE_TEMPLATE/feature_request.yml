@@ -1,0 +1,21 @@
+name: Feature request
+description: An idea for qobit
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you'd like to do
+      description: The problem or use case, rather than a specific solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: Keys, where it would live in the UI, anything you have in mind.
+  - type: markdown
+    attributes:
+      value: >-
+        qobit never changes the audio samples: resampling, EQ, software
+        volume and other DSP are only considered as opt-in, off by default.

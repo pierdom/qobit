@@ -1,0 +1,26 @@
+# Keeps GitHub Actions and Python dependencies current. Security updates are
+# separate (repo setting) and open as soon as an advisory lands.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      # Dev tools in one PR, runtime dependencies in another.
+      dev:
+        dependency-type: development
+      runtime:
+        dependency-type: production

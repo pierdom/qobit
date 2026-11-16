@@ -10,6 +10,8 @@ Open an issue with:
 - `qobit --version`, your OS, your terminal
 - your audio output (`qobit devices`), if it's about playback
 
+For a security issue, don't open a public issue: see [SECURITY.md](SECURITY.md).
+
 ## Setting up
 
 ```bash

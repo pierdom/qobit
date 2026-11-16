@@ -139,6 +139,7 @@ qobit --connect-on          # start with Qobuz Connect enabled for this run
 | Qobuz Connect implementation | [docs/qobuz-connect-design.md](https://github.com/pierdom/qobit/blob/main/docs/qobuz-connect-design.md) |
 | Changes | [CHANGELOG.md](https://github.com/pierdom/qobit/blob/main/CHANGELOG.md) |
 | Contributing | [CONTRIBUTING.md](https://github.com/pierdom/qobit/blob/main/CONTRIBUTING.md) |
+| Reporting a security issue | [SECURITY.md](https://github.com/pierdom/qobit/blob/main/SECURITY.md) |
 | Notes for working on the code | [CLAUDE.md](https://github.com/pierdom/qobit/blob/main/CLAUDE.md) |
 
 ## Development
