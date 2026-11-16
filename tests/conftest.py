@@ -71,6 +71,9 @@ class StubClient:
     def restore_session(self, *args, **kwargs):
         return True
 
+    def clear_caches(self):
+        pass
+
     def is_closed(self):
         return False
 

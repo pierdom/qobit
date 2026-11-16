@@ -17,11 +17,11 @@ import sys
 import time
 
 from . import __version__
+from .account_data import erase_account_data, erase_settings, tui_running
 from .audio.device import list_devices
 from .audio.player import MpvPlayer
 from .audio.verify import check_bit_perfect
 from .config import (
-    clear_oauth_session,
     get_account,
     get_audio_device,
     get_oauth_session,
@@ -79,6 +79,11 @@ async def _oauth_login(client: QobuzClient) -> bool:
     finally:
         if sys.stdin.isatty():
             asyncio.get_running_loop().remove_reader(sys.stdin.fileno())
+    previous = get_account().get("name")
+    current = (client.account or {}).get("name")
+    if previous and current and previous != current and not tui_running():
+        # Another account: the previous one's queue and mixes don't carry over.
+        erase_account_data()
     save_oauth_session(*client.session(), account=client.account)
     return True
 
@@ -287,11 +292,37 @@ async def cmd_auth_status() -> int:
     return 0
 
 
-def cmd_logout(_args: argparse.Namespace) -> int:
-    if clear_oauth_session():
-        print("Logged out: the saved session is deleted from this machine.")
+def _confirm(question: str) -> bool:
+    try:
+        return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
+def cmd_logout(args: argparse.Namespace) -> int:
+    if tui_running():
+        print(
+            "qobit is running: log out from it (^p → Log out of Qobuz), or quit it "
+            "first (it would write the queue back).",
+            file=sys.stderr,
+        )
+        return 1
+    if (
+        args.all
+        and not args.yes
+        and not _confirm(
+            "This also deletes qobit's settings (audio device, theme, volume). Continue?"
+        )
+    ):
+        print("Nothing changed.")
+        return 1
+    removed = erase_account_data()
+    if args.all and erase_settings():
+        removed.append("the settings")
+    if not removed:
+        print("Not logged in, and nothing of a Qobuz account on this machine.")
     else:
-        print("Not logged in.")
+        print("Logged out. Erased from this machine: " + ", ".join(removed) + ".")
     return 0
 
 
@@ -330,7 +361,15 @@ def main() -> None:
         default="login",
         help="login (default): log in in the browser; status: check the saved session",
     )
-    sub.add_parser("logout", help="Delete the saved Qobuz session from this machine")
+    p_logout = sub.add_parser(
+        "logout",
+        help="Log out and erase the account's traces here (session, queue, history, "
+        "mixes, cached covers); settings stay",
+    )
+    p_logout.add_argument(
+        "--all", action="store_true", help="Also delete qobit's settings: nothing of qobit left"
+    )
+    p_logout.add_argument("--yes", "-y", action="store_true", help="Don't ask (with --all)")
     sub.add_parser("clear-cache", help="Delete cached cover art from disk")
 
     args = parser.parse_args()

@@ -177,7 +177,7 @@ class QobuzClient:
         # both raise the wrong exception type for callers expecting QobuzError
         # and silently vanish under `python -O`.
         if not self._app_id:
-            raise QobuzError("Not authenticated — run: qobit auth")
+            raise QobuzError("Not logged in to Qobuz")
         params: dict[str, Any] = {"app_id": self._app_id}
         if self.user_auth_token:
             params["user_auth_token"] = self.user_auth_token
@@ -201,6 +201,12 @@ class QobuzClient:
         ):
             self.on_auth_expired()
         return r
+
+    def clear_caches(self) -> None:
+        """Drop the session caches (logout: nothing of the account kept)."""
+        self._album_cache.clear()
+        self._artist_detail_cache.clear()
+        self._artist_page_cache.clear()
 
     def session(self) -> tuple[str, str, list[str]]:
         """``(app_id, token, secrets)`` to save after a login."""
@@ -420,7 +426,7 @@ class QobuzClient:
         last_error: QobuzError | None = None
 
         if not self._app_id or not self.user_auth_token:
-            raise QobuzError("Not authenticated — run: qobit auth")
+            raise QobuzError("Not logged in to Qobuz")
 
         for secret in candidates:
             sig, ts = self._sign(track_id, format_id, secret)
@@ -458,7 +464,7 @@ class QobuzClient:
         """Mint a Qobuz Connect socket token: ``(endpoint, jwt)``. One token
         per socket — the cloud evicts a second socket using the same one."""
         if not self._app_id or not self.user_auth_token:
-            raise QobuzError("Not authenticated — run: qobit auth")
+            raise QobuzError("Not logged in to Qobuz")
         r = await self._send(
             "POST",
             API_BASE + "qws/createToken",

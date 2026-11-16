@@ -123,6 +123,15 @@ class LocalPlayContext:
                 return True
         return False
 
+    def reset(self) -> None:
+        """Empty the timeline: history, current track, Up Next (logout). Local
+        only, with no Connect twin: logout leaves Connect first, and the
+        server's queue is the account's, not this machine's."""
+        app = self.app
+        app._timeline = []
+        app._cursor = -1
+        app.queue_version += 1
+
     def replace_upcoming(self, tracks: list[Track]) -> bool:
         """Swap Up Next for ``tracks`` (song radio), keeping the current track."""
         app = self.app

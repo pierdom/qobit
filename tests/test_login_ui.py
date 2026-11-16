@@ -146,12 +146,81 @@ async def test_a_burst_of_401s_opens_one_dialog(ui_app):
         assert "expired" in reason
 
 
+def _track(n: int):
+    from qobit.qobuz.models import Track
+
+    return Track(id=str(n), title=f"T{n}", artist="A", album="B", album_id="b", duration=60)
+
+
+def _seed_account_files():
+    """What a logged-in session leaves behind: queue, last track, mixes, covers."""
+    from qobit import store
+    from qobit.ui import _images
+
+    store.save("queue_state.json", {"timeline": [], "cursor": -1})
+    store.save("player_state.json", {"track": None})
+    store.save("mixes_cache.json", {"daily": {}})
+    covers = _images._cache_dir()
+    covers.mkdir(parents=True, exist_ok=True)
+    (covers / "cover.jpg").write_bytes(b"jpg")
+    return covers
+
+
 @sync
-async def test_logout_forgets_the_session_and_offers_a_login(ui_app):
+async def test_logout_erases_the_account_and_offers_a_login(ui_app):
+    """Logout leaves nothing of the account: session, queue (in memory and on
+    disk), last track, mixes, covers, library caches. Settings stay."""
+    from qobit import store
+
     config.save_oauth_session("123", "tok", ["s"], {"name": "Listener", "plan": ""})
+    config.set_saved_volume(80)
+    covers = _seed_account_files()
     async with ui_app.run_test(size=(120, 40)) as pilot:
         ui_app._client.login_oauth = LoginClient.login_oauth.__get__(ui_app._client)
-        ui_app.action_logout()
+        ui_app._timeline, ui_app._cursor = [_track(1), _track(2), _track(3)], 1
+        ui_app.now_playing = _track(2)
+        ui_app._fav_ids = {"9"}
+        await ui_app.action_logout()
         await _until(pilot, lambda: isinstance(ui_app.screen, LoginScreen))
+        await pilot.pause(1.3)  # past the queue-save debounce: nothing written back
         assert config.get_oauth_session() == ("", "", [])
         assert ui_app._client.user_auth_token is None
+        assert (ui_app._timeline, ui_app._cursor, ui_app.now_playing) == ([], -1, None)
+        assert not ui_app._fav_ids  # the previous account's {"9"} is gone
+        for name in ("queue_state.json", "player_state.json", "mixes_cache.json"):
+            assert not (store.DATA_DIR / name).exists(), name
+        assert list(covers.iterdir()) == []
+        assert config.get_saved_volume() == 80  # settings stay
+
+
+@sync
+async def test_another_account_logging_in_erases_the_previous_ones_data(login_app):
+    """After an expiry (no logout), a different account must not inherit the
+    previous one's queue and mixes."""
+    from qobit import store
+
+    config.save_oauth_session("123", "", ["s"], {"name": "Someone else", "plan": ""})
+    _seed_account_files()
+    async with login_app.run_test(size=(120, 40)) as pilot:
+        await _until(pilot, lambda: isinstance(login_app.screen, LoginScreen))
+        screen = login_app.screen
+        await _until(pilot, lambda: screen._prompt is not None)
+        screen.post_message(Paste(_addr(screen)))
+        await _until(pilot, lambda: config.get_account().get("name") == "Listener")
+        assert not (store.DATA_DIR / "mixes_cache.json").exists()
+        assert config.get_oauth_session()[1] == "new-token"
+
+
+@sync
+async def test_the_same_account_logging_in_again_keeps_its_queue(login_app):
+    from qobit import store
+
+    config.save_oauth_session("123", "", ["s"], {"name": "Listener", "plan": ""})
+    _seed_account_files()
+    async with login_app.run_test(size=(120, 40)) as pilot:
+        await _until(pilot, lambda: isinstance(login_app.screen, LoginScreen))
+        screen = login_app.screen
+        await _until(pilot, lambda: screen._prompt is not None)
+        screen.post_message(Paste(_addr(screen)))
+        await _until(pilot, lambda: config.get_oauth_session()[1] == "new-token")
+        assert (store.DATA_DIR / "mixes_cache.json").exists()

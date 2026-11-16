@@ -19,6 +19,8 @@ src/qobit/
 ├── config.py            session token + device/settings config (env → file)
 ├── _fs.py               private_dir (0700) / write_private (atomic, 0600)
 ├── store.py             JSON runtime state in DATA_DIR (player/queue state)
+├── account_data.py      what an account leaves on disk; erase (logout), the
+│                        running-TUI lock (qobit.lock)
 ├── qobuz/client.py      QobuzClient: app_id/secrets from the web bundle, OAuth,
 │                        every API call (see "Qobuz API")
 ├── qobuz/oauth.py       login link + redirect server + pasted-address LoginPrompt
@@ -373,6 +375,15 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
   current tab. Tests: `StubClient` carries a token so `ui_app` starts logged
   in. Save a session with `save_oauth_session(*client.session(),
   account=client.account)`.
+- Logout erases the account (`QobitApp._erase_account`): stop, leave
+  Connect, `LocalPlayContext.reset()` (local only: the server's queue is the
+  account's), clear reactives with saves suppressed (`_restoring`) and the
+  queue-save timer stopped, drop caches, `account_data.erase_account_data()`,
+  pop pages, then `App.recompose()` rebuilds every view empty. Also run when
+  a *different* account logs in (names compared). A new file that holds
+  account activity goes in `account_data.ACCOUNT_FILES`, or logout leaves it
+  behind. Every TUI holds a shared flock on `DATA_DIR/qobit.lock`;
+  `qobit logout` refuses while one runs.
 - Esc on a pushed screen: `action_back` first calls the screen's
   `action_navigate_back()` (True = handled). A modal whose caller needs its
   dismiss callback must close itself there: a bare `pop_screen()` skips the
@@ -420,6 +431,7 @@ JPEG, cached in memory and in `~/.cache/qobit/images/`.
 ~/.local/share/qobit/queue_state.json  timeline + cursor
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ
 ~/.local/share/qobit/mpv.sock          mpv IPC socket (fixed path)
+~/.local/share/qobit/qobit.lock        held (shared) by every running TUI
 ~/.cache/qobit/images/                 cover-art cache (qobit clear-cache)
 ```
 

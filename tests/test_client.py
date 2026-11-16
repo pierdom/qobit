@@ -120,19 +120,19 @@ def test_unauthenticated_client_raises_qobuz_error_not_assertion_error():
     raises AssertionError — a type most call sites don't special-case — and
     (b) silently no-ops under `python -O`. Pin it to a real QobuzError."""
     client = QobuzClient()
-    with pytest.raises(QobuzError, match="Not authenticated"):
+    with pytest.raises(QobuzError, match="Not logged in"):
         asyncio.run(client.get_all_favorite_tracks())
 
 
 def test_get_streaming_url_without_login_raises_qobuz_error():
     client = QobuzClient()
-    with pytest.raises(QobuzError, match="Not authenticated"):
+    with pytest.raises(QobuzError, match="Not logged in"):
         asyncio.run(client.get_streaming_url("123"))
 
 
 def test_get_streaming_url_with_app_id_but_no_token_still_raises():
     client = QobuzClient(app_id="12345")
-    with pytest.raises(QobuzError, match="Not authenticated"):
+    with pytest.raises(QobuzError, match="Not logged in"):
         asyncio.run(client.get_streaming_url("123"))
 
 

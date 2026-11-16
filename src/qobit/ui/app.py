@@ -25,7 +25,6 @@ from ..audio.media_keys import MediaKeys
 from ..audio.player import MpvPlayer
 from ..audio.verify import Signal, check_signal
 from ..config import (
-    clear_oauth_session,
     get_account,
     get_audio_device,
     get_connect_enabled,
@@ -108,7 +107,8 @@ class QobitCommands(Provider):
                 "Log out of Qobuz",
                 app.action_logout,
                 (f"Logged in as {name}. " if name else "")
-                + "Deletes the saved session from this machine",
+                + "Erases the session, queue, history, mixes and cached covers "
+                "from this machine (settings stay)",
             )
         else:
             account = ("Log in to Qobuz", app.action_login, "Opens the login dialog")
@@ -573,6 +573,11 @@ class QobitApp(App[None]):
         self._restore_player_state()
         self.set_interval(5.0, self._connect_tick)
         self._prune_image_cache()
+        # `qobit logout` in a terminal refuses while this is held (this TUI
+        # would write the queue straight back).
+        from ..account_data import hold_running_lock
+
+        self._running_lock = hold_running_lock()
         if self._client.user_auth_token:
             self._go_online()
         else:
@@ -599,12 +604,18 @@ class QobitApp(App[None]):
         self._login_open = True
         self.push_screen(LoginScreen(self._client, reason), self._on_login_closed)
 
-    def _on_login_closed(self, logged_in: bool | None) -> None:
+    async def _on_login_closed(self, logged_in: bool | None) -> None:
         self._login_open = False
         if not logged_in:
             if not self._client.user_auth_token:
                 self.status_msg = "Not logged in: ^p → Log in to Qobuz"
             return
+        # Someone else logged in (after an expiry: no logout in between): the
+        # previous account's queue, mixes and library mustn't carry over.
+        previous = get_account().get("name")
+        current = (self._client.account or {}).get("name")
+        if previous and current and previous != current:
+            await self._erase_account()
         save_oauth_session(*self._client.session(), account=self._client.account)
         name = (self._client.account or {}).get("name")
         self._flash_status(f"Logged in as {name}" if name else "Logged in")
@@ -626,13 +637,47 @@ class QobitApp(App[None]):
     def action_login(self) -> None:
         self.request_login()
 
-    def action_logout(self) -> None:
-        """Forget the session on this machine (Qobuz has no revoke call)."""
-        self._stop_connect()
-        clear_oauth_session()
+    async def action_logout(self) -> None:
+        """Log out and erase what the account left on this machine. Qobuz has
+        no revoke call: the token is forgotten here, not cancelled there."""
+        await self._erase_account()
         self._client.user_auth_token = None
         self._client.account = None
         self.request_login("Logged out. Log in again, or press Esc to stay logged out.")
+
+    async def _erase_account(self) -> None:
+        """Stop, empty memory, delete the account's files, rebuild the UI.
+        Memory first: the watchers would otherwise write the queue back."""
+        from ..account_data import erase_account_data
+        from ._images import _IMAGE_CACHE
+
+        self._stop_connect()
+        self._player.stop()
+        self._pending_resume = None
+        self._restoring = True  # no player/queue saves while emptying
+        try:
+            self._local_ctx.reset()
+            self.now_playing = None
+            self.now_playing_album = None
+            self.now_playing_bio = ""
+            self.is_playing = self.is_paused = False
+            self.playback_pos = self.playback_dur = 0.0
+            self.status_msg = ""
+        finally:
+            self._restoring = False
+        if self._queue_save_timer is not None:
+            self._queue_save_timer.stop()  # type: ignore[union-attr]
+            self._queue_save_timer = None
+        self._fav_tracks = self._fav_ids = None
+        self._fav_albums = self._fav_artists = None
+        self._client.clear_caches()
+        _IMAGE_CACHE.clear()
+        erase_account_data()
+        while len(self.screen_stack) > 1:
+            self.pop_screen()
+        # Every view (library, mixes, search, pages' trail) rebuilt empty.
+        await self.recompose()
+        self._fit_tab_labels(self.size.width)
 
     @work(thread=True)
     def _prune_image_cache(self) -> None:

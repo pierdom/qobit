@@ -33,7 +33,12 @@ release from this entry.
   open with `o`, or click it), a field for the address the browser ends on,
   and your queue kept. `^p` → *Log in to Qobuz* / *Log out of Qobuz*.
 - `qobit auth status` (who is logged in, and whether the session still
-  works) and `qobit logout`.
+  works).
+- **Logging out erases the account from this machine** (`qobit logout`, or
+  `^p` → *Log out of Qobuz*): the session, queue and history, last track,
+  mixes and cached covers, and in a running qobit the library and queue on
+  screen. Settings stay; `qobit logout --all` removes them too. A different
+  account logging in after an expiry gets a clean slate as well.
 - Log in from a machine without a browser (SSH, a headless box): open the
   link anywhere, then paste the address the browser ends on into
   `qobit auth`. The login now waits 5 minutes instead of 2.

@@ -20,8 +20,15 @@ anywhere in the dialog works too). `Esc` closes it; `^p` → *Log in to
 Qobuz* opens it again. Your queue is kept either way.
 
 `qobit auth status` shows who is logged in and checks that the saved session
-still works. `qobit logout`, or `^p` → *Log out of Qobuz*, deletes it from
-this machine.
+still works.
+
+`qobit logout`, or `^p` → *Log out of Qobuz*, erases everything the account
+left on this machine: the session, the queue and its history, the last
+track, the mixes and the cached covers. Settings (audio device, theme,
+volume) stay; `qobit logout --all` deletes those too, leaving nothing of
+qobit. `qobit logout` refuses while qobit is running (it would write the
+queue back): log out from inside it instead. If a different account logs in
+after a session expires, the previous account's data is erased the same way.
 
 ## Global keys
 
@@ -181,6 +188,10 @@ playerctl -p qobit metadata   # title / artist / album / artUrl while playing
 ~/.local/share/qobit/queue_state.json  the queue (history, current, up next)
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ
 ~/.local/share/qobit/connect.lock      held while Qobuz Connect is on
+~/.local/share/qobit/qobit.lock        held while qobit runs (qobit logout refuses then)
 ~/.local/share/qobit/mpv.sock          mpv IPC socket
 ~/.cache/qobit/images/                 cover-art cache (safe to delete: qobit clear-cache)
 ```
+
+`qobit logout` erases the session, the three `.json` state files and the
+cover cache; `qobit logout --all` removes everything listed here.
