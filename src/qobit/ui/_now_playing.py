@@ -103,7 +103,7 @@ def heart_suffix(favorite: bool, pad: str = "  ") -> tuple[str, str] | str:
     row appends to its primary label — "" when not favourited."""
     from .screens.search import ICON_FAV
 
-    return (f"{pad}{ICON_FAV}", "$accent") if favorite else ""
+    return (f"{pad}{ICON_FAV}", "$qobit-heart") if favorite else ""
 
 
 class NowPlayingRowMixin:

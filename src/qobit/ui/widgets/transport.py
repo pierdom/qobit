@@ -19,7 +19,7 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import quality_text
 from .._images import fetch_image
-from ..themes import BAR_END, BAR_START, HIRES, theme_color
+from ..themes import BAR_END, BAR_START, HIRES, READOUT, theme_color
 from .art import Art
 
 if TYPE_CHECKING:
@@ -101,7 +101,7 @@ class _TransportContent(Widget):
         self._bar_w = bar_w
 
         bar = _progress_bar(self.app, bar_w, self.position, self.duration)
-        bar.append(time_str, style="dim")
+        bar.append(time_str, style=theme_color(self.app, READOUT))
 
         return Group(line1, line2, bar)
 
@@ -199,8 +199,9 @@ class TransportBar(Widget):
            focus, here driven by playback state instead since the transport
            bar is never keyboard-focused. Round like every other panel. */
         border: round $accent 40%;
-        /* top-left: play/pause status ("Now Playing") */
-        border-title-color: $accent 40%;
+        /* top-left: play/pause status, in the readout colour (amber LEDs in
+           cyberdeck) */
+        border-title-color: $qobit-readout 40%;
         border-title-align: left;
         border-title-style: bold;
         /* bottom-right: audio resolution of the current track */
@@ -211,7 +212,7 @@ class TransportBar(Widget):
     }
     TransportBar.-playing {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-readout;
     }
     TransportBar:hover {
         background: $boost;

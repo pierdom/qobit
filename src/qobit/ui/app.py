@@ -12,6 +12,7 @@ from rich.style import Style as _RichStyle
 from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.color import Color
 from textual.command import Hit, Hits, Provider
 from textual.css.query import NoMatches
 from textual.filter import NO_DIM, dim_color
@@ -54,7 +55,7 @@ from .screens.playlists import PlaylistsView
 from .screens.queue import QueueView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
-from .themes import BAR_END, BAR_START, CYBERDECK_THEME, HIRES, QOBIT_THEMES
+from .themes import BAR_END, BAR_START, CYBERDECK_THEME, HEART, HIRES, QOBIT_THEMES, READOUT, SELECT
 from .widgets.transport import TransportBar
 
 
@@ -235,7 +236,7 @@ class QobitApp(App[None]):
     }
     ListView:focus > ListItem.-highlight {
         color: $foreground;
-        background: $accent 35%;
+        background: $qobit-select;
         text-style: none;
     }
     ListItem.-highlight > Label {
@@ -287,7 +288,7 @@ class QobitApp(App[None]):
        paint over the parent's outline cells, so it only ever showed on cards
        with spare rows (Artists) — the visible inconsistency. */
     .grid-card.-selected {
-        background: $accent 35%;
+        background: $qobit-select;
     }
     .grid-card.-selected .card-info,
     .grid-card.-selected .card-info > Label {
@@ -525,7 +526,14 @@ class QobitApp(App[None]):
         read). Computed from the current theme on every switch."""
         theme = self.current_theme
         accent = theme.accent or theme.primary
-        return {BAR_START: accent, BAR_END: accent, HIRES: theme.warning or accent}
+        return {
+            BAR_START: accent,
+            BAR_END: accent,
+            HIRES: theme.warning or accent,
+            HEART: accent,
+            READOUT: accent,
+            SELECT: Color.parse(accent).with_alpha(0.35).hex,  # rows and grid cards
+        }
 
     def watch_theme(self, theme: str) -> None:
         if getattr(self, "_theme_ready", False):

@@ -53,17 +53,20 @@ class Art(TGPImage, Renderable=TGPRenderable):
             return ""
         mark = initials(self._placeholder)[: max(0, width - 2)]
         middle = height // 2
+        # A solid $panel tile with a lighter ░ texture: the initials sit on
+        # the tile (on the plain background they looked like a hole in it).
+        texture, letters = "$panel-lighten-1 on $panel", "bold $accent on $panel"
         lines: list[Content] = []
         for y in range(height):
             if y == middle and mark:
                 left = (width - len(mark)) // 2
                 lines.append(
                     Content.assemble(
-                        ("░" * left, "$panel"),
-                        (mark, "bold $accent 70%"),
-                        ("░" * (width - left - len(mark)), "$panel"),
+                        ("░" * left, texture),
+                        (mark, letters),
+                        ("░" * (width - left - len(mark)), texture),
                     )
                 )
             else:
-                lines.append(Content.styled("░" * width, "$panel"))
+                lines.append(Content.styled("░" * width, texture))
         return Content("\n").join(lines)

@@ -121,7 +121,7 @@ class TimelineRow(ListItem):
     TimelineRow.-history .row-meta { color: $text-muted 60%; }
     TimelineRow.-now { background: $accent 8%; }
     TimelineRow.-now .row-title { text-style: bold; color: $accent; }
-    TimelineRow.-now .row-meta { color: $accent 60%; }
+    TimelineRow.-now .row-meta { color: $accent 70%; }  /* 60% was 4.2:1 in Ayu */
     """
 
     role: Role | None = None  # set by the first configure()
@@ -245,10 +245,11 @@ class NowPlayingHero(Widget):
         width: 1fr; text-align: center; color: $accent 80%;
     }
     NowPlayingHero .hero-album {
-        width: 1fr; text-align: center; color: $accent 60%; margin-top: 1;
+        width: 1fr; text-align: center; color: $accent 75%; margin-top: 1;
     }
+    /* $text-muted, not a fainter accent: $accent 45% was 2.8–3.2:1. */
     NowPlayingHero .hero-meta {
-        width: 1fr; text-align: center; color: $accent 45%;
+        width: 1fr; text-align: center; color: $text-muted;
     }
     NowPlayingHero .hero-quality {
         width: 1fr; text-align: center; color: $accent; margin-top: 1;

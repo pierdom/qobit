@@ -77,7 +77,7 @@ class PlaylistCard(Widget):
     PlaylistCard .card-date {
         height: 1;
         width: 1fr;
-        color: $text-disabled;
+        color: $text-muted;
         overflow: hidden hidden;
     }
     /* Selected state: shared .grid-card rules in QobitApp.CSS. */

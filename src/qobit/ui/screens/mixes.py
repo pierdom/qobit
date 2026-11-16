@@ -74,7 +74,7 @@ class MixCard(Widget, can_focus=True):
     MixCard.-selected .mix-name { color: $accent; }
     MixCard:focus { border: round $accent; }
     MixCard .mix-desc { color: $text-muted; height: 1; }
-    MixCard .mix-status { color: $text-disabled; height: 1; }
+    MixCard .mix-status { color: $text-muted; height: 1; }
     """
 
     def __init__(self, kind: MixKind) -> None:

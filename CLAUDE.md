@@ -236,11 +236,21 @@ reactives on mount, so any instance anywhere is live. Now-playing art shows
 whenever a track is loaded (`-has-track`), not only while playing.
 
 **Identity.**
-- Theme variables `qobit-bar-start`/`-end` (progress gradient) and
-  `qobit-hires` (the HI-RES tag) live in `Theme.variables`; other themes get
-  `QobitApp.get_theme_variable_defaults()` (accent bar, HI-RES = `$warning`:
-  built-ins' `$secondary` can be unreadable). So `$qobit-hires` is safe in CSS
-  and Content styles; Rich Text and border titles need `theme_color()`.
+- Colour roles: `$accent` = chrome (borders, focus, now playing);
+  `qobit-select` = selected row/card background; `qobit-hires` and
+  `qobit-heart` = signal; `qobit-readout` = the transport's status tag and
+  time (LED readout); `qobit-bar-start`/`-end` = the progress gradient. They
+  live in `Theme.variables`; other themes get
+  `QobitApp.get_theme_variable_defaults()` (accent everywhere, selection
+  accent 35%, HI-RES = `$warning`: built-ins' `$secondary` can be unreadable).
+  So `$qobit-*` is safe in CSS and Content styles; Rich Text and border titles
+  need `theme_color()`. A test app that borrows `QobitApp.CSS` must also
+  borrow `get_theme_variable_defaults`, or the stylesheet won't parse.
+- Textual ignores a theme's `boost=` when it also sets `panel` (`$boost` came
+  out transparent): set it in `variables={"boost": …}`. Cyberdeck also sets
+  `text-muted` (cyan-tinted, 10.7:1) and `footer-key-foreground` (amber).
+  Check a palette change with contrast numbers on the pairs actually drawn
+  (text on the selection tint too), not by eye alone.
 - The lamp: `_play_stream` starts `_verify_signal` → `audio.verify.check_signal`
   → `app.signal`; `widgets.transport.signal_parts/signal_readout` render it for
   the transport and the Now Playing panel. Software volume below 100% overrides

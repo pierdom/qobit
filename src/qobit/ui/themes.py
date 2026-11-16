@@ -1,8 +1,15 @@
 """qobit's own colour themes, registered on the app and listed in the theme
 picker (Ctrl+P → Theme) next to Textual's built-ins. The choice is saved.
 
-qobit draws everything from theme variables — there are no hard-coded colours —
-and uses ``$accent`` for its own chrome (borders, now-playing, selection).
+qobit draws everything from theme variables — there are no hard-coded colours.
+Colour roles: ``$accent`` is the chrome (borders, focus, selection, now
+playing); ``qobit-hires`` and ``qobit-heart`` mark signal (HI-RES, favourites);
+``qobit-readout`` is the transport's status and time readout, like an LED
+display. In cyberdeck those are cyan, neon pink and amber.
+
+Textual drops a theme's ``boost`` whenever it also sets ``panel`` ($boost
+came out transparent, so every $boost band was invisible): each theme sets it
+again through ``variables``.
 """
 
 from __future__ import annotations
@@ -16,6 +23,9 @@ from textual.theme import Theme
 BAR_START = "qobit-bar-start"  # progress bar, left end (default: $accent)
 BAR_END = "qobit-bar-end"  # progress bar, right end: a gradient if it differs
 HIRES = "qobit-hires"  # the HI-RES tag (default: $warning)
+HEART = "qobit-heart"  # ♥ on favourite tracks and followed artists (default: $accent)
+READOUT = "qobit-readout"  # transport status tag and time (default: $accent)
+SELECT = "qobit-select"  # selected row / card background (default: $accent 35%)
 
 
 def theme_color(app: object, name: str, fallback: str = "accent") -> str:
@@ -25,23 +35,36 @@ def theme_color(app: object, name: str, fallback: str = "accent") -> str:
 
 
 CYBERDECK_THEME = Theme(
+    # Neon noir meets cassette futurism: cyan chrome on a violet-black night,
+    # neon pink for signal (HI-RES, hearts), amber LED readouts (transport
+    # status, time, footer keys) as on a tape deck or a CRT terminal.
     name="qobit-cyberdeck",
-    primary="#ff2ec4",  # hot magenta — Textual's own chrome (palette, focus)
-    secondary="#6e3bff",  # electric violet — secondary emphasis
-    accent="#00e5ff",  # electric cyan — qobit's own $accent: borders, now-playing,
-    # selection, hearts
-    warning="#ffb000",  # amber — CRT-terminal warning colour
+    primary="#ff2ec4",  # hot magenta: Textual's own chrome (palette, focus)
+    secondary="#8f5cff",  # electric violet (4.9:1 on the background)
+    accent="#00e5ff",  # electric cyan: qobit's chrome
+    warning="#ffb000",  # amber
     error="#ff2965",  # hot red
     success="#39ff88",  # acid green
-    foreground="#d6faff",  # pale cyan-white body text
+    foreground="#d6faff",  # pale cyan-white body text (18:1)
     background="#0a0612",  # near-black with a violet undertone
     surface="#140d24",
     panel="#2f2252",
-    boost="#231a3d",
     dark=True,
-    # The two neons meet in the progress bar: cyan fading into magenta, and
-    # hi-res tagged in magenta against the cyan chrome.
-    variables={BAR_START: "#00e5ff", BAR_END: "#ff2ec4", HIRES: "#ff2ec4"},
+    variables={
+        "boost": "#231a3d",  # see the module docstring
+        # Muted text tinted cyan instead of Textual's neutral white 60%:
+        # 10.7:1 on the background, 5.7:1 on a selected row.
+        "text-muted": "#9ec3d2",
+        "footer-key-foreground": "#ffb000",  # amber keys on the violet footer
+        BAR_START: "#00e5ff",  # the progress bar fades cyan → magenta
+        BAR_END: "#ff2ec4",
+        # Neon pink, a touch lighter than primary: still readable (and bold)
+        # on a selected row.
+        HIRES: "#ff5cd3",
+        HEART: "#ff2ec4",
+        READOUT: "#ffb000",
+        SELECT: "#00e5ff47",  # cyan 28%: 35% made pink text on it hard to read
+    },
 )
 
 # Ayu — https://github.com/ayu-theme/ayu-colors (v6, themes/*.yaml).
@@ -64,9 +87,8 @@ AYU_DARK_THEME = Theme(
     background="#0D1017",
     surface="#10141C",
     panel="#141821",
-    boost="#12161E",
     dark=True,
-    variables={HIRES: "#59C2FF"},  # Ayu blue (its secondary)
+    variables={"boost": "#12161E", HIRES: "#59C2FF"},  # Ayu blue (its secondary)
 )
 
 AYU_MIRAGE_THEME = Theme(
@@ -81,9 +103,8 @@ AYU_MIRAGE_THEME = Theme(
     background="#1F2430",
     surface="#242936",
     panel="#282E3B",
-    boost="#262C38",
     dark=True,
-    variables={HIRES: "#73D0FF"},  # Ayu blue (its secondary)
+    variables={"boost": "#262C38", HIRES: "#73D0FF"},  # Ayu blue (its secondary)
 )
 
 AYU_LIGHT_THEME = Theme(
@@ -98,9 +119,8 @@ AYU_LIGHT_THEME = Theme(
     background="#F8F9FA",
     surface="#FCFCFC",
     panel="#EBEEF0",
-    boost="#F4F5F6",
     dark=False,
-    variables={HIRES: "#22A4E6"},  # Ayu blue (its secondary)
+    variables={"boost": "#F4F5F6", HIRES: "#22A4E6"},  # Ayu blue (its secondary)
 )
 
 QOBIT_THEMES = [CYBERDECK_THEME, AYU_DARK_THEME, AYU_MIRAGE_THEME, AYU_LIGHT_THEME]

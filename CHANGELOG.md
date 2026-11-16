@@ -31,6 +31,13 @@ release from this entry.
 - Panel titles are uppercase readouts (`FAVOURITE ALBUMS`), like the queue's
   section dividers.
 - Library grids fit more tiles: 3 columns at 120 terminal columns (was 2).
+- The cyberdeck theme has three colour roles: cyan chrome, neon pink for
+  signal (HI-RES, hearts) and amber LED readouts (the transport's status and
+  time, the footer keys). Muted text is tinted cyan and easier to read
+  (10.7:1), the selection tint is lighter so pink and muted text stay
+  readable on it, and the violet secondary is brighter.
+- The Now Playing panel's genre/label line, the playing row's album line, the
+  playlist card date and the mix track count are easier to read in every theme.
 
 - Track rows line up: the title and the album line start in the same column
   in every list, and the playing row's ▶/⏸ takes the place of its number or
@@ -61,6 +68,10 @@ release from this entry.
 
 ### Fixed
 
+- Backgrounds meant to set panels apart (the album/playlist header, the
+  selected mix card, the `i` menu header, the transport's hover) never showed
+  in qobit's themes: Textual drops a theme's `boost` when it also sets
+  `panel`.
 - `1`–`7` on an album, artist or playlist page switched the hidden tab under
   it, so Escape then landed somewhere unexpected. They now close the page and
   switch tab.
