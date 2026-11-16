@@ -7,6 +7,28 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [Unreleased]
+
+### Security
+
+- **Email/password login removed.** It saved the password in plaintext in
+  `config.json`, sent it in a request URL, and couldn't stream anyway. qobit
+  logs in through the browser only (`qobit auth`); a password an older qobit
+  saved is deleted at startup, with a notice. `QOBUZ_EMAIL` /
+  `QOBUZ_PASSWORD` are no longer read.
+- `config.json` (the session token) and the files in `~/.local/share/qobit`
+  are written 0600 from the first byte, in 0700 directories. Before, the
+  token was briefly world-readable on every settings change (and stayed so
+  if the chmod failed), and the mpv control socket's folder relied on the
+  umask. Existing files and folders are tightened at startup.
+
+### Changed
+
+- `qobit auth` always prints the login link, so it can be opened by hand
+  when the browser doesn't come up. Without a display (SSH, a console) qobit
+  no longer tries to open a browser, which could start a text browser in the
+  terminal.
+
 ## [0.7.0] - 2026-11-16
 
 ### Added

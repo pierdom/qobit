@@ -28,7 +28,7 @@ def isolated_filesystem_state(tmp_path, monkeypatch):
     # README documents QOBUZ_AUDIO_DEVICE as a valid override); without
     # clearing them, "nothing configured" tests would pass or fail depending
     # on whoever's machine runs the suite.
-    for var in ("QOBUZ_EMAIL", "QOBUZ_PASSWORD", "QOBUZ_AUDIO_DEVICE"):
+    for var in ("QOBUZ_AUDIO_DEVICE",):
         monkeypatch.delenv(var, raising=False)
     yield
 

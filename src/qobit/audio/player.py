@@ -7,6 +7,8 @@ import threading
 import time
 from pathlib import Path
 
+from .._fs import private_dir
+
 _SOCK_PATH = Path.home() / ".local" / "share" / "qobit" / "mpv.sock"
 _SYSTEM = platform.system()
 
@@ -41,7 +43,8 @@ class MpvPlayer:
 
     def play(self, url: str, start: float = 0.0) -> None:
         self.stop()
-        self._sock.parent.mkdir(parents=True, exist_ok=True)
+        # 0700: anyone who can reach mpv's IPC socket can make it run programs.
+        private_dir(self._sock.parent)
         if self._sock.exists():
             self._sock.unlink()
 

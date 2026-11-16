@@ -206,3 +206,83 @@ def test_artist_detail_fetches_every_album_page(monkeypatch):
     assert sorted(calls) == [0, 500, 1000]
     assert [a["id"] for a in data["albums"]["items"]] == [0, 500, 1000]
     assert data["name"] == "A"  # the rest of the payload is kept
+
+
+# --- browser login: the link is always shown ---
+
+
+def _stub_oauth(monkeypatch, client, opened):
+    """login_oauth up to the browser step: no bundle fetch, and the redirect
+    'arrives' as a timeout so nothing after it runs."""
+
+    async def no_bundle():
+        client._private_key = "pk"
+        client._prod_app_id = "123"
+        return ["123"]
+
+    async def no_redirect(port, timeout=120.0):
+        raise QobuzError("timed out")
+
+    monkeypatch.setattr(client, "_fetch_bundle_credentials", no_bundle)
+    monkeypatch.setattr("qobit.qobuz.client._wait_for_oauth_code", no_redirect)
+    monkeypatch.setattr("qobit.qobuz.client.webbrowser.open", opened.append)
+
+
+@pytest.mark.parametrize("display", [True, False])
+def test_login_oauth_always_shows_the_link(monkeypatch, display):
+    """The browser may not open (SSH, no display, blocked): the user must
+    always get the link to open by hand, before qobit starts waiting."""
+    client = QobuzClient()
+    opened, shown = [], []
+    _stub_oauth(monkeypatch, client, opened)
+    monkeypatch.setattr("qobit.qobuz.client._has_graphical_browser", lambda: display)
+    with pytest.raises(QobuzError):
+        asyncio.run(client.login_oauth(show_url=shown.append))
+    assert len(shown) == 1
+    assert shown[0].startswith("https://www.qobuz.com/signin/oauth?ext_app_id=123")
+    # without a display, webbrowser would start lynx in the terminal: don't
+    assert opened == (shown if display else [])
+
+
+def test_login_oauth_prints_the_link_by_default(monkeypatch, capsys):
+    client = QobuzClient()
+    _stub_oauth(monkeypatch, client, [])
+    monkeypatch.setattr("qobit.qobuz.client._has_graphical_browser", lambda: False)
+    with pytest.raises(QobuzError):
+        asyncio.run(client.login_oauth())
+    assert "https://www.qobuz.com/signin/oauth?ext_app_id=123" in capsys.readouterr().out
+
+
+def test_login_oauth_survives_a_browser_that_fails_to_open(monkeypatch):
+    client = QobuzClient()
+    _stub_oauth(monkeypatch, client, [])
+
+    def broken(url):
+        raise RuntimeError("no browser")
+
+    monkeypatch.setattr("qobit.qobuz.client.webbrowser.open", broken)
+    monkeypatch.setattr("qobit.qobuz.client._has_graphical_browser", lambda: True)
+    shown = []
+    with pytest.raises(QobuzError, match="timed out"):
+        asyncio.run(client.login_oauth(show_url=shown.append))
+    assert shown
+
+
+@pytest.mark.parametrize(
+    ("platform", "env", "expected"),
+    [
+        ("linux", {}, False),
+        ("linux", {"DISPLAY": ":0"}, True),
+        ("linux", {"WAYLAND_DISPLAY": "wayland-0"}, True),
+        ("darwin", {}, True),
+    ],
+)
+def test_has_graphical_browser(monkeypatch, platform, env, expected):
+    from qobit.qobuz import client as mod
+
+    monkeypatch.setattr(mod.sys, "platform", platform)
+    for var in ("DISPLAY", "WAYLAND_DISPLAY"):
+        monkeypatch.delenv(var, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    assert mod._has_graphical_browser() is expected

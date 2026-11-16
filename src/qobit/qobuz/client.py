@@ -3,13 +3,17 @@
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import json
+import os
 import re
 import socket
+import sys
 import time
 import webbrowser
 from collections import OrderedDict
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -101,6 +105,21 @@ async def _wait_for_oauth_code(port: int, timeout: float = 120.0) -> str:
             raise QobuzError("OAuth login timed out (2 minutes)") from None
 
 
+def _has_graphical_browser() -> bool:
+    """Whether opening a browser here can work. Without a display (SSH, a
+    console) Python's webbrowser falls back to a text browser such as lynx,
+    which takes over the terminal; the printed link is the way in there."""
+    if sys.platform in ("darwin", "win32"):
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def _print_login_url(url: str) -> None:
+    print("\nLog in to Qobuz by opening this link in a browser on this machine:\n")
+    print(f"  {url}\n")
+    print("Waiting for the login to finish (2 minutes)...", flush=True)
+
+
 class QobuzError(Exception):
     pass
 
@@ -144,32 +163,6 @@ class QobuzClient:
 
     async def close(self) -> None:
         await self._http.aclose()
-
-    async def login(self, email: str, password: str) -> None:
-        bundle_app_ids = await self._fetch_bundle_credentials()
-        pwd_md5 = hashlib.md5(password.encode()).hexdigest()
-
-        candidates = (
-            [self._app_id] + [i for i in bundle_app_ids if i != self._app_id]
-            if self._app_id
-            else bundle_app_ids
-        )
-
-        last_err: QobuzError | None = None
-        for app_id in candidates:
-            self._app_id = app_id
-            try:
-                data = await self._get("user/login", username=email, password=pwd_md5)
-            except QobuzError:
-                try:
-                    data = await self._get("user/login", username=email, password=password)
-                except QobuzError as e2:
-                    last_err = e2
-                    continue
-            self.user_auth_token = data["user_auth_token"]
-            return
-
-        raise last_err or QobuzError("No working app_id found in Qobuz bundle")
 
     async def _fetch_bundle_credentials(self) -> list[str]:
         r = await self._send("GET", f"{PLAY_BASE}/login")
@@ -260,8 +253,12 @@ class QobuzClient:
         self.user_auth_token = token
         self._secret_candidates = secrets + [s for s in self._secret_candidates if s not in secrets]
 
-    async def login_oauth(self) -> None:
-        """Browser-based OAuth flow; sets user_auth_token with streaming permissions."""
+    async def login_oauth(self, show_url: Callable[[str], None] | None = None) -> None:
+        """Browser-based OAuth flow; sets user_auth_token with streaming
+        permissions. ``show_url`` receives the login link before anything else
+        happens, so the user can always open it by hand (no browser on this
+        machine, an SSH session, a browser that didn't come up). Defaults to
+        printing it."""
         await self._fetch_bundle_credentials()
 
         app_id = self._prod_app_id or "798273057"
@@ -275,9 +272,10 @@ class QobuzClient:
             f"https://www.qobuz.com/signin/oauth?ext_app_id={app_id}&redirect_url={redirect_url}"
         )
 
-        print("\nOpening Qobuz login in browser...")
-        print(f"If it doesn't open automatically: {oauth_url}\n")
-        webbrowser.open(oauth_url)
+        (show_url or _print_login_url)(oauth_url)
+        if _has_graphical_browser():
+            with contextlib.suppress(Exception):
+                webbrowser.open(oauth_url)
 
         code = await _wait_for_oauth_code(port)
 

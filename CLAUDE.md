@@ -16,7 +16,8 @@ setup); keep feature detail there, not in the README.
 ```
 src/qobit/
 ├── __main__.py          CLI + TUI launcher (qobit with no args)
-├── config.py            credentials + device config (env → file → prompt)
+├── config.py            session token + device/settings config (env → file)
+├── _fs.py               private_dir (0700) / write_private (atomic, 0600)
 ├── store.py             JSON runtime state in DATA_DIR (player/queue state)
 ├── qobuz/client.py      QobuzClient: app_id/secrets from the web bundle, OAuth,
 │                        every API call (see "Qobuz API")
@@ -348,6 +349,16 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
 - `client.py` extracts `app_id` and signing secrets from the web player bundle
   at login (cached in config). `restore_session()` runs in `QobitApp.__init__`
   so credentials exist before any worker.
+- Login is browser OAuth only (`login_oauth`, `qobit auth`). The
+  email/password route stored the password in plaintext, sent it in a URL and
+  couldn't stream: it's gone, and `purge_legacy_credentials()` scrubs it at
+  startup. `login_oauth(show_url=…)` hands out the link before anything else
+  (always shown: SSH, no display); the browser opens only with a display
+  (else `webbrowser` starts lynx in the terminal).
+- Everything qobit writes under CONFIG_DIR / DATA_DIR goes through
+  `_fs.write_private` (0600 from the first byte, in a 0700 dir): the token
+  lives in config.json and DATA_DIR holds mpv's IPC socket (its `run`
+  command executes programs). Never write there with `write_text`.
 - Every HTTP call goes through `QobuzClient._send`, which turns network errors
   into `QobuzError`. A `@work` that raises closes the app, so never call
   `self._http` directly.

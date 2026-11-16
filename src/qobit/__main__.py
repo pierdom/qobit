@@ -21,9 +21,8 @@ from .audio.player import MpvPlayer
 from .audio.verify import check_bit_perfect
 from .config import (
     get_audio_device,
-    get_credentials,
     get_oauth_session,
-    prompt_and_save_credentials,
+    purge_legacy_credentials,
     save_oauth_session,
     set_audio_device,
 )
@@ -33,37 +32,27 @@ from .qobuz.models import StreamUrl, Track
 _QUALITY_FALLBACK = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
 
 
-async def _authenticate(client: QobuzClient) -> bool:
-    """Try saved OAuth session, then browser OAuth, then email/password fallback."""
-    app_id, token, secrets = get_oauth_session()
-    if app_id and token and secrets:
-        print("Resuming session...", end=" ", flush=True)
-        client.restore_session(app_id, token, secrets)
-        print("OK")
-        return True
-
-    print("Authenticating via browser OAuth...")
+async def _oauth_login(client: QobuzClient) -> bool:
+    """Browser login (the link is always printed too), saving the session."""
     try:
         await client.login_oauth()
-        save_oauth_session(
-            client._app_id or "", client.user_auth_token or "", client._secret_candidates
-        )
-        return True
-    except QobuzError as e:
-        print(f"OAuth failed: {e}", file=sys.stderr)
-
-    # Last resort: email/password (streaming won't work but search will)
-    email, password = get_credentials()
-    if not email:
-        email, password = prompt_and_save_credentials()
-    if not email:
-        return False
-    try:
-        await client.login(email, password)
-        return True
     except QobuzError as e:
         print(f"Login failed: {e}", file=sys.stderr)
         return False
+    save_oauth_session(
+        client._app_id or "", client.user_auth_token or "", client._secret_candidates
+    )
+    return True
+
+
+async def _authenticate(client: QobuzClient) -> bool:
+    """The saved session, else a browser login."""
+    app_id, token, secrets = get_oauth_session()
+    if app_id and token and secrets:
+        client.restore_session(app_id, token, secrets)
+        return True
+    print("No saved Qobuz session.")
+    return await _oauth_login(client)
 
 
 async def cmd_play(args: argparse.Namespace) -> int:
@@ -225,16 +214,9 @@ def cmd_clear_cache(_args: argparse.Namespace) -> int:
 
 async def cmd_auth(_args: argparse.Namespace) -> int:
     async with QobuzClient() as client:
-        try:
-            await client.login_oauth()
-        except QobuzError as e:
-            print(f"OAuth failed: {e}", file=sys.stderr)
+        if not await _oauth_login(client):
             return 1
-
-        save_oauth_session(
-            client._app_id or "", client.user_auth_token or "", client._secret_candidates
-        )
-        print("Authentication successful. Session saved.")
+        print("Logged in. Session saved.")
         return 0
 
 
@@ -265,10 +247,17 @@ def main() -> None:
 
     sub.add_parser("devices", help="List available audio output devices")
     sub.add_parser("set-device", help="Interactively pick and save an audio device")
-    sub.add_parser("auth", help="Test authentication")
+    sub.add_parser("auth", help="Log in to Qobuz (in the browser)")
     sub.add_parser("clear-cache", help="Delete cached cover art from disk")
 
     args = parser.parse_args()
+
+    if purge_legacy_credentials():
+        print(
+            "Removed the Qobuz password an older qobit saved in config.json: "
+            "qobit logs in through the browser only (qobit auth).",
+            file=sys.stderr,
+        )
 
     if args.command == "play":
         sys.exit(asyncio.run(cmd_play(args)))
