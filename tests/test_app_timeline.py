@@ -526,3 +526,45 @@ def test_failed_favourites_fetch_is_retried_not_cached(app, monkeypatch):
     monkeypatch.setattr(app._client, "get_all_favorite_tracks", fetch)
     assert asyncio.run(app.ensure_favorite_ids()) == set()
     assert asyncio.run(app.ensure_favorite_ids()) == {"7"}
+
+
+# ── "Play radio" from the i menu ────────────────────────────────────────────
+
+
+def _radio_calls(app, monkeypatch) -> list:
+    calls: list = []
+    monkeypatch.setattr(
+        app, "play_track", lambda t, start=0.0, **_: calls.append(("play", t.id, start))
+    )
+    monkeypatch.setattr(app, "_start_radio", lambda t: calls.append(("radio", t.id)))
+    return calls
+
+
+@pytest.mark.parametrize("paused", [False, True])
+def test_play_radio_on_the_current_track_keeps_it_playing(app, monkeypatch, paused):
+    """It restarted the song: only Up Next should become the station."""
+    calls = _radio_calls(app, monkeypatch)
+    app.now_playing = _track("7")
+    app.is_playing = True
+    app.is_paused = paused
+    app._on_track_menu("radio", _track("7"))
+    assert calls == [("radio", "7")]
+
+
+def test_play_radio_on_another_track_plays_it_first(app, monkeypatch):
+    calls = _radio_calls(app, monkeypatch)
+    app.now_playing = _track("7")
+    app.is_playing = True
+    app._on_track_menu("radio", _track("9"))
+    assert calls == [("play", "9", 0.0), ("radio", "9")]
+
+
+def test_play_radio_on_the_restored_track_resumes_it(app, monkeypatch):
+    """Restored at startup, shown paused but not in mpv yet: it starts where
+    it was left, not from 0:00."""
+    calls = _radio_calls(app, monkeypatch)
+    app.now_playing = _track("7")
+    app.is_paused = True  # what the restore sets; is_playing stays False
+    app._pending_resume = (app.now_playing, 83.0)
+    app._on_track_menu("radio", _track("7"))
+    assert calls == [("play", "7", 83.0), ("radio", "7")]

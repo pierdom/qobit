@@ -1139,6 +1139,10 @@ class QobitApp(App[None]):
         if self.status_msg == msg:  # only clear if nothing newer replaced it
             self.status_msg = ""
 
+    def _is_loaded(self, track: Track) -> bool:
+        """Whether ``track`` is the one in the player (playing or paused)."""
+        return self.is_playing and self.now_playing is not None and self.now_playing.id == track.id
+
     def action_start_radio(self) -> None:
         seed = self.now_playing or (self._pending_resume[0] if self._pending_resume else None)
         if seed is None:
@@ -1731,7 +1735,13 @@ class QobitApp(App[None]):
             if self.queue_last(track):
                 self._flash_status(f"Added to queue: {track.display_title}")
         elif action == "radio":
-            self.play_track(track)
+            # The track already playing (or paused) keeps going: only Up Next
+            # becomes the station, as with R. play_track would restart it; the
+            # one restored at startup resumes where it was.
+            if not self._is_loaded(track):
+                resume = self._pending_resume
+                start = resume[1] if resume and resume[0].id == track.id else 0.0
+                self.play_track(track, start=start)
             self._start_radio(track)
         elif action == "artist":
             self._open_artist(track)

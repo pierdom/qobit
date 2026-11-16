@@ -23,6 +23,9 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Fixed
 
+- *Play radio* from the `i` menu on the track that's playing restarted it;
+  now only Up Next becomes the station (as with `R`). On the track restored
+  at startup it resumes where you left off.
 - **qobit closed when a track had no stream at all.** For some tracks
   Qobuz answers with only a restriction (`SampleRestrictedByRightHolders`:
   not even a preview), and reaching one (Next, Enter, autoplay) crashed
