@@ -8,16 +8,16 @@ import hashlib
 import json
 import os
 import re
-import socket
 import sys
 import time
 import webbrowser
 from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 import httpx
+
+from .oauth import LoginError, LoginPrompt, redirect_server
 
 API_BASE = "https://www.qobuz.com/api.json/0.2/"
 PLAY_BASE = "https://play.qobuz.com"
@@ -61,50 +61,6 @@ def _derive_secrets(bundle: str) -> list[str]:
     return secrets
 
 
-def _find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
-
-
-async def _wait_for_oauth_code(port: int, timeout: float = 120.0) -> str:
-    """Starts a temporary asyncio HTTP server; returns the OAuth code from the redirect."""
-    loop = asyncio.get_event_loop()
-    code_future: asyncio.Future[str] = loop.create_future()
-
-    async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        try:
-            data = await asyncio.wait_for(reader.read(4096), timeout=5.0)
-            request_line = data.decode(errors="replace").split("\r\n")[0]
-            parts = request_line.split(" ")
-            path = parts[1] if len(parts) > 1 else "/"
-            qs = parse_qs(urlparse(path).query)
-            code = (qs.get("code_autorisation") or qs.get("code") or [None])[0]
-            body = (
-                b"<html><body><h2>Login successful! You can close this tab.</h2></body></html>"
-                if code
-                else b"<html><body><h2>Processing\xe2\x80\xa6</h2></body></html>"
-            )
-            writer.write(
-                b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
-                b"Connection: close\r\n\r\n" + body
-            )
-            await writer.drain()
-            if code and not code_future.done():
-                code_future.set_result(code)
-        except Exception:
-            pass
-        finally:
-            writer.close()
-
-    server = await asyncio.start_server(_handle, "localhost", port)
-    async with server:
-        try:
-            return await asyncio.wait_for(code_future, timeout=timeout)
-        except TimeoutError:
-            raise QobuzError("OAuth login timed out (2 minutes)") from None
-
-
 def _has_graphical_browser() -> bool:
     """Whether opening a browser here can work. Without a display (SSH, a
     console) Python's webbrowser falls back to a text browser such as lynx,
@@ -114,10 +70,10 @@ def _has_graphical_browser() -> bool:
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
-def _print_login_url(url: str) -> None:
-    print("\nLog in to Qobuz by opening this link in a browser on this machine:\n")
-    print(f"  {url}\n")
-    print("Waiting for the login to finish (2 minutes)...", flush=True)
+def _print_login(prompt: LoginPrompt) -> None:
+    print("\nLog in to Qobuz by opening this link in a browser:\n")
+    print(f"  {prompt.url}\n")
+    print("Waiting for the login to finish...", flush=True)
 
 
 class QobuzError(Exception):
@@ -253,12 +209,12 @@ class QobuzClient:
         self.user_auth_token = token
         self._secret_candidates = secrets + [s for s in self._secret_candidates if s not in secrets]
 
-    async def login_oauth(self, show_url: Callable[[str], None] | None = None) -> None:
+    async def login_oauth(self, show_url: Callable[[LoginPrompt], None] | None = None) -> None:
         """Browser-based OAuth flow; sets user_auth_token with streaming
-        permissions. ``show_url`` receives the login link before anything else
-        happens, so the user can always open it by hand (no browser on this
-        machine, an SSH session, a browser that didn't come up). Defaults to
-        printing it."""
+        permissions. ``show_url`` receives the ``LoginPrompt`` (its ``url``,
+        and ``submit()`` for a pasted address) before anything else happens,
+        so the link is always shown: no browser here, SSH, a browser that
+        didn't come up. Defaults to printing it. See ``qobuz/oauth.py``."""
         await self._fetch_bundle_credentials()
 
         app_id = self._prod_app_id or "798273057"
@@ -266,18 +222,15 @@ class QobuzClient:
         if not private_key:
             raise QobuzError("Cannot extract privateKey from bundle — OAuth unavailable")
 
-        port = _find_free_port()
-        redirect_url = f"http://localhost:{port}"
-        oauth_url = (
-            f"https://www.qobuz.com/signin/oauth?ext_app_id={app_id}&redirect_url={redirect_url}"
-        )
-
-        (show_url or _print_login_url)(oauth_url)
-        if _has_graphical_browser():
-            with contextlib.suppress(Exception):
-                webbrowser.open(oauth_url)
-
-        code = await _wait_for_oauth_code(port)
+        try:
+            async with redirect_server(app_id) as prompt:
+                (show_url or _print_login)(prompt)
+                if _has_graphical_browser():
+                    with contextlib.suppress(Exception):
+                        webbrowser.open(prompt.url)
+                code = await prompt.wait()
+        except LoginError as e:
+            raise QobuzError(str(e)) from None
 
         r = await self._send(
             "GET",
@@ -285,7 +238,13 @@ class QobuzClient:
             params={"code": code, "private_key": private_key},
             headers={"X-App-Id": app_id},
         )
-        self._raise_for_status(r)
+        try:
+            self._raise_for_status(r)
+        except QobuzError as e:
+            raise QobuzError(
+                "Qobuz didn't accept the login code (expired, already used, or "
+                f"mistyped): run qobit auth again. ({e})"
+            ) from None
         interim_token = r.json().get("token")
         if not interim_token:
             raise QobuzError(f"OAuth callback returned no token: {r.json()}")

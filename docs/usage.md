@@ -2,6 +2,17 @@
 
 All keys, and how each tab works. The README has a short version.
 
+## Logging in
+
+`qobit auth` prints a Qobuz login link and opens it in your browser (when
+there is a display). Log in, and the browser comes back to qobit on
+`localhost`; the session is saved in `~/.config/qobit/config.json`.
+
+On a machine without a browser (over SSH, a headless box), open the link on
+any device and log in. The browser then lands on a `localhost` page that
+doesn't load: copy that page's address from the address bar and paste it into
+the terminal where `qobit auth` is waiting. The login waits 5 minutes.
+
 ## Global keys
 
 | Key | Action |

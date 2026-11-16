@@ -21,6 +21,7 @@ src/qobit/
 ├── store.py             JSON runtime state in DATA_DIR (player/queue state)
 ├── qobuz/client.py      QobuzClient: app_id/secrets from the web bundle, OAuth,
 │                        every API call (see "Qobuz API")
+├── qobuz/oauth.py       login link + redirect server + pasted-address LoginPrompt
 ├── qobuz/models.py      Track, Album, Artist, Playlist, StreamUrl
 ├── audio/device.py      mpv devices + synthesized alsa/hw:CARD=…,DEV=… entries,
 │                        bit-perfect ones flagged and sorted first
@@ -352,9 +353,15 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
 - Login is browser OAuth only (`login_oauth`, `qobit auth`). The
   email/password route stored the password in plaintext, sent it in a URL and
   couldn't stream: it's gone, and `purge_legacy_credentials()` scrubs it at
-  startup. `login_oauth(show_url=…)` hands out the link before anything else
-  (always shown: SSH, no display); the browser opens only with a display
-  (else `webbrowser` starts lynx in the terminal).
+  startup. `login_oauth(show_url=…)` hands the `LoginPrompt` out before
+  anything else (link always shown: SSH, no display); the browser opens only
+  with a display (else `webbrowser` starts lynx in the terminal). The code
+  comes back through `qobuz/oauth.py`: a loopback-only server (127.0.0.1 on
+  an OS-picked port, then ::1 on the same one; only `GET /`, one code) or
+  `LoginPrompt.submit(pasted address)` (CLI: stdin via `add_reader`, never a
+  blocking `input()` thread, which would hang exit). A random `state` rides
+  along; a different one is refused, a missing one accepted (unknown whether
+  Qobuz echoes it).
 - Everything qobit writes under CONFIG_DIR / DATA_DIR goes through
   `_fs.write_private` (0600 from the first byte, in a 0700 dir): the token
   lives in config.json and DATA_DIR holds mpv's IPC socket (its `run`

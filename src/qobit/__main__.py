@@ -28,17 +28,54 @@ from .config import (
 )
 from .qobuz.client import QobuzClient, QobuzError
 from .qobuz.models import StreamUrl, Track
+from .qobuz.oauth import LoginPrompt
 
 _QUALITY_FALLBACK = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
 
 
+_PASTE_REPLIES = {
+    "no_code": "That address has no login code: copy the whole address from the "
+    "browser's address bar, after logging in.",
+    "bad_state": "That address belongs to a different login: use the link above.",
+}
+
+
+def _show_login(prompt: LoginPrompt) -> None:
+    """Print the link and, on a terminal, take a pasted redirect address:
+    the browser may be on another device (SSH, a headless box), where the
+    page it lands on can't load but its address carries the login code."""
+    print("\nLog in to Qobuz by opening this link in a browser:\n")
+    print(f"  {prompt.url}\n")
+    if not sys.stdin.isatty():
+        print("Waiting for the login to finish...", flush=True)
+        return
+    print(
+        "Logging in on another device? The browser then ends on a page that "
+        "doesn't load\n(localhost). Copy that page's address and paste it here.\n"
+    )
+    print("Waiting for the login (or a pasted address)...", flush=True)
+
+    def on_line() -> None:
+        line = sys.stdin.readline()
+        if not line:  # EOF: stop reading, keep waiting for the redirect
+            asyncio.get_running_loop().remove_reader(sys.stdin.fileno())
+            return
+        if line.strip() and (msg := _PASTE_REPLIES.get(prompt.submit(line))):
+            print(msg, flush=True)
+
+    asyncio.get_running_loop().add_reader(sys.stdin.fileno(), on_line)
+
+
 async def _oauth_login(client: QobuzClient) -> bool:
-    """Browser login (the link is always printed too), saving the session."""
+    """Browser login (the link is always printed), saving the session."""
     try:
-        await client.login_oauth()
+        await client.login_oauth(show_url=_show_login)
     except QobuzError as e:
         print(f"Login failed: {e}", file=sys.stderr)
         return False
+    finally:
+        if sys.stdin.isatty():
+            asyncio.get_running_loop().remove_reader(sys.stdin.fileno())
     save_oauth_session(
         client._app_id or "", client.user_auth_token or "", client._secret_candidates
     )

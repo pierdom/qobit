@@ -21,6 +21,16 @@ release from this entry.
   token was briefly world-readable on every settings change (and stayed so
   if the chmod failed), and the mpv control socket's folder relied on the
   umask. Existing files and folders are tightened at startup.
+- The browser login's local server listens on loopback only, on a port
+  picked as it binds, answers only the login redirect, and takes one code. A
+  random `state` goes with each login, and a redirect carrying a different
+  one is refused.
+
+### Added
+
+- Log in from a machine without a browser (SSH, a headless box): open the
+  link anywhere, then paste the address the browser ends on into
+  `qobit auth`. The login now waits 5 minutes instead of 2.
 
 ### Changed
 
@@ -28,6 +38,7 @@ release from this entry.
   when the browser doesn't come up. Without a display (SSH, a console) qobit
   no longer tries to open a browser, which could start a text browser in the
   terminal.
+- A login code Qobuz rejects (expired, already used) gets a plain message.
 
 ## [0.7.0] - 2026-11-16
 
