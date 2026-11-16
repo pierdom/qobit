@@ -36,9 +36,10 @@ dependencies = [
     # OS media controls (audio/media_keys.py). Required per platform rather
     # than extras: `uv sync` strips any extra not named on the command line,
     # and media_keys degrades silently, so keys just stop working.
+    # Linux: MPRIS2 over D-Bus with dbus-fast (pure Python, wheels; nothing
+    # to compile, unlike pydbus + PyGObject).
     "pyobjc-framework-MediaPlayer>=10.0; sys_platform == 'darwin'",
-    "pydbus>=0.6; sys_platform == 'linux'",
-    "PyGObject>=3.50; sys_platform == 'linux'",
+    "dbus-fast>=5.0; sys_platform == 'linux'",
     # The session token in the system keyring (token_store.py): macOS
     # Keychain, Linux Secret Service. Falls back to config.json without one.
     "keyring>=25.0",

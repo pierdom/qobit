@@ -16,7 +16,7 @@ For a security issue, don't open a public issue: see [SECURITY.md](SECURITY.md).
 
 ```bash
 git clone https://github.com/pierdom/qobit && cd qobit
-uv sync --group dev        # Linux: install the system packages from the README first
+uv sync --group dev
 uv run qobit
 ```
 
