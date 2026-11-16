@@ -49,7 +49,7 @@ from ..store import load as load_state
 from ..store import save as save_state
 from ._now_playing import tick
 from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, Wordmark, page_screens, tab_label
-from .play_context import ConnectPlayContext, LocalPlayContext
+from .play_context import UNPLAYABLE, ConnectPlayContext, LocalPlayContext, unplayable_notice
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
 from .screens.mixes import MixesView
@@ -178,13 +178,6 @@ _HISTORY_MAX = 100
 # Pressing "previous" past this many seconds into a track restarts it; before
 # it, steps back to the previous track in history (standard media convention).
 _PREV_RESTART_THRESHOLD = 3.0
-
-
-def unplayable_notice(track: Track, result: str) -> str:
-    """The flash for a track qobit won't play ("sample" or "unavailable")."""
-    if result == "sample":
-        return f"Not streamable (preview only): {track.display_title}"
-    return f"Not available on Qobuz: {track.display_title}"
 
 
 class QobitApp(App[None]):
@@ -960,7 +953,7 @@ class QobitApp(App[None]):
 
         for screen in self.screen_stack:
             for widget in (*screen.query(AlbumDetailPanel), *screen.query(ArtistHeader)):
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(NoMatches):  # not composed yet
                     widget.refresh_heart()
 
     async def toggle_favorite_album(self, album: Album) -> None:
@@ -1384,7 +1377,7 @@ class QobitApp(App[None]):
     async def _do_play(self, track: Track, start: float = 0.0) -> None:
         """Local-context playback: start ``track``; on a preview, skip forward."""
         result = await self._play_stream(track, start)
-        if result in ("sample", "unavailable"):
+        if result in UNPLAYABLE:
             # Never play a preview: it's a 30 s MP3, not the FLAC. Treat the track
             # as unavailable — skip forward like the official apps do, or stop
             # if nothing is queued after it. Same for a track Qobuz refuses
@@ -1405,20 +1398,21 @@ class QobitApp(App[None]):
         self._play_gen += 1
         gen = self._play_gen
         self.status_msg = f"Loading {track.display_title}…"
+        restricted = False
         try:
             stream = await self._resolve_stream(str(track.id))
         except AuthExpiredError:
             self.status_msg = "Session expired: log in again"
             return "auth"
         except NoStreamError:
-            if gen != self._play_gen:
-                return "stale"
-            self.status_msg = ""
-            return "unavailable"
+            stream, restricted = None, True
         if gen != self._play_gen:
             # Picking A then B quickly: if A's URL arrives last it would stop B
             # and play A while the queue's cursor says B.
             return "stale"
+        if restricted:
+            self.status_msg = ""  # the caller flashes why
+            return "unavailable"
 
         if stream is None:
             self.status_msg = "No stream available"

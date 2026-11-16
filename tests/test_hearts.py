@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from test_album_fit import ALBUM, ARTIST, _open, _stub
+from album_pages import ALBUM, ARTIST, open_album, stub_album_client
 from textual.widgets import Label
 
 from qobit.qobuz.models import Album, Artist
@@ -43,12 +43,12 @@ def _artist_title(header) -> str:
 @pytest.mark.parametrize("where", ["page", "albums"])
 @pytest.mark.parametrize("fav", [True, False])
 def test_hearts_show_favourites(ui_app, where, fav):
-    _stub(ui_app)
+    stub_album_client(ui_app)
     _favourites(ui_app, albums=fav, artists=fav)
 
     async def run():
         async with ui_app.run_test(size=(130, 50)) as pilot:
-            panel, header = await _open(ui_app, pilot, where)
+            panel, header = await open_album(ui_app, pilot, where)
             await pilot.pause(0.3)
             assert (ICON_FAV in _album_title(panel)) is fav
             assert "Kind of Blue" in _album_title(panel)
@@ -59,12 +59,12 @@ def test_hearts_show_favourites(ui_app, where, fav):
 
 
 def test_hearts_follow_a_toggle(ui_app):
-    _stub(ui_app)
+    stub_album_client(ui_app)
     calls = _favourites(ui_app, albums=True, artists=True)
 
     async def run():
         async with ui_app.run_test(size=(130, 50)) as pilot:
-            panel, header = await _open(ui_app, pilot, "page")
+            panel, header = await open_album(ui_app, pilot, "page")
             await pilot.pause(0.3)
             assert ICON_FAV in _album_title(panel)
 
@@ -85,7 +85,7 @@ def test_hearts_follow_a_toggle(ui_app):
 def test_artist_header_bio_is_plain_text(ui_app):
     """The artist page showed the API's HTML (<p>…) as text; the Now
     Playing bio already stripped it."""
-    _stub(ui_app)
+    stub_album_client(ui_app)
     _favourites(ui_app, albums=False, artists=False)
     bio = "<p>Trumpeter &amp; composer.<br/>Born in <b>Alton</b>, Illinois.</p>"
     c = ui_app._client
@@ -97,7 +97,7 @@ def test_artist_header_bio_is_plain_text(ui_app):
 
     async def run():
         async with ui_app.run_test(size=(130, 50)) as pilot:
-            _panel, header = await _open(ui_app, pilot, "page")
+            _panel, header = await open_album(ui_app, pilot, "page")
             await pilot.pause(0.3)
             text = str(header.query_one(".ah-bio", Label).content)
             assert "<" not in text and "&amp;" not in text

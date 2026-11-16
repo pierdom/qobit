@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from functools import lru_cache
 from typing import TYPE_CHECKING, NamedTuple
 
 from textual import events
@@ -23,6 +24,8 @@ from textual.content import Content
 from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Tab, Tabs
+
+from .themes import ACCENT_TEXT, BAR_END, BAR_START, HIRES, text_color
 
 if TYPE_CHECKING:
     from .app import QobitApp
@@ -155,32 +158,42 @@ def page_screens(app: QobitApp) -> list:
 # The wordmark's colour cycle while playing: one loop (start → end → start)
 # every CYCLE_SECS, and the word spans SPREAD of a loop, so it reads like the
 # progress bar's gradient sliding along the letters.
-WORDMARK_TEXT = "◢◤ qobit"
+_MARK, _NAME = "◢◤", "qobit"
+WORDMARK_TEXT = f"{_MARK} {_NAME}"
 # What takes one colour each: the mark's two glyphs are one shape and change
 # together (cycled per character, the gradient split them); the space has no
 # colour to show and is left out.
-WORDMARK_UNITS = ("◢◤", "q", "o", "b", "i", "t")
+WORDMARK_UNITS = (_MARK, *_NAME)
 CYCLE_SECS = 6.0
 SPREAD = 0.5
 _FRAME_SECS = 1 / 12
+# What the palette reads: also the fallback, and the page text must read on.
+_PALETTE_VARS = (BAR_START, BAR_END, ACCENT_TEXT, HIRES, "accent", "background")
 
 
 def wordmark_palette(app: object) -> tuple[Color, Color] | None:
     """The two colours the wordmark cycles between: the progress bar's ends,
     or (when a theme's bar is one colour) the accent and the HI-RES colour,
     each made readable as text. None for ANSI themes, which can't blend."""
-    from .themes import BAR_END, BAR_START, HIRES, theme_text_color
+    variables = getattr(app, "theme_variables", {})
+    return _palette(tuple((n, variables.get(n, "")) for n in _PALETTE_VARS))
 
-    a, b = (theme_text_color(app, n) for n in (BAR_START, BAR_END))
+
+@lru_cache(maxsize=8)
+def _palette(items: tuple[tuple[str, str], ...]) -> tuple[Color, Color] | None:
+    """wordmark_palette keyed on the theme values it reads: it runs every
+    frame and only changes with the theme."""
+    variables = dict(items)
+    a, b = (text_color(variables, n) for n in (BAR_START, BAR_END))
     if a == b:
-        a, b = (theme_text_color(app, n) for n in ("qobit-accent-text", HIRES))
+        a, b = (text_color(variables, n) for n in (ACCENT_TEXT, HIRES))
     if not (a.startswith("#") and b.startswith("#")):
         return None
     return Color.parse(a), Color.parse(b)
 
 
 def wordmark_colours(start: Color, end: Color, phase: float, n: int) -> list[str]:
-    """One colour per character at ``phase`` (0–1) of the cycle."""
+    """One colour per unit (WORDMARK_UNITS) at ``phase`` (0–1) of the cycle."""
     out = []
     for i in range(n):
         x = (phase - SPREAD * i / max(1, n - 1)) % 1.0
@@ -223,8 +236,8 @@ class Wordmark(Widget):
         self.display = width >= self.MIN_WIDTH
 
     def _live(self) -> bool:
-        app = self.app
-        return bool(getattr(app, "is_playing", False) and not getattr(app, "is_paused", False))
+        app: QobitApp = self.app  # type: ignore[assignment]
+        return app.is_playing and not app.is_paused
 
     def _sync(self, *_: object) -> None:
         if self._live():
@@ -236,7 +249,9 @@ class Wordmark(Widget):
     def render(self) -> Content:
         palette = wordmark_palette(self.app) if self._live() else None
         if palette is None:
-            return Content.assemble(("◢◤", "$qobit-accent-text"), (" qobit", "bold $qobit-muted"))
+            return Content.assemble(
+                (_MARK, "$qobit-accent-text"), (f" {_NAME}", "bold $qobit-muted")
+            )
         phase = (time.monotonic() / CYCLE_SECS) % 1.0
         mark, *letters = zip(
             WORDMARK_UNITS,

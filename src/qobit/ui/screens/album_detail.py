@@ -30,6 +30,7 @@ from .._utils import (
     DETAIL_HEADER_CSS,
     readout,
     strip_html,
+    within,
 )
 from ..nav import page_header
 from ..widgets.art import Art
@@ -47,16 +48,11 @@ ART_MAX = 14
 ART_MIN = 5
 MIN_TRACK_ROWS = 8
 TWO_COL_MIN_W = 90  # an art-less panel this wide splits its tracklist in two
-# An artist header (8 rows) sits above the panel only while the panel keeps at
-# least this many rows with it: 7 rows of art, MIN_TRACK_ROWS and the rules.
-PANEL_WITH_ARTIST_MIN = 2 + 9 + 1 + MIN_TRACK_ROWS
-ARTIST_HEADER_ROWS = 8  # ArtistHeader's CSS height
-
-
-def _in_tracklist(widget: Widget | None) -> bool:
-    return widget is not None and any(
-        w.has_class("detail-tracklist") for w in widget.ancestors_with_self
-    )
+# An artist header sits above the panel only while the panel keeps at least
+# this many rows with it: border, a header with 7 rows of art (+ padding),
+# the tracklist's rule and MIN_TRACK_ROWS.
+_ART_WITH_ARTIST = 7
+PANEL_WITH_ARTIST_MIN = 2 + (_ART_WITH_ARTIST + 2) + 1 + MIN_TRACK_ROWS
 
 
 def fit_artist_header(header: Widget, panel: AlbumDetailPanel) -> None:
@@ -67,8 +63,9 @@ def fit_artist_header(header: Widget, panel: AlbumDetailPanel) -> None:
     current = panel.outer_size.height
     if current <= 0:
         return
-    shown = header.outer_size.height or ARTIST_HEADER_ROWS
-    with_header = current if header.display else current - shown
+    # Its CSS height: outer_size is 0 while it's hidden.
+    shown = header.styles.height.cells if header.styles.height else 0
+    with_header = current if header.display else current - (shown or 0)
     show = with_header >= PANEL_WITH_ARTIST_MIN
     if header.display != show:
         header.display = show
@@ -181,8 +178,8 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
 
     def on_click(self, event: events.Click) -> None:
         """A click on the art or the album info selects the tracklist, the
-        panel's only focusable part (a click on a track is the list's)."""
-        if not _in_tracklist(event.widget):
+        panel's only focusable part."""
+        if within(event.widget, "detail-header"):
             self.focus_tracklist()
 
     def on_resize(self, _: events.Resize) -> None:
@@ -249,18 +246,19 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         """The title, with a ♥ when the album is in the user's favourites."""
         if self.album is None:
             return
-        is_fav = getattr(self.app, "is_favorite_album", lambda _id: False)(self.album.id)
+        app: QobitApp = self.app  # type: ignore[assignment]
         self.query_one(".detail-title", Label).update(
-            Content.assemble(self.album.title, heart_suffix(is_fav))
+            Content.assemble(self.album.title, heart_suffix(app.is_favorite_album(self.album.id)))
         )
 
     @work(exclusive=True, group="_load_heart")  # a newer album cancels a stale one
     async def _load_heart(self, album_id: str) -> None:
         """Favourite albums load at startup; if they haven't yet, wait, then
         draw the heart. A failed load just leaves it off."""
+        app: QobitApp = self.app  # type: ignore[assignment]
         try:
-            await self.app.ensure_favorite_albums()  # type: ignore[attr-defined]
-        except Exception:
+            await app.ensure_favorite_albums()
+        except QobuzError:
             return
         if self.is_attached and self.album is not None and self.album.id == album_id:
             self.refresh_heart()

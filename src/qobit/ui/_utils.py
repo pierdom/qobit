@@ -3,6 +3,18 @@ from __future__ import annotations
 import html as _html
 import re
 
+_BLOCK_TAG = re.compile(r"</?(?:p|br|div|li|ul|ol|h[1-6]|tr|td|blockquote)\b[^>]*>", re.I)
+_ANY_TAG = re.compile(r"<[^>]+>")
+
+
+def within(widget: object, css_class: str) -> bool:
+    """Whether ``widget`` (e.g. a click's) is, or sits inside, a widget with
+    ``css_class``."""
+    return widget is not None and any(
+        w.has_class(css_class)
+        for w in widget.ancestors_with_self  # type: ignore[attr-defined]
+    )
+
 
 def strip_html(text: str) -> str:
     """Strip HTML tags and decode HTML entities to plain text. Block and
@@ -12,10 +24,6 @@ def strip_html(text: str) -> str:
     spaced = _BLOCK_TAG.sub(" ", text)
     plain = _html.unescape(_ANY_TAG.sub("", spaced))
     return re.sub(r"[ \t]+", " ", plain).strip()
-
-
-_BLOCK_TAG = re.compile(r"</?(?:p|br|div|li|ul|ol|h[1-6]|tr|td|blockquote)\b[^>]*>", re.I)
-_ANY_TAG = re.compile(r"<[^>]+>")
 
 
 # Shared "art + metadata header" layout used by both AlbumDetailPanel

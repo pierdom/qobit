@@ -14,6 +14,8 @@ again through ``variables``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from textual.color import Color
 from textual.theme import Theme
 
@@ -148,8 +150,13 @@ def theme_text_color(app: object, name: str, fallback: str = "accent") -> str:
     """A theme colour used as text, moved until it reads on the page (the
     lamp's success/error green and red were 1.4:1 on light themes). ANSI
     colours pass through: the terminal's palette decides."""
-    value = theme_color(app, name, fallback)
-    background = getattr(app, "theme_variables", {}).get("background", "")
+    return text_color(getattr(app, "theme_variables", {}), name, fallback)
+
+
+def text_color(variables: Mapping[str, str], name: str, fallback: str = "accent") -> str:
+    """theme_text_color on a theme's variables (for callers that cache)."""
+    value = variables.get(name) or variables.get(fallback, "")
+    background = variables.get("background", "")
     if value.startswith("#") and background.startswith("#"):
         return _readable(Color.parse(value), Color.parse(background)).hex
     return value

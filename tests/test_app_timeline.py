@@ -270,6 +270,20 @@ class _FakeClient:
         return answer
 
 
+class _FakePlayer:
+    running = False
+
+    def __init__(self):
+        self.played = []
+
+    def stop(self):
+        self.running = False
+
+    def play(self, url, start=0.0):
+        self.played.append(url)
+        self.running = True
+
+
 _FLAC = {"url": "u", "format_id": 7, "sampling_rate": 96, "bit_depth": 24}
 _PREVIEW = {"url": "p", "format_id": 5, "sample": True, "sampling_rate": 44.1}
 
@@ -466,20 +480,6 @@ def test_queue_with_nothing_played_yet_restores_without_now_playing(app, monkeyp
 
 
 # ── overlapping play requests ───────────────────────────────────────────────
-
-
-class _FakePlayer:
-    running = False
-
-    def __init__(self):
-        self.played = []
-
-    def stop(self):
-        self.running = False
-
-    def play(self, url, start=0.0):
-        self.played.append(url)
-        self.running = True
 
 
 def test_slow_stream_resolve_does_not_override_a_newer_pick(app, monkeypatch):

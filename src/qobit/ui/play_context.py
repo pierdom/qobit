@@ -33,6 +33,19 @@ if TYPE_CHECKING:
     from .app import QobitApp
 
 
+# _play_stream results for a track qobit won't play: a preview-only one
+# ("sample") or one Qobuz refuses outright ("unavailable"). Both play
+# contexts flash why and skip it.
+UNPLAYABLE = ("sample", "unavailable")
+
+
+def unplayable_notice(track: Track, result: str) -> str:
+    """The flash for an UNPLAYABLE result."""
+    if result == "sample":
+        return f"Not streamable (preview only): {track.display_title}"
+    return f"Not available on Qobuz: {track.display_title}"
+
+
 class LocalPlayContext:
     """qobit owns the timeline. Logic unchanged from the pre-Connect app.py."""
 
@@ -293,9 +306,7 @@ class ConnectPlayContext:
         if result == "ok" and app._last_stream is not None:
             st = app._last_stream
             self.renderer.report_quality(st.format_id, round(st.sampling_rate), st.bit_depth or 16)
-        if result in ("sample", "unavailable"):
-            from .app import unplayable_notice
-
+        if result in UNPLAYABLE:
             app._flash_status(unplayable_notice(track, result))
         # "stale": a newer load took over; not unplayable, so the renderer
         # mustn't skip past it.

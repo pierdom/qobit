@@ -1136,16 +1136,18 @@ class ArtistHeader(Widget):
         (redrawn on a theme change)."""
         if self.artist is None:
             return
+        app: QobitApp = self.app  # type: ignore[assignment]
         title = escape(readout(self.artist.name))
-        if getattr(self.app, "is_followed_artist", lambda _id: False)(self.artist.id):
+        if app.is_followed_artist(self.artist.id):
             title += f"  [{theme_color(self.app, HEART)}]{ICON_FAV}[/]"
         self.query_one(".ah-bio-section").border_title = title
 
     @work(exclusive=True, group="_load_heart")  # a newer artist cancels a stale one
     async def _load_heart(self, artist_id: str) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
         try:
-            await self.app.ensure_favorite_artists()  # type: ignore[attr-defined]
-        except Exception:
+            await app.ensure_favorite_artists()
+        except QobuzError:
             return
         if self.is_attached and self.artist is not None and self.artist.id == artist_id:
             self.refresh_heart()

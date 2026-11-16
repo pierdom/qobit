@@ -38,8 +38,8 @@ class StreamUrl:
         and a KeyError there closed the app."""
         url = data.get("url")
         if not url:
-            codes = [r.get("code", "") for r in data.get("restrictions") or [] if r]
-            raise NoStreamError(", ".join(c for c in codes if c) or "no stream URL")
+            codes = [r["code"] for r in data.get("restrictions") or [] if r and r.get("code")]
+            raise NoStreamError(", ".join(codes) or "no stream URL")
         return cls(
             url=url,
             format_id=data.get("format_id", 6),
@@ -176,12 +176,11 @@ class Album:
         # controls) and "Go to album" need them when a track is played
         # straight from the album view or its play queue.
         album_id = str(data["id"])
+        year = release_year(data)
         for t in tracks:
             t.image_url = t.image_url or img_url
             t.album = t.album or data.get("title", "")
             t.album_id = t.album_id or album_id
-        year = release_year(data)
-        for t in tracks:
             t.album_year = t.album_year or year
         awards = [
             name

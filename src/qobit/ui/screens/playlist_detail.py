@@ -23,7 +23,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import DETAIL_HEADER_CSS, readout, strip_html
+from .._utils import DETAIL_HEADER_CSS, readout, strip_html, within
 from ..nav import page_header
 from ..widgets.art import Art
 from ..widgets.lists import TrackListView
@@ -130,10 +130,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         yield Footer()
 
     def on_click(self, event: events.Click) -> None:
-        widget = event.widget
-        if widget is not None and any(
-            w.has_class("detail-header") for w in widget.ancestors_with_self
-        ):
+        if within(event.widget, "detail-header"):
             self.query_one(".detail-tracklist").focus()
 
     def on_mount(self) -> None:
