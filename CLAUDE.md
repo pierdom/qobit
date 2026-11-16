@@ -357,11 +357,12 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
   anything else (link always shown: SSH, no display); the browser opens only
   with a display (else `webbrowser` starts lynx in the terminal). The code
   comes back through `qobuz/oauth.py`: a loopback-only server (127.0.0.1 on
-  an OS-picked port, then ::1 on the same one; only `GET /`, one code) or
+  an OS-picked port, then ::1 on the same one; one code) or
   `LoginPrompt.submit(pasted address)` (CLI: stdin via `add_reader`, never a
-  blocking `input()` thread, which would hang exit). A random `state` rides
-  along; a different one is refused, a missing one accepted (unknown whether
-  Qobuz echoes it).
+  blocking `input()` thread, which would hang exit). Qobuz drops OAuth's
+  `state` (the redirect carries only `code_autorisation`), so the redirect
+  URL has a random secret path, `localhost:<port>/<secret>`, and a code is
+  taken only on it (anything else 404s): that is the login-CSRF guard.
 - Everything qobit writes under CONFIG_DIR / DATA_DIR goes through
   `_fs.write_private` (0600 from the first byte, in a 0700 dir): the token
   lives in config.json and DATA_DIR holds mpv's IPC socket (its `run`

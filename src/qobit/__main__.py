@@ -36,7 +36,7 @@ _QUALITY_FALLBACK = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
 _PASTE_REPLIES = {
     "no_code": "That address has no login code: copy the whole address from the "
     "browser's address bar, after logging in.",
-    "bad_state": "That address belongs to a different login: use the link above.",
+    "wrong_login": "That address belongs to a different login: use the link above.",
 }
 
 

@@ -22,9 +22,9 @@ release from this entry.
   if the chmod failed), and the mpv control socket's folder relied on the
   umask. Existing files and folders are tightened at startup.
 - The browser login's local server listens on loopback only, on a port
-  picked as it binds, answers only the login redirect, and takes one code. A
-  random `state` goes with each login, and a redirect carrying a different
-  one is refused.
+  picked as it binds, and takes one code. Each login's return address has a
+  random path, and a code is taken only there, so another web page or
+  program can't log qobit into a different account.
 
 ### Added
 

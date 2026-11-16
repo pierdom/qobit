@@ -36,40 +36,44 @@ def _with_prompt(fn):
     return run(go())
 
 
-def test_link_names_the_app_the_loopback_redirect_and_a_state():
+def _addr(prompt, query, port=None):
+    """The address the browser lands on for this login."""
+    return f"http://localhost:{port or prompt.port}{prompt.path}?{query}"
+
+
+def test_link_names_the_app_and_a_secret_loopback_redirect():
     _, prompt = _with_prompt(lambda p: None)
     url = urlparse(prompt.url)
     qs = parse_qs(url.query)
     assert f"{url.scheme}://{url.netloc}{url.path}" == oauth.OAUTH_URL
     assert qs["ext_app_id"] == ["123"]
-    assert qs["redirect_url"] == [f"http://localhost:{prompt.port}"]
-    assert qs["state"] == [prompt.state] and len(prompt.state) >= 16
+    assert qs["redirect_url"] == [f"http://localhost:{prompt.port}{prompt.path}"]
+    assert len(prompt.path) > 16 and "state" not in qs  # Qobuz drops state
 
 
-def test_each_login_gets_its_own_state_and_port():
+def test_each_login_gets_its_own_secret_path():
     _, a = _with_prompt(lambda p: None)
     _, b = _with_prompt(lambda p: None)
-    assert a.state != b.state
+    assert a.path != b.path
 
 
 @pytest.mark.parametrize("key", ["code_autorisation", "code"])
 def test_pasted_address_with_a_code_completes_the_login(key):
     async def go():
         async with oauth.redirect_server("123") as prompt:
-            addr = f"http://localhost:{prompt.port}/?{key}=abc123&state={prompt.state}"
-            assert prompt.submit(f"  {addr}\n") == "ok"
+            assert prompt.submit(f"  {_addr(prompt, f'{key}=abc123')}\n") == "ok"
             return await prompt.wait(timeout=1)
 
     assert run(go()) == "abc123"
 
 
-def test_pasted_address_without_state_is_accepted():
-    """Whether Qobuz echoes `state` is unknown: a missing one can't be held
-    against the login, only a different one."""
+def test_pasted_address_port_does_not_matter():
+    """A pasted address is checked by its secret path; the port it names is
+    whatever the browser showed (it never reached this machine)."""
 
     async def go():
         async with oauth.redirect_server("123") as prompt:
-            assert prompt.submit("http://localhost:1/?code_autorisation=xyz") == "ok"
+            assert prompt.submit(_addr(prompt, "code_autorisation=xyz", port=1)) == "ok"
             return await prompt.wait(timeout=1)
 
     assert run(go()) == "xyz"
@@ -80,14 +84,19 @@ def test_pasted_address_without_state_is_accepted():
     [
         ("", "no_code"),
         ("abc123", "no_code"),  # a bare code isn't an address
-        ("http://localhost:1/", "no_code"),
-        ("http://localhost:1/?code_autorisation=", "no_code"),
-        ("http://localhost:1/?code_autorisation=a%20b", "no_code"),  # whitespace
-        ("http://localhost:1/?code_autorisation=abc&state=someone-else", "bad_state"),
+        ("{path}", "no_code"),
+        ("{path}?code_autorisation=", "no_code"),
+        ("{path}?code_autorisation=a%20b", "no_code"),  # whitespace
+        ("http://localhost:1/?code_autorisation=abc", "wrong_login"),  # no secret
+        ("http://localhost:1/other-login?code_autorisation=abc", "wrong_login"),
+        ("{path}/?code_autorisation=abc", "wrong_login"),
     ],
 )
 def test_pasted_text_that_is_not_this_login_is_refused(text, outcome):
-    result, prompt = _with_prompt(lambda p: p.submit(text))
+    def go(p):
+        return p.submit(text.replace("{path}", f"http://localhost:1{p.path}"))
+
+    result, prompt = _with_prompt(go)
     assert result == outcome
     assert not prompt.done or prompt._code.cancelled()
 
@@ -95,8 +104,8 @@ def test_pasted_text_that_is_not_this_login_is_refused(text, outcome):
 def test_a_second_code_is_ignored():
     async def go():
         async with oauth.redirect_server("123") as prompt:
-            prompt.submit("http://localhost:1/?code=first")
-            assert prompt.submit("http://localhost:1/?code=second") == "done"
+            prompt.submit(_addr(prompt, "code=first"))
+            assert prompt.submit(_addr(prompt, "code=second")) == "done"
             return await prompt.wait(timeout=1)
 
     assert run(go()) == "first"
@@ -105,7 +114,7 @@ def test_a_second_code_is_ignored():
 def test_an_error_from_qobuz_fails_the_login_at_once():
     async def go():
         async with oauth.redirect_server("123") as prompt:
-            assert prompt.submit("http://localhost:1/?error=access_denied") == "error"
+            assert prompt.submit(_addr(prompt, "error=access_denied")) == "error"
             await prompt.wait(timeout=5)
 
     with pytest.raises(oauth.LoginError, match="access_denied"):
@@ -127,7 +136,7 @@ def test_wait_times_out_with_a_login_error():
 def test_redirect_server_takes_the_code_from_the_browser():
     async def go():
         async with oauth.redirect_server("123") as prompt:
-            r = await _get(prompt.port, f"/?code_autorisation=c0de&state={prompt.state}")
+            r = await _get(prompt.port, f"{prompt.path}?code_autorisation=c0de")
             return r, await prompt.wait(timeout=1)
 
     r, code = run(go())
@@ -137,29 +146,35 @@ def test_redirect_server_takes_the_code_from_the_browser():
 
 
 def test_redirect_server_ignores_other_paths_and_methods():
-    """favicon.ico, a POST, a page without a code: none of them is a login."""
+    """favicon.ico, the bare root, a POST, the secret path without a code:
+    none of them is a login."""
 
     async def go():
         async with oauth.redirect_server("123") as prompt:
             fav = await _get(prompt.port, "/favicon.ico?code=x")
+            root = await _get(prompt.port, "/?code=x")
             async with httpx.AsyncClient() as http:
-                post = await http.post(f"http://127.0.0.1:{prompt.port}/?code=x")
-            empty = await _get(prompt.port, "/")
-            return fav, post, empty, prompt.done
+                post = await http.post(f"http://127.0.0.1:{prompt.port}{prompt.path}?code=x")
+            empty = await _get(prompt.port, prompt.path)
+            return fav, root, post, empty, prompt.done
 
-    fav, post, empty, done = run(go())
-    assert (fav.status_code, post.status_code, empty.status_code) == (404, 405, 400)
+    fav, root, post, empty, done = run(go())
+    codes = (fav.status_code, root.status_code, post.status_code, empty.status_code)
+    assert codes == (404, 404, 405, 400)
     assert not done
 
 
-def test_redirect_server_refuses_another_logins_state():
+def test_redirect_server_refuses_a_code_without_the_secret_path():
+    """The login CSRF: a page or process that found the port hands qobit a
+    code for its own account. Without the secret path it is refused."""
+
     async def go():
         async with oauth.redirect_server("123") as prompt:
-            r = await _get(prompt.port, "/?code=evil&state=not-this-one")
+            r = await _get(prompt.port, "/?code_autorisation=evil")
             return r, prompt.done
 
     r, done = run(go())
-    assert r.status_code == 400 and not done
+    assert r.status_code == 404 and not done  # same as any unknown page
 
 
 def test_redirect_server_listens_on_loopback_only(monkeypatch):
@@ -239,7 +254,7 @@ def test_login_oauth_shows_the_link_then_finishes_from_a_paste(monkeypatch, disp
 
     def show(prompt):
         shown.append(prompt.url)
-        assert prompt.submit(f"http://localhost:{prompt.port}/?code_autorisation=pasted") == "ok"
+        assert prompt.submit(_addr(prompt, "code_autorisation=pasted")) == "ok"
 
     run(client.login_oauth(show_url=show))
     assert len(shown) == 1 and shown[0].startswith(oauth.OAUTH_URL)
@@ -257,7 +272,7 @@ def test_login_oauth_finishes_from_the_browser_redirect(monkeypatch):
     browser = []
 
     def show(prompt):
-        path = f"/?code_autorisation=redir&state={prompt.state}"
+        path = f"{prompt.path}?code_autorisation=redir"
         browser.append(asyncio.get_running_loop().create_task(_get(prompt.port, path)))
 
     async def go():
@@ -286,7 +301,7 @@ def test_login_oauth_survives_a_browser_that_fails_to_open(monkeypatch):
         raise RuntimeError("no browser")
 
     monkeypatch.setattr(client_mod.webbrowser, "open", broken)
-    run(client.login_oauth(show_url=lambda p: p.submit("http://localhost:1/?code=ok")))
+    run(client.login_oauth(show_url=lambda p: p.submit(_addr(p, "code=ok"))))
     assert client.user_auth_token == "final-token"
 
 
@@ -294,7 +309,7 @@ def test_login_oauth_turns_a_login_error_into_a_qobuz_error(monkeypatch):
     client = QobuzClient()
     _stub_qobuz(monkeypatch, client, [])
     with pytest.raises(QobuzError, match="refused"):
-        run(client.login_oauth(show_url=lambda p: p.submit("http://localhost:1/?error=denied")))
+        run(client.login_oauth(show_url=lambda p: p.submit(_addr(p, "error=denied"))))
 
 
 def test_login_oauth_explains_a_rejected_code(monkeypatch):
@@ -308,4 +323,4 @@ def test_login_oauth_explains_a_rejected_code(monkeypatch):
 
     monkeypatch.setattr(client, "_send", reject)
     with pytest.raises(QobuzError, match="didn't accept the login code"):
-        run(client.login_oauth(show_url=lambda p: p.submit("http://localhost:1/?code=old")))
+        run(client.login_oauth(show_url=lambda p: p.submit(_addr(p, "code=old"))))

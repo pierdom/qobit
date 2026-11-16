@@ -1,6 +1,7 @@
 """The browser half of the Qobuz OAuth login: the link, and the code it brings back.
 
-Qobuz sends the browser back to ``http://localhost:<port>/?code_autorisation=…``.
+Qobuz sends the browser back to the ``redirect_url`` it was given with
+``?code_autorisation=…`` appended: ``http://localhost:<port>/<secret>?code_autorisation=…``.
 That code reaches qobit one of two ways, whichever comes first:
 
 - the local redirect server (the browser runs on this machine), or
@@ -10,11 +11,12 @@ That code reaches qobit one of two ways, whichever comes first:
   feeds it from stdin and a TUI dialog can feed it from an Input.
 
 The server binds the loopback interfaces only, on a port the OS picks at bind
-time (no probe-then-bind race), answers only ``GET /`` and takes one code.
-Each login carries a random ``state``: a redirect that echoes a different one
-is refused (a login CSRF: another page or process handing qobit *its own*
-account's code). Whether Qobuz echoes ``state`` back isn't known yet, so a
-redirect without one is accepted.
+time (no probe-then-bind race), and takes one code, only on ``GET
+/<secret>``. The secret path is random per login and stands in for OAuth's
+``state``, which Qobuz drops (verified: the redirect carries only
+``code_autorisation``). Without it, any web page or local process that found
+the port could hand qobit a code for *its own* account (login CSRF). A pasted
+address must carry the same path.
 """
 
 import asyncio
@@ -48,7 +50,7 @@ class LoginPrompt:
 
     url: str
     port: int
-    state: str
+    path: str  # "/<secret>": the only path a code is taken on
     _code: asyncio.Future = field(repr=False)
 
     @property
@@ -57,19 +59,19 @@ class LoginPrompt:
 
     def submit(self, text: str) -> str:
         """Feed the address the browser ended on (pasted by the user). Returns
-        "ok", "no_code" (not a login address: try again), "bad_state" (a
-        different login's address), "error" (Qobuz sent an error: the login
+        "ok", "no_code" (not a login address: try again), "wrong_login" (an
+        address from another login), "error" (Qobuz sent an error: the login
         fails) or "done" (already finished)."""
-        text = text.strip()
-        query = urlparse(text).query if "?" in text else ""
-        return self._accept(parse_qs(query))
+        parsed = urlparse(text.strip())
+        if not parsed.query:
+            return "no_code"
+        return self._accept(parsed.path, parse_qs(parsed.query))
 
-    def _accept(self, qs: dict[str, list[str]]) -> str:
+    def _accept(self, path: str, qs: dict[str, list[str]]) -> str:
         if self._code.done():
             return "done"
-        state = (qs.get("state") or [None])[0]
-        if state is not None and not secrets.compare_digest(state, self.state):
-            return "bad_state"
+        if not secrets.compare_digest(path.encode(), self.path.encode()):
+            return "wrong_login"
         if error := (qs.get("error") or [None])[0]:
             self._code.set_exception(LoginError(f"Qobuz refused the login: {error}"))
             return "error"
@@ -92,7 +94,6 @@ _REPLIES = {
     "ok": ("200 OK", "Logged in to qobit", "You can close this tab."),
     "done": ("200 OK", "Already logged in", "You can close this tab."),
     "error": ("200 OK", "Login cancelled", "Run qobit auth to try again."),
-    "bad_state": ("400 Bad Request", "Not this login", "This address is from another login."),
     "no_code": ("400 Bad Request", "No login code", "Open the qobit login link to log in."),
 }
 
@@ -117,10 +118,10 @@ def _handler(prompt: LoginPrompt) -> Callable:
                 await _reply(writer, "405 Method Not Allowed", "Not allowed", "")
                 return
             parsed = urlparse(target)
-            if parsed.path != "/":  # favicon.ico and anything else
+            outcome = prompt._accept(parsed.path, parse_qs(parsed.query))
+            if outcome == "wrong_login":  # favicon.ico, a guess, another login
                 await _reply(writer, "404 Not Found", "Not found", "")
                 return
-            outcome = prompt._accept(parse_qs(parsed.query))
             await _reply(writer, *_REPLIES.get(outcome, _REPLIES["no_code"]))
         except Exception:
             pass
@@ -137,7 +138,7 @@ async def redirect_server(app_id: str):
     Binds 127.0.0.1 on a port the OS picks, then ::1 on the same port when
     the host has IPv6 (browsers may resolve ``localhost`` to either)."""
     loop = asyncio.get_running_loop()
-    state = secrets.token_urlsafe(16)
+    path = "/" + secrets.token_urlsafe(16)  # [A-Za-z0-9_-]: path-safe as is
     future: asyncio.Future[str] = loop.create_future()
     servers: list[asyncio.Server] = []
     prompt: LoginPrompt | None = None
@@ -151,8 +152,8 @@ async def redirect_server(app_id: str):
         port = v4.sockets[0].getsockname()[1]
         with contextlib.suppress(OSError):
             servers.append(await asyncio.start_server(handle, "::1", port))
-        url = f"{OAUTH_URL}?ext_app_id={app_id}&redirect_url=http://localhost:{port}&state={state}"
-        prompt = LoginPrompt(url=url, port=port, state=state, _code=future)
+        url = f"{OAUTH_URL}?ext_app_id={app_id}&redirect_url=http://localhost:{port}{path}"
+        prompt = LoginPrompt(url=url, port=port, path=path, _code=future)
         yield prompt
     finally:
         if not future.done():
