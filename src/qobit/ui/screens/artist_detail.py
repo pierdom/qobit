@@ -49,6 +49,11 @@ LIBRARY_TILE_MIN_W = 40
 _TILE_MIN_W = 22
 
 
+def is_hires_album(album: Album) -> bool:
+    """Streamable above CD quality (more than 16 bits)."""
+    return album.hires_streamable or (album.maximum_bit_depth or 0) > 16
+
+
 def _set_art_width(image: TGPImage, height: int) -> None:
     """Fix a card/header art widget's width so it renders square for the given
     cell height, using the terminal's actual cell aspect ratio. Shared by every
@@ -406,7 +411,10 @@ class AlbumCard(Widget):
                 escape(self._album.artist or ""), classes="card-artist card-secondary", markup=True
             )
             year = str(self._album.year) if self._album.year else "—"
-            yield Label(f"[dim]{year}[/dim]", classes="card-year card-secondary", markup=True)
+            hires = (
+                ("  ·  ", ("HI-RES", "bold $qobit-hires")) if is_hires_album(self._album) else ()
+            )
+            yield Label(Content.assemble((year, "dim"), *hires), classes="card-year card-secondary")
 
     def on_mount(self) -> None:
         img_h = GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H

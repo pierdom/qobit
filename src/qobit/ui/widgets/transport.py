@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import contextlib
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from rich.console import Group
 from rich.text import Text
 from textual import events, work
 from textual.app import ComposeResult
+from textual.color import Color
+from textual.content import Content
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.reactive import reactive
@@ -14,7 +17,9 @@ from textual.widget import Widget
 from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
+from ...qobuz.models import quality_text
 from .._images import fetch_image
+from ..themes import BAR_END, BAR_START, HIRES, theme_color
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -24,6 +29,39 @@ def _fmt(secs: float) -> str:
     h, r = divmod(int(max(0.0, secs)), 3600)
     m, s = divmod(r, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+# Eighths of a cell: the bar's leading edge moves a fraction of a cell at a
+# time instead of jumping a whole one.
+_EIGHTHS = " ▏▎▍▌▋▊▉"
+
+
+@lru_cache(maxsize=16)
+def _gradient(start: str, end: str, width: int) -> tuple[str, ...]:
+    """One colour per cell, ``start`` → ``end`` across ``width`` cells."""
+    a, b = Color.parse(start), Color.parse(end)
+    if width <= 1 or a == b:
+        return (a.hex,) * max(1, width)
+    return tuple(a.blend(b, i / (width - 1)).hex for i in range(width))
+
+
+def _progress_bar(app: object, width: int, position: float, duration: float) -> Text:
+    """The progress bar: filled cells in the theme's bar colours (a gradient
+    when ``qobit-bar-start`` and ``-end`` differ, as in cyberdeck), the edge
+    to an eighth of a cell, the rest a dim track. Rich Text doesn't resolve
+    Textual's $variables, so the colours are the theme's actual values."""
+    accent = theme_color(app, "accent")
+    colours = _gradient(theme_color(app, BAR_START), theme_color(app, BAR_END), width)
+    fill = width * min(position, duration) / duration if duration > 0 else 0.0
+    full, eighth = int(fill), int((fill - int(fill)) * 8)
+    bar = Text(no_wrap=True)
+    for i in range(full):
+        bar.append("█", style=colours[i])
+    if eighth and full < width:
+        bar.append(_EIGHTHS[eighth], style=colours[full])
+        full += 1
+    bar.append("░" * (width - full), style=f"dim {accent}".strip())
+    return bar
 
 
 class _TransportContent(Widget):
@@ -61,17 +99,7 @@ class _TransportContent(Widget):
         bar_w = max(1, w - len(time_str))
         self._bar_w = bar_w
 
-        filled = (
-            round(bar_w * min(self.position, self.duration) / self.duration)
-            if self.duration > 0
-            else 0
-        )
-        # Rich Text doesn't resolve Textual's $variables ("$accent" rendered
-        # as the default text colour), so use the theme's actual accent.
-        accent = self.app.theme_variables.get("accent", "")
-        bar = Text(no_wrap=True)
-        bar.append("█" * filled, style=accent)
-        bar.append("░" * (bar_w - filled), style=f"dim {accent}".strip())
+        bar = _progress_bar(self.app, bar_w, self.position, self.duration)
         bar.append(time_str, style="dim")
 
         return Group(line1, line2, bar)
@@ -104,6 +132,50 @@ class _TransportContent(Widget):
         bar_w = getattr(self, "_bar_w", self.content_size.width)
         ratio = max(0.0, min(1.0, x / max(1, bar_w - 1)))
         self.post_message(TransportBar.SeekTo(ratio * self.duration))
+
+
+def is_hires(bit_depth: int | None, sampling_rate_hz: float) -> bool:
+    """Above CD quality: more than 16 bits or more than 48 kHz."""
+    return (bit_depth or 16) > 16 or sampling_rate_hz > 48000
+
+
+def _lamp(app: QobitApp) -> tuple[str, str] | None:
+    """The bit-perfect lamp, or None while unchecked. Software volume below
+    100% is DSP: then the lamp says so, whatever mpv reports."""
+    colour = lambda name: f"bold {theme_color(app, name)}"  # noqa: E731
+    if app.software_volume_enabled and app.volume < 100:
+        return (f"◌ SOFTWARE VOLUME {app.volume}%", colour("warning"))
+    signal = app.signal
+    if signal is None or signal.state == "unknown":
+        return None
+    if signal.state == "ok":
+        return ("◉ BIT-PERFECT", colour("success"))
+    return (f"◌ {signal.state.upper()} {signal.detail}".rstrip(), colour("error"))
+
+
+def signal_parts(app: QobitApp) -> tuple[Content | None, Content | None]:
+    """(lamp, ``HI-RES 24-BIT · 96 kHz``) for the playing stream, either None.
+    Colours are the theme's actual values (border titles don't resolve
+    $variables), so watchers redraw them on a theme change."""
+    stream = app._last_stream if app.now_playing else None
+    if stream is None:
+        return None, None
+    lamp = _lamp(app)
+    quality: list[tuple[str, str] | str] = []
+    if is_hires(stream.bit_depth, stream.sampling_rate):
+        quality.append(("HI-RES ", f"bold {theme_color(app, HIRES, 'warning')}"))
+    quality.append(quality_text(stream.bit_depth or 16, stream.sampling_rate / 1000))
+    return (Content.assemble(lamp) if lamp else None), Content.assemble(*quality)
+
+
+def signal_readout(app: QobitApp) -> Content | str:
+    """The transport's bottom-right readout, ``[ ◉ BIT-PERFECT  ·  HI-RES
+    24-BIT · 96 kHz ]`` ("" when nothing plays)."""
+    lamp, quality = signal_parts(app)
+    if quality is None:
+        return ""
+    middle = Content.assemble(lamp, "  ·  ", quality) if lamp else quality
+    return Content.assemble("[ ", middle, " ]")
 
 
 class TransportBar(Widget):
@@ -177,6 +249,8 @@ class TransportBar(Widget):
         self.watch(app, "connect_state", self._on_radio_mode, init=True)
         self.watch(app, "volume", self._on_volume, init=True)
         self.watch(app, "software_volume_enabled", self._on_volume, init=True)
+        self.watch(app, "signal", self._on_volume, init=True)
+        self.watch(app, "theme", self._on_theme, init=False)
 
     def _status(self) -> str:
         # Bracket-readout style — the one piece of chrome that's always on
@@ -232,16 +306,13 @@ class TransportBar(Widget):
     def _on_volume(self, _: object) -> None:
         self._update_subtitle()
 
+    def _on_theme(self, _: object) -> None:
+        self._update_subtitle()
+        self.query_one(_TransportContent).refresh()
+
     def _update_subtitle(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
-        parts = [self._quality_label] if self._quality_label else []
-        # Only ever shown when software volume is actually altering the
-        # signal (enabled AND below unity) — at 100% or while the feature is
-        # off, this stays silent and the badge is just the quality label,
-        # exactly as before this feature existed.
-        if app.software_volume_enabled and app.volume < 100:
-            parts.append(f"[ ♪ {app.volume}% ]")
-        self.border_subtitle = "  ·  ".join(parts)
+        self.border_subtitle = signal_readout(app) if self._quality_label else ""
 
     def _on_pos(self, pos: float) -> None:
         self.query_one(_TransportContent).position = pos

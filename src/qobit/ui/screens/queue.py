@@ -23,6 +23,7 @@ from .._images import fetch_image
 from .._now_playing import GUTTER_NUM, heart_suffix, meta_indent, playing_content
 from .._utils import status_line, strip_html
 from ..widgets.lists import TrackListView
+from ..widgets.transport import signal_parts
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -240,6 +241,7 @@ class NowPlayingHero(Widget):
     NowPlayingHero .hero-quality {
         width: 1fr; text-align: center; color: $accent; margin-top: 1;
     }
+    NowPlayingHero .hero-lamp { width: 1fr; text-align: center; }
     /* One line each, cut with an ellipsis: a centred line that wrapped
        ("Alternativa & Indie · Recordings" / "Catalogue") read as two items. */
     NowPlayingHero Label { text-wrap: nowrap; text-overflow: ellipsis; }
@@ -259,6 +261,7 @@ class NowPlayingHero(Widget):
         yield Label("", classes="hero-album", markup=False)
         yield Label("", classes="hero-meta", markup=False)
         yield Label("", classes="hero-quality", markup=False)
+        yield Label("", classes="hero-lamp", markup=False)
         with VerticalScroll(id="hero-bio", can_focus=False):
             yield Static("", classes="hero-bio", markup=False)
 
@@ -272,6 +275,9 @@ class NowPlayingHero(Widget):
         self.watch(app, "now_playing_album", self._on_details, init=True)
         self.watch(app, "now_playing_bio", self._on_bio, init=True)
         self.watch(app, "quality_label", self._on_quality, init=True)
+        self.watch(app, "signal", self._on_quality, init=False)
+        self.watch(app, "volume", self._on_quality, init=False)
+        self.watch(app, "theme", self._on_quality, init=False)
         # toggle_favorite bumps queue_version: keeps the heart right when the
         # track is (un)favourited from a list or the `i` menu.
         self.watch(app, "queue_version", lambda _: self._refresh_favorite(), init=False)
@@ -291,9 +297,11 @@ class NowPlayingHero(Widget):
     def _on_details(self, _: object) -> None:
         self._render_meta()
 
-    def _on_quality(self, label: str) -> None:
-        # The stream's resolution, as in the transport's readout.
-        self.query_one(".hero-quality", Label).update(label if self.app.now_playing else "")
+    def _on_quality(self, _: object = None) -> None:
+        # The transport's readout, a line each (one line didn't fit the panel).
+        lamp, quality = signal_parts(self.app)  # type: ignore[arg-type]
+        self.query_one(".hero-lamp", Label).update(lamp or "")
+        self.query_one(".hero-quality", Label).update(quality or "")
 
     def _on_bio(self, bio: str) -> None:
         self.query_one(".hero-bio", Static).update(strip_html(bio) if bio else "")
@@ -306,7 +314,7 @@ class NowPlayingHero(Widget):
         t = app.now_playing
         if not t:
             self.query_one(".hero-title", Label).update("No media playing")
-            for cls in (".hero-artist", ".hero-album", ".hero-meta", ".hero-quality"):
+            for cls in (".hero-artist", ".hero-album", ".hero-meta", ".hero-quality", ".hero-lamp"):
                 self.query_one(cls, Label).update("")
             return
 

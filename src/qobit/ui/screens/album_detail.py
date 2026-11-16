@@ -217,7 +217,8 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
             if full.label:
                 badge_parts.append(escape(full.label))
             if q := full.quality_badge:
-                badge_parts.append(q)
+                # HI-RES in the theme's hi-res colour, like the transport.
+                badge_parts.append(q.replace("HI-RES ", "[/][b $qobit-hires]HI-RES[/][dim] ", 1))
             if full.popularity is not None:
                 badge_parts.append(f"★ {full.popularity}")
             self._set_optional(

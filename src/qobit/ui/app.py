@@ -23,6 +23,7 @@ from textual.worker import get_current_worker
 
 from ..audio.media_keys import MediaKeys
 from ..audio.player import MpvPlayer
+from ..audio.verify import Signal, check_signal
 from ..config import (
     get_audio_device,
     get_connect_enabled,
@@ -52,7 +53,7 @@ from .screens.playlists import PlaylistsView
 from .screens.queue import QueueView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
-from .themes import CYBERDECK_THEME, QOBIT_THEMES
+from .themes import BAR_END, BAR_START, CYBERDECK_THEME, HIRES, QOBIT_THEMES
 from .widgets.transport import TransportBar
 
 
@@ -382,6 +383,9 @@ class QobitApp(App[None]):
     # Bumped whenever a navigation level changes (a detail opened or closed,
     # a page's title known): Breadcrumbs watch it (see nav.py).
     nav_version: reactive[int] = reactive(0)
+    # Bit-perfect verdict for the playing track (audio.verify.check_signal):
+    # None until checked (a couple of seconds in) and after a track change.
+    signal: reactive[Signal | None] = reactive(None)
 
     def __init__(self, connect: bool | None = None) -> None:
         """``connect`` overrides the saved Qobuz Connect setting for this run
@@ -503,6 +507,15 @@ class QobitApp(App[None]):
         from ._images import prune_disk_cache
 
         prune_disk_cache()
+
+    def get_theme_variable_defaults(self) -> dict[str, str]:
+        """qobit's theme variables (themes.py) for themes that don't set
+        them, Textual's built-ins included: a flat accent bar, HI-RES in the
+        warning colour (amber in most; their $secondary is often too dark to
+        read). Computed from the current theme on every switch."""
+        theme = self.current_theme
+        accent = theme.accent or theme.primary
+        return {BAR_START: accent, BAR_END: accent, HIRES: theme.warning or accent}
 
     def watch_theme(self, theme: str) -> None:
         if getattr(self, "_theme_ready", False):
@@ -1205,15 +1218,25 @@ class QobitApp(App[None]):
         self.now_playing = track
         self.now_playing_album = None
         self.now_playing_bio = ""
+        self._last_stream = stream  # before quality_label: its watchers read it
         self.quality_label = stream.quality_badge
-        self._last_stream = stream
         self.playback_pos = start
         self.playback_dur = 0.0
         self.is_playing = True
         self.is_paused = False
         self.status_msg = ""
         self._fetch_now_playing_album(track)
+        self.signal = None
+        self._verify_signal(gen, stream)
         return "ok"
+
+    @work(exclusive=True, group="_verify_signal")  # a newer track cancels it
+    async def _verify_signal(self, gen: int, stream: StreamUrl) -> None:
+        """A couple of seconds into the track, check that mpv, and on Linux
+        the DAC, run at the file's rate and depth (the transport's lamp)."""
+        result = await check_signal(self._player, stream.sampling_rate, stream.bit_depth or 16)
+        if gen == self._play_gen:
+            self.signal = result
 
     @work
     async def _fetch_now_playing_album(self, track: Track) -> None:
