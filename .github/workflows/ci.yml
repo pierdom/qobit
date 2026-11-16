@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 # Read-only token: CI only checks out and tests (nothing to push or publish).
 permissions:
@@ -30,13 +31,21 @@ jobs:
       - run: uv run ruff format --check .
 
   test:
-    runs-on: ubuntu-latest
+    # The oldest and newest supported Python on both platforms qobit claims.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.13"]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+          python-version: ${{ matrix.python }}
       - name: System packages
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \

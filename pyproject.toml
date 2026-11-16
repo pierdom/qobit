@@ -56,6 +56,20 @@ qobit = "qobit.__main__:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/qobit"]
 
+# The sdist carries what's needed to build, test and package qobit: no
+# screenshots, spikes/, CI config or contributor notes.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/contrib",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
+exclude = ["__pycache__"]
+
 [dependency-groups]
 dev = ["ruff>=0.4", "textual-dev>=1.7", "pytest>=8.0"]
 
