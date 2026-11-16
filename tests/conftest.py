@@ -61,8 +61,12 @@ class _NoOpMediaKeys:
 
 
 class StubClient:
+    # Logged in, so QobitApp starts without its login dialog.
+    user_auth_token = "stub-token"
+    account = None
+
     def __init__(self, *args, **kwargs):
-        pass
+        self.on_auth_expired = None
 
     def restore_session(self, *args, **kwargs):
         return True

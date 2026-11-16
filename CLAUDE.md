@@ -59,6 +59,7 @@ src/qobit/
                          ArtistCard/ArtistGrid, _GridNav (all shared), ArtistScreen
         playlist_detail.py PlaylistScreen
         context_menu.py  ContextMenu (`i`), GoToMenu (`g`)
+        login.py         LoginScreen: login dialog over QobuzClient.login_oauth
 ```
 
 ## Playback and queue
@@ -363,6 +364,19 @@ matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
   `state` (the redirect carries only `code_autorisation`), so the redirect
   URL has a random secret path, `localhost:<port>/<secret>`, and a code is
   taken only on it (anything else 404s): that is the login-CSRF guard.
+- The TUI logs in itself: `QobitApp.request_login(reason)` pushes
+  `LoginScreen` (once: `_login_open`), at startup without a token and from
+  `client.on_auth_expired`, which `_send` calls on any 401 to a token-bearing
+  API request (not the login endpoints). Code that needs a session runs from
+  `_go_online()` (startup or after a login); `_reload_after_login()` clears
+  the favourites caches and every view's `_loaded`, then re-activates the
+  current tab. Tests: `StubClient` carries a token so `ui_app` starts logged
+  in. Save a session with `save_oauth_session(*client.session(),
+  account=client.account)`.
+- Esc on a pushed screen: `action_back` first calls the screen's
+  `action_navigate_back()` (True = handled). A modal whose caller needs its
+  dismiss callback must close itself there: a bare `pop_screen()` skips the
+  callback (the login dialog stayed "open" forever that way).
 - Everything qobit writes under CONFIG_DIR / DATA_DIR goes through
   `_fs.write_private` (0600 from the first byte, in a 0700 dir): the token
   lives in config.json and DATA_DIR holds mpv's IPC socket (its `run`

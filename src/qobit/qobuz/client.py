@@ -76,6 +76,19 @@ def _print_login(prompt: LoginPrompt) -> None:
     print("Waiting for the login to finish...", flush=True)
 
 
+_LOGIN_ENDPOINTS = ("oauth/callback", "user/login")
+
+
+def _account_summary(user: dict) -> dict[str, str]:
+    """Name and plan from user/login's ``user`` object, for display only.
+    Defensive: the field names aren't documented."""
+    credential = user.get("credential") or {}
+    params = credential.get("parameters") or {}
+    name = user.get("display_name") or user.get("login") or ""
+    plan = credential.get("label") or params.get("short_label") or credential.get("description")
+    return {"name": str(name), "plan": str(plan or "")}
+
+
 class QobuzError(Exception):
     pass
 
@@ -97,6 +110,13 @@ class QobuzClient:
         self._private_key: str | None = None
         self._prod_app_id: str | None = None
         self._http = httpx.AsyncClient(timeout=30.0, verify=True)
+        # Called (no arguments, on the event loop) when Qobuz answers 401 to a
+        # request made with a session token: the session expired or was
+        # revoked. The TUI opens its login dialog from it.
+        self.on_auth_expired: Callable[[], None] | None = None
+        # Who logged in, from the login response: {"name", "plan"} (either may
+        # be ""). Saved with the session for `qobit auth status`.
+        self.account: dict[str, str] | None = None
         # Session-scoped LRU caches — avoids re-fetching the same album/artist
         # detail when the user navigates back to an already-visited page. Bounded
         # to prevent unbounded growth in very long sessions.
@@ -169,9 +189,27 @@ class QobuzClient:
         handle. Raw httpx errors used to escape them, and a worker that
         raises closes the app, so a search while offline quit qobit."""
         try:
-            return await self._http.request(method, url, **kwargs)
+            r = await self._http.request(method, url, **kwargs)
         except httpx.HTTPError as e:
             raise QobuzError(f"Network error: {e or type(e).__name__}") from e
+        if (
+            r.status_code == 401
+            and self.on_auth_expired is not None
+            and self.user_auth_token
+            and url.startswith(API_BASE)
+            and not url.endswith(_LOGIN_ENDPOINTS)  # a bad code isn't an expiry
+        ):
+            self.on_auth_expired()
+        return r
+
+    def session(self) -> tuple[str, str, list[str]]:
+        """``(app_id, token, secrets)`` to save after a login."""
+        return self._app_id or "", self.user_auth_token or "", list(self._secret_candidates)
+
+    async def check_session(self) -> None:
+        """One cheap authenticated call. Raises AuthExpiredError if the saved
+        session no longer works, QobuzError if Qobuz can't be reached."""
+        await self._get("favorite/getUserFavorites", type="albums", limit=1)
 
     async def _get(self, endpoint: str, **params: Any) -> dict:
         p = self._base_params()
@@ -247,7 +285,7 @@ class QobuzClient:
             ) from None
         interim_token = r.json().get("token")
         if not interim_token:
-            raise QobuzError(f"OAuth callback returned no token: {r.json()}")
+            raise QobuzError("Qobuz returned no token for the login code")
 
         r = await self._send(
             "POST",
@@ -261,10 +299,11 @@ class QobuzClient:
         )
         self._raise_for_status(r)
         data = r.json()
-        self.user_auth_token = data.get("user_auth_token")
-        if not self.user_auth_token:
-            raise QobuzError(f"OAuth session exchange returned no token: {data}")
-
+        token = data.get("user_auth_token")
+        if not token:
+            raise QobuzError("Qobuz returned no session for the login")
+        self.user_auth_token = token
+        self.account = _account_summary(data.get("user") or {})
         self._app_id = app_id
 
     # --- catalogue ---

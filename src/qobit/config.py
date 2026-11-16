@@ -63,15 +63,34 @@ def set_audio_device(device_id: str) -> None:
 
 def get_oauth_session() -> tuple[str, str, list[str]]:
     """Returns (app_id, token, secrets) or empty values if no saved session."""
-    s = load().get("oauth_session", {})
+    s = load().get("oauth_session") or {}
     secrets = s.get("secrets") or ([s["secret"]] if s.get("secret") else [])
     return s.get("app_id", ""), s.get("token", ""), secrets
 
 
-def save_oauth_session(app_id: str, token: str, secrets: list[str]) -> None:
+def save_oauth_session(
+    app_id: str, token: str, secrets: list[str], account: dict[str, str] | None = None
+) -> None:
     cfg = load()
     cfg["oauth_session"] = {"app_id": app_id, "token": token, "secrets": secrets}
+    if account:
+        cfg["oauth_session"]["account"] = account
     save(cfg)
+
+
+def get_account() -> dict[str, str]:
+    """``{"name", "plan"}`` saved at login (empty for older sessions)."""
+    return (load().get("oauth_session") or {}).get("account") or {}
+
+
+def clear_oauth_session() -> bool:
+    """Forget the saved session (log out). True if there was one."""
+    cfg = load()
+    if "oauth_session" not in cfg:
+        return False
+    del cfg["oauth_session"]
+    save(cfg)
+    return True
 
 
 def get_saved_theme() -> str | None:

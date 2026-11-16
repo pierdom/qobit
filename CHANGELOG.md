@@ -28,6 +28,12 @@ release from this entry.
 
 ### Added
 
+- **Log in inside qobit.** Without a session, or when it expires, qobit opens
+  a login dialog instead of failing in every tab: the link (copy with `c`,
+  open with `o`, or click it), a field for the address the browser ends on,
+  and your queue kept. `^p` → *Log in to Qobuz* / *Log out of Qobuz*.
+- `qobit auth status` (who is logged in, and whether the session still
+  works) and `qobit logout`.
 - Log in from a machine without a browser (SSH, a headless box): open the
   link anywhere, then paste the address the browser ends on into
   `qobit auth`. The login now waits 5 minutes instead of 2.

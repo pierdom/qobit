@@ -4,7 +4,8 @@ Usage:
   qobit play <query> [--quality QUALITY]
   qobit devices
   qobit set-device
-  qobit auth
+  qobit auth [status]
+  qobit logout
   qobit clear-cache
 
 Running qobit with no arguments launches the TUI.
@@ -20,13 +21,15 @@ from .audio.device import list_devices
 from .audio.player import MpvPlayer
 from .audio.verify import check_bit_perfect
 from .config import (
+    clear_oauth_session,
+    get_account,
     get_audio_device,
     get_oauth_session,
     purge_legacy_credentials,
     save_oauth_session,
     set_audio_device,
 )
-from .qobuz.client import QobuzClient, QobuzError
+from .qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from .qobuz.models import StreamUrl, Track
 from .qobuz.oauth import LoginPrompt
 
@@ -76,9 +79,7 @@ async def _oauth_login(client: QobuzClient) -> bool:
     finally:
         if sys.stdin.isatty():
             asyncio.get_running_loop().remove_reader(sys.stdin.fileno())
-    save_oauth_session(
-        client._app_id or "", client.user_auth_token or "", client._secret_candidates
-    )
+    save_oauth_session(*client.session(), account=client.account)
     return True
 
 
@@ -249,12 +250,49 @@ def cmd_clear_cache(_args: argparse.Namespace) -> int:
     return 0
 
 
-async def cmd_auth(_args: argparse.Namespace) -> int:
+def _account_line() -> str:
+    account = get_account()
+    name, plan = account.get("name", ""), account.get("plan", "")
+    if not name:
+        return "Logged in"
+    return f"Logged in as {name}" + (f" ({plan})" if plan else "")
+
+
+async def cmd_auth(args: argparse.Namespace) -> int:
+    if args.action == "status":
+        return await cmd_auth_status()
     async with QobuzClient() as client:
         if not await _oauth_login(client):
             return 1
-        print("Logged in. Session saved.")
+        print(f"{_account_line()}. Session saved.")
         return 0
+
+
+async def cmd_auth_status() -> int:
+    app_id, token, secrets = get_oauth_session()
+    if not (app_id and token):
+        print("Not logged in. Run: qobit auth")
+        return 1
+    async with QobuzClient() as client:
+        client.restore_session(app_id, token, secrets)
+        try:
+            await client.check_session()
+        except AuthExpiredError:
+            print("The saved session has expired. Run: qobit auth")
+            return 1
+        except QobuzError as e:
+            print(f"{_account_line()} (couldn't reach Qobuz to check: {e})")
+            return 2
+    print(f"{_account_line()}. The session works.")
+    return 0
+
+
+def cmd_logout(_args: argparse.Namespace) -> int:
+    if clear_oauth_session():
+        print("Logged out: the saved session is deleted from this machine.")
+    else:
+        print("Not logged in.")
+    return 0
 
 
 def main() -> None:
@@ -284,7 +322,15 @@ def main() -> None:
 
     sub.add_parser("devices", help="List available audio output devices")
     sub.add_parser("set-device", help="Interactively pick and save an audio device")
-    sub.add_parser("auth", help="Log in to Qobuz (in the browser)")
+    p_auth = sub.add_parser("auth", help="Log in to Qobuz (in the browser), or check the login")
+    p_auth.add_argument(
+        "action",
+        nargs="?",
+        choices=["login", "status"],
+        default="login",
+        help="login (default): log in in the browser; status: check the saved session",
+    )
+    sub.add_parser("logout", help="Delete the saved Qobuz session from this machine")
     sub.add_parser("clear-cache", help="Delete cached cover art from disk")
 
     args = parser.parse_args()
@@ -304,6 +350,8 @@ def main() -> None:
         sys.exit(cmd_set_device(args))
     elif args.command == "auth":
         sys.exit(asyncio.run(cmd_auth(args)))
+    elif args.command == "logout":
+        sys.exit(cmd_logout(args))
     elif args.command == "clear-cache":
         sys.exit(cmd_clear_cache(args))
     else:

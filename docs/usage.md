@@ -13,6 +13,16 @@ any device and log in. The browser then lands on a `localhost` page that
 doesn't load: copy that page's address from the address bar and paste it into
 the terminal where `qobit auth` is waiting. The login waits 5 minutes.
 
+You can also log in from inside qobit: started without a session, or when
+the session expires, it opens a login dialog with the same link (`c` copies
+it, `o` opens it, or click it) and a field for the pasted address (pasting
+anywhere in the dialog works too). `Esc` closes it; `^p` → *Log in to
+Qobuz* opens it again. Your queue is kept either way.
+
+`qobit auth status` shows who is logged in and checks that the saved session
+still works. `qobit logout`, or `^p` → *Log out of Qobuz*, deletes it from
+this machine.
+
 ## Global keys
 
 | Key | Action |
