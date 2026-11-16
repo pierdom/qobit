@@ -142,3 +142,55 @@ def test_tall_terminal_gets_full_art(ui_app):
             assert panel.query_one(".detail-meta").size.height == ART_MAX
 
     asyncio.run(run())
+
+
+def _focused(app) -> str:
+    w = app.focused
+    return " ".join(sorted(w.classes)) if w is not None else ""
+
+
+@pytest.mark.parametrize("where", ["page", "albums", "artists"])
+def test_tab_and_click_reach_the_tracklist(ui_app, where):
+    """The header's scroll column took focus (Tab, or a click on the art or
+    info) with no visible cue; the tracks were one more Tab away."""
+    _stub(ui_app)
+
+    async def run():
+        async with ui_app.run_test(size=(130, 40)) as pilot:
+            panel, _ = await _open(ui_app, pilot, where)
+            chain = []
+            for _ in range(6):
+                await pilot.press("tab")
+                chain.append(ui_app.focused)
+            assert all(not w.has_class("detail-meta") for w in chain if w is not None)
+            assert any(w is not None and w.has_class("detail-tracklist") for w in chain)
+
+            ui_app.screen.query_one("Tabs").focus() if where != "page" else None
+            await pilot.click(panel.query_one(".detail-title"))
+            assert "detail-tracklist" in _focused(ui_app)
+
+    asyncio.run(run())
+
+
+def test_playlist_header_click_selects_the_tracks(ui_app):
+    _stub(ui_app)
+    from qobit.ui.screens.playlist_detail import PlaylistScreen
+
+    async def playlist(*_a, **_k):
+        return {"id": "p1", "name": "Late Night", "tracks": ALBUM["tracks"], "tracks_count": 14}
+
+    ui_app._client.get_playlist = playlist
+
+    async def run():
+        async with ui_app.run_test(size=(130, 40)) as pilot:
+            await ui_app.push_screen(PlaylistScreen("p1"))
+            await pilot.pause(0.3)
+            screen = ui_app.screen
+            for _ in range(4):
+                await pilot.press("tab")
+                assert not (ui_app.focused and ui_app.focused.has_class("detail-meta"))
+            screen.query_one("Tabs").focus()
+            await pilot.click(screen.query_one(".detail-title"))
+            assert "detail-tracklist" in _focused(ui_app)
+
+    asyncio.run(run())

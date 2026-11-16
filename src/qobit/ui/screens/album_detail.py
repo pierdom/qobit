@@ -53,6 +53,12 @@ PANEL_WITH_ARTIST_MIN = 2 + 9 + 1 + MIN_TRACK_ROWS
 ARTIST_HEADER_ROWS = 8  # ArtistHeader's CSS height
 
 
+def _in_tracklist(widget: Widget | None) -> bool:
+    return widget is not None and any(
+        w.has_class("detail-tracklist") for w in widget.ancestors_with_self
+    )
+
+
 def fit_artist_header(header: Widget, panel: AlbumDetailPanel) -> None:
     """Show ``header`` (above ``panel``) only while the panel keeps
     PANEL_WITH_ARTIST_MIN rows with it. Worked out from the panel's height
@@ -153,7 +159,10 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     def compose(self) -> ComposeResult:
         with Horizontal(classes="detail-header"):
             yield Art(classes="detail-art")
-            with VerticalScroll(classes="detail-meta"):
+            # Not focusable: a scroll container takes focus by default, and
+            # Tab or a click on the header left focus there, invisible, with
+            # the tracklist one more Tab away. The wheel still scrolls it.
+            with VerticalScroll(classes="detail-meta", can_focus=False):
                 yield Label("", classes="detail-title", markup=True)
                 yield Label("", classes="ap-version", markup=True)
                 yield Label("", classes="detail-sub", markup=True)
@@ -169,6 +178,12 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     def on_mount(self) -> None:
         self._size_art(ART_MAX)
         self._wire_now_playing(TrackRow, ".detail-tracklist")
+
+    def on_click(self, event: events.Click) -> None:
+        """A click on the art or the album info selects the tracklist, the
+        panel's only focusable part (a click on a track is the list's)."""
+        if not _in_tracklist(event.widget):
+            self.focus_tracklist()
 
     def on_resize(self, _: events.Resize) -> None:
         self._fit()

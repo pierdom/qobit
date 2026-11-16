@@ -4,7 +4,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
-from textual import on, work
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.content import Content
@@ -119,13 +119,22 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         with Vertical(id="playlist-panel"):
             with Horizontal(classes="detail-header"):
                 yield Art(classes="detail-art")
-                with VerticalScroll(classes="detail-meta"):
+                # Not focusable (see AlbumDetailPanel): a click on the header
+                # selects the tracklist instead.
+                with VerticalScroll(classes="detail-meta", can_focus=False):
                     yield Label("", classes="detail-title", markup=True)
                     yield Label("", classes="detail-sub", markup=True)
                     yield Label("", classes="detail-desc", markup=True)
             yield TrackListView(classes="detail-tracklist")
         yield TransportBar()
         yield Footer()
+
+    def on_click(self, event: events.Click) -> None:
+        widget = event.widget
+        if widget is not None and any(
+            w.has_class("detail-header") for w in widget.ancestors_with_self
+        ):
+            self.query_one(".detail-tracklist").focus()
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
