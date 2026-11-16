@@ -20,7 +20,14 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Track
 from .._images import fetch_image
-from .._now_playing import GUTTER_NUM, heart_suffix, meta_indent, playing_content
+from .._now_playing import (
+    GUTTER_NUM,
+    heart_suffix,
+    meta_indent,
+    playing_content,
+    playing_icon,
+    track_live,
+)
 from .._utils import status_line, strip_html
 from ..widgets.lists import TrackListView
 from ..widgets.transport import signal_parts
@@ -151,13 +158,17 @@ class TimelineRow(ListItem):
             favorite,
             paused,
         )
+        track_live(self, role == "now")
+        self._refresh_title()
+
+    def _refresh_primary(self) -> None:  # the beat's redraw (_now_playing.tick)
         self._refresh_title()
 
     def _primary(self) -> Content:
         t = self.track
         lead = {
             "history": "↺",
-            "now": "⏸" if self._is_paused else "▶",
+            "now": playing_icon(_GUTTER, self._is_paused),
             "next": f"{self._number}.",
         }[self.role]
         text = f"{t.artist} — {t.display_title}"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import weakref
 
 from textual.content import Content
 from textual.css.query import NoMatches
@@ -27,6 +28,56 @@ def meta_indent(width: int) -> str:
     return " " * (width + len(_GUTTER_GAP))
 
 
+# ── playing bars ─────────────────────────────────────────────────────────────
+# While a track plays, its row's ▶ becomes a small bar meter (▁▃▅) that the
+# app's beat timer animates. Decorative only: qobit never reads the audio.
+# Paused (or not started) shows ⏸ / ▶ as before.
+
+_LEVELS = "▁▂▃▄▅▆▇"
+# One loop per bar, out of phase, so the meter never pulses in unison.
+_BAR_LOOPS = (
+    (1, 3, 5, 6, 4, 2, 3, 5, 6, 4),
+    (5, 6, 3, 1, 2, 4, 6, 5, 2, 3),
+    (2, 1, 3, 5, 6, 5, 3, 1, 4, 6),
+)
+_beat = {"frame": 0, "live": False}  # set by tick(); read by every row
+_LIVE_ROWS: weakref.WeakSet = weakref.WeakSet()  # rows showing the meter
+
+
+def playing_icon(width: int, paused: bool) -> str:
+    """The playing row's lead: the bar meter (up to 3 bars, one per gutter
+    cell) while playback runs, else ⏸ paused / ▶ starting."""
+    if paused:
+        return "⏸"
+    if not _beat["live"]:
+        return "▶"
+    f = _beat["frame"]
+    n = max(1, min(width, len(_BAR_LOOPS)))
+    loops = _BAR_LOOPS[1:2] if n == 1 else _BAR_LOOPS[:n]
+    return "".join(_LEVELS[loop[f % len(loop)]] for loop in loops)
+
+
+def track_live(row: object, live: bool) -> None:
+    """Register (or drop) a row whose title shows the meter, for tick()."""
+    if live:
+        _LIVE_ROWS.add(row)
+    else:
+        _LIVE_ROWS.discard(row)
+
+
+def tick(playing: bool) -> None:
+    """The app's beat (a few times a second): advance the meter and redraw
+    the rows showing it. ``playing`` False freezes them on ▶/⏸."""
+    changed = playing != _beat["live"]
+    _beat["live"] = playing
+    if not playing and not changed:
+        return
+    _beat["frame"] += 1
+    for row in list(_LIVE_ROWS):
+        with contextlib.suppress(Exception):
+            row._refresh_primary()  # type: ignore[attr-defined]
+
+
 def playing_content(
     lead: str,
     text: str,
@@ -37,11 +88,12 @@ def playing_content(
 ) -> Content:
     """Assemble a track row's primary label: gutter + text + ``suffix`` parts.
 
-    On the playing row ▶/⏸ replaces ``lead`` in the gutter and the text turns
-    accent. ``suffix`` parts go to Content.assemble (e.g. ``heart_suffix``).
+    On the playing row the meter (or ⏸/▶) replaces ``lead`` in the gutter and
+    the text turns accent. ``suffix`` parts go to Content.assemble (e.g.
+    ``heart_suffix``).
     """
     if is_playing:
-        icon = "⏸" if is_paused else "▶"
+        icon = playing_icon(width, is_paused)
         return Content.assemble((gutter(icon, width) + text, "$accent"), *suffix)
     return Content.assemble(gutter(lead, width) + text, *suffix)
 
@@ -69,6 +121,7 @@ class NowPlayingRowMixin:
             return
         self._is_playing = playing
         self._is_paused = paused
+        track_live(self, playing)
         self._refresh_primary()
 
     def _refresh_primary(self) -> None:

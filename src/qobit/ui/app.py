@@ -44,6 +44,7 @@ from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
+from ._now_playing import tick
 from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, page_screens, tab_label
 from .play_context import ConnectPlayContext, LocalPlayContext
 from .screens.albums import AlbumsView
@@ -153,6 +154,9 @@ _QUEUE_STATE_FILE = "queue_state.json"
 _QUEUE_SAVE_DELAY = 1.0  # debounce — queue_version bumps in bursts
 # One Connect device per machine (see connect.acquire_instance_lock).
 _CONNECT_LOCK_FILE = "connect.lock"
+
+# The playing rows' bar meter advances this often.
+_BEAT_SECS = 0.18
 
 # Most recently-played tracks kept in the session history (oldest dropped first).
 _HISTORY_MAX = 100
@@ -474,6 +478,9 @@ class QobitApp(App[None]):
 
     async def on_mount(self) -> None:
         self._poll_player()
+        # The playing rows' bar meter (_now_playing.tick): decorative, idle
+        # (one flag check) while nothing plays.
+        self.set_interval(_BEAT_SECS, lambda: tick(self.is_playing and not self.is_paused))
         saved_theme = get_saved_theme()
         if saved_theme and saved_theme in self.available_themes:
             self.theme = saved_theme
