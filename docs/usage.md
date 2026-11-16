@@ -17,10 +17,16 @@ All keys, and how each tab works. The README has a short version.
 | `↑` `↓` `←` `→` | Move in lists and grids |
 | `PageUp` / `PageDown` | Move the selection a page at a time |
 | `Home` / `End` | First / last item |
-| `Escape` | Back: close a page or detail view, or clear the filter (the footer shows `esc Back` when there's somewhere to go back to); otherwise focus the tab bar |
+| `Escape` | Back one level: close an album inside an artist page, then the page; close a detail view; or clear the filter (the footer shows `esc Back` when there's somewhere to go back to). Otherwise focus the tab bar |
 | `-` / `=` | Software volume down / up, only once it's turned on from `Ctrl+P` (they appear in the footer then) |
 | `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Qobuz Connect, software volume |
 | `q` | Quit |
+
+Albums, artists and playlists you open from Search, `g`, `i` or Similar
+artists open as a page on top of the tab. The tab bar stays visible (the tab
+you came from is lit) and a trail under it shows where you are, e.g.
+`Search › Mogwai › Mr. Beast`: click a name to go back there. `1`–`7`, or a
+click on a tab, closes the pages and switches tab.
 
 The footer lists only the keys that apply where you are: Sort and Filter
 disappear while an album or artist is open, for example.

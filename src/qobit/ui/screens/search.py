@@ -263,6 +263,6 @@ class SearchView(NowPlayingViewMixin, Widget):
         elif isinstance(item, AlbumItem):
             app.push_screen(AlbumScreen(item.album))
         elif isinstance(item, ArtistItem):
-            app.push_screen(ArtistScreen(item.artist.id, source="Search"))
+            app.push_screen(ArtistScreen(item.artist.id))
         elif isinstance(item, PlaylistItem):
             app.push_screen(PlaylistScreen(item.playlist.id))

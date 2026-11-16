@@ -29,6 +29,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
+from ..nav import page_header
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
@@ -1120,22 +1121,11 @@ class ArtistHeader(Widget):
 
 
 class ArtistScreen(Screen):
-    BINDINGS = [Binding("escape", "navigate_back", "Back", priority=True)]
+    """An artist page pushed over the current one (Search, `g`, `i`,
+    Similar). Two levels: the artist, and an album opened from it."""
 
     DEFAULT_CSS = """
     ArtistScreen { layout: vertical; }
-
-    ArtistScreen #breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-
-    ArtistScreen #breadcrumb:hover {
-        color: $text;
-        background: $panel;
-    }
 
     ArtistScreen #main-content {
         height: 1fr;
@@ -1175,17 +1165,13 @@ class ArtistScreen(Screen):
     }
     """
 
-    def __init__(self, artist_id: str, source: str = "Search", back_tab: str = "search") -> None:
-        """``source`` is the breadcrumb text; ``back_tab`` the tab *id* Escape
-        returns to (never derived from the display name)."""
+    def __init__(self, artist_id: str) -> None:
         super().__init__()
         self._artist_id = artist_id
-        self._source = source
-        self._back_tab = back_tab
         self._album_view_active = False
 
     def compose(self) -> ComposeResult:
-        yield Label(f"← {self._source}", id="breadcrumb", markup=False)
+        yield from page_header(self.app)  # type: ignore[arg-type]
         yield ArtistHeader(similar=True)
         with ContentSwitcher(initial="artist-view", id="main-content"):
             with Vertical(id="artist-view"):
@@ -1208,23 +1194,17 @@ class ArtistScreen(Screen):
         """The artist this page is about: what the ``i`` menu's follow acts on."""
         return self.query_one(ArtistHeader).artist
 
-    @property
-    def page_title(self) -> str | None:
-        """Breadcrumb text for a page opened from this one: the album open
-        here, else the artist."""
+    def nav_levels(self) -> list[str]:
+        artist = self.page_artist
+        levels = [artist.name if artist else "Artist"]
         if self._album_view_active:
             album = self.query_one("#album-panel", AlbumDetailPanel).album
-            return album.title if album else None
-        artist = self.page_artist
-        return artist.name if artist else None
+            levels.append(album.title if album else "Album")
+        return levels
 
-    def action_navigate_back(self) -> None:
-        if self._album_view_active:
+    def nav_to(self, depth: int) -> None:
+        if depth == 0 and self._album_view_active:
             self._show_artist_view()
-        else:
-            app: QobitApp = self.app  # type: ignore[assignment]
-            app.action_switch_tab(self._back_tab)
-            app.pop_screen()
 
     def _open_album(self, album: Album) -> None:
         panel = self.query_one("#album-panel", AlbumDetailPanel)
@@ -1232,11 +1212,13 @@ class ArtistScreen(Screen):
         self.query_one("#main-content", ContentSwitcher).current = "album-view"
         self._album_view_active = True
         panel.focus_tracklist()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     def _show_artist_view(self) -> None:
         self.query_one("#main-content", ContentSwitcher).current = "artist-view"
         self._album_view_active = False
         self.query_one("#albums", AlbumGrid).focus()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     @work
     async def _load_detail(self) -> None:
@@ -1249,15 +1231,12 @@ class ArtistScreen(Screen):
             return
         try:
             self.query_one(ArtistHeader).populate(artist)
+            app.nav_changed()  # the trail can name the artist now
             if artist.albums:
                 grid = self.query_one("#albums", AlbumGrid)
                 await grid.set_cards([AlbumCard(album) for album in artist.albums])
         except NoMatches:
             pass
-
-    @on(events.Click, "#breadcrumb")
-    def _on_breadcrumb_click(self) -> None:
-        self.app.pop_screen()
 
     @on(AlbumCard.Selected)
     def _on_album_selected(self, event: AlbumCard.Selected) -> None:

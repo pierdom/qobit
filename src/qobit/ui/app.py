@@ -43,6 +43,7 @@ from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
+from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, page_screens, tab_label
 from .play_context import ConnectPlayContext, LocalPlayContext
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
@@ -157,32 +158,6 @@ _HISTORY_MAX = 100
 # Pressing "previous" past this many seconds into a track restarts it; before
 # it, steps back to the previous track in history (standard media convention).
 _PREV_RESTART_THRESHOLD = 3.0
-
-# Top bar, left to right: (tab id, display name). The bar shows "[N] Name" and
-# the number keys follow this order — both are generated from this list. Ids are
-# internal and stable (the Playback tab keeps the id "queue" / QueueView); names
-# are display-only — never derive an id from a name.
-_TABS = [
-    ("queue", "Playback"),
-    ("tracks", "Tracks"),
-    ("artists", "Artists"),
-    ("albums", "Albums"),
-    ("playlists", "Playlists"),
-    ("mixes", "Mixes"),
-    ("search", "Search"),
-]
-
-
-def _tab_label(n: int, name: str, compact: bool) -> str:
-    return f"{n} {name}" if compact else f"[{n}] {name}"
-
-
-# Columns the full "[N] Name" bar needs: the bar's 1-col leading offset, then
-# each label plus Tab's 1-col padding on both sides (measured: 90). Narrower
-# terminals get the compact "N Name" labels instead of a clipped last tab.
-_TABBAR_FULL_WIDTH = 1 + sum(
-    len(_tab_label(n, name, False)) + 2 for n, (_, name) in enumerate(_TABS, 1)
-)
 
 
 class QobitApp(App[None]):
@@ -364,11 +339,11 @@ class QobitApp(App[None]):
         Binding("minus", "volume_down", "Vol-"),
         Binding("equals_sign", "volume_up", "Vol+"),
         Binding("minus,equals_sign", "volume_off_hint", show=False),
-        # 1-7 match the tab bar's "[N]" labels (generated from _TABS); escape
+        # 1-7 match the tab bar's "[N]" labels (generated from TABS); escape
         # brings focus to Tabs from anywhere.
         *[
             Binding(str(n), f"switch_tab('{tid}')", name, show=False)
-            for n, (tid, name) in enumerate(_TABS, 1)
+            for n, (tid, name) in enumerate(TABS, 1)
         ],
         # priority=True so these fire even when an Input has focus. "Back"
         # applies (and shows in the footer) only when there's somewhere to go
@@ -404,6 +379,9 @@ class QobitApp(App[None]):
     # Qobuz Connect: "off" | "connecting" | "ready" (visible in the apps) |
     # "active" (the apps' chosen device — server owns the queue) | "offline".
     connect_state: reactive[str] = reactive("off")
+    # Bumped whenever a navigation level changes (a detail opened or closed,
+    # a page's title known): Breadcrumbs watch it (see nav.py).
+    nav_version: reactive[int] = reactive(0)
 
     def __init__(self, connect: bool | None = None) -> None:
         """``connect`` overrides the saved Qobuz Connect setting for this run
@@ -475,7 +453,7 @@ class QobitApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Tabs(
-            *[Tab(_tab_label(n, name, False), id=tid) for n, (tid, name) in enumerate(_TABS, 1)],
+            *[Tab(tab_label(n, name, False), id=tid) for n, (tid, name) in enumerate(TABS, 1)],
             id="nav-tabs",
             active="queue",
         )
@@ -545,22 +523,82 @@ class QobitApp(App[None]):
         view = self.query_one(f"#view-{event.tab.id}")
         if hasattr(view, "activate"):
             self.call_after_refresh(view.activate)
+        self.nav_changed()
 
     def on_resize(self, event: events.Resize) -> None:
         self._fit_tab_labels(event.size.width)
 
     def _fit_tab_labels(self, width: int) -> None:
-        compact = width < _TABBAR_FULL_WIDTH
+        compact = width < TABBAR_FULL_WIDTH
         if compact == getattr(self, "_tabs_compact", None):
             return
         self._tabs_compact = compact
-        for n, (tid, name) in enumerate(_TABS, 1):
+        for n, (tid, name) in enumerate(TABS, 1):
             # Not composed yet on the first resize; on_mount runs this again.
             with contextlib.suppress(Exception):
-                self.query_one(f"#{tid}", Tab).label = _tab_label(n, name, compact)
+                self.query_one(f"#{tid}", Tab).label = tab_label(n, name, compact)
 
     def action_switch_tab(self, tab_id: str) -> None:
-        self.query_one("#nav-tabs", Tabs).active = tab_id
+        """``1``–``7`` or a click on a tab: close any pages, then switch. (With
+        pages open it used to switch the hidden tab underneath them.)"""
+        self._close_pages()
+        self.screen_stack[0].query_one("#nav-tabs", Tabs).active = tab_id
+
+    # ── navigation trail (see nav.py) ────────────────────────────────────────
+
+    def base_tab(self) -> str:
+        """The main screen's active tab id."""
+        try:
+            tab = self.screen_stack[0].query_one("#nav-tabs", Tabs).active
+        except NoMatches:
+            tab = ""
+        return tab if tab in TAB_NAMES else "queue"
+
+    def _base_view(self) -> Widget | None:
+        try:
+            return self.screen_stack[0].query_one(f"#view-{self.base_tab()}")
+        except NoMatches:
+            return None
+
+    def nav_changed(self) -> None:
+        """A level changed: redraw the breadcrumbs (and the footer's Back)."""
+        self.nav_version += 1
+        self.refresh_bindings()
+
+    def nav_trail(self, upto: object | None = None) -> list[Crumb]:
+        """The trail from the active tab to ``upto`` (a screen; default the
+        top one): the tab, its view's levels, then each page's levels. Every
+        crumb but the last goes back to its level."""
+        levels: list[tuple[str, object, int]] = [(TAB_NAMES[self.base_tab()], None, 0)]
+        view = self._base_view()
+        for depth, label in enumerate(getattr(view, "nav_levels", list)(), 1):
+            levels.append((label, None, depth))
+        for page in page_screens(self):
+            if upto is not None and upto is self.screen_stack[0]:
+                break
+            for depth, label in enumerate(getattr(page, "nav_levels", list)()):
+                levels.append((label, page, depth))
+            if page is upto:
+                break
+        return [
+            Crumb(label, None if i == len(levels) - 1 else self._goer(page, depth))
+            for i, (label, page, depth) in enumerate(levels)
+        ]
+
+    def _goer(self, page: object | None, depth: int):
+        def go() -> None:
+            self._close_pages(above=page)
+            target = page if page is not None else self._base_view()
+            if hasattr(target, "nav_to"):
+                target.nav_to(depth)
+            self.nav_changed()
+
+        return go
+
+    def _close_pages(self, above: object | None = None) -> None:
+        """Pop pushed pages down to ``above`` (None: all of them)."""
+        while len(self.screen_stack) > 1 and self.screen is not above:
+            self.pop_screen()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action in ("volume_down", "volume_up"):
@@ -570,11 +608,7 @@ class QobitApp(App[None]):
         return True
 
     def _active_view(self) -> Widget | None:
-        try:
-            cs = self.query_one(ContentSwitcher)
-            return self.query_one(f"#{cs.current}") if cs.current else None
-        except NoMatches:
-            return None
+        return self._base_view()
 
     def _can_go_back(self) -> bool:
         """A page or menu on top, or the active tab has a detail view open or
@@ -585,17 +619,22 @@ class QobitApp(App[None]):
         return bool(view is not None and getattr(view, "can_navigate_back", lambda: False)())
 
     def action_back(self) -> None:
+        """Escape: up one level of the trail. On a page with an inner level
+        (an artist page showing an album) that's the page's previous level;
+        else close the page (or menu). On the main screen, the tab's view."""
         if len(self.screen_stack) > 1:
             screen = self.screen
-            if hasattr(screen, "action_navigate_back"):
-                screen.action_navigate_back()
+            levels = getattr(screen, "nav_levels", list)()
+            if len(levels) > 1 and hasattr(screen, "nav_to"):
+                screen.nav_to(len(levels) - 2)
             else:
                 self.pop_screen()
+            self.nav_changed()
             return
         view = self._active_view()
         if view is not None and hasattr(view, "action_navigate_back"):
             view.action_navigate_back()
-        self.refresh_bindings()
+        self.nav_changed()
 
     def action_focus_tabs(self) -> None:
         self.query_one("#nav-tabs", Tabs).focus()
@@ -1496,7 +1535,7 @@ class QobitApp(App[None]):
             tracks_count=0,
             image_url=track.image_url,
         )
-        self.push_screen(AlbumScreen(album, source=self._origin()[1]))
+        self.push_screen(AlbumScreen(album))
 
     @work
     async def _open_artist(self, track: Track) -> None:
@@ -1515,31 +1554,11 @@ class QobitApp(App[None]):
         self.open_artist(str(artist_id))
 
     def open_artist(self, artist_id: str) -> None:
-        """Open an artist page over the current one, with the breadcrumb and
-        Escape target of where it was opened from (`g`, `i`, Similar)."""
+        """Open an artist page over the current one (`g`, `i`, Similar); the
+        breadcrumb trail shows where it was opened from."""
         from .screens.artist_detail import ArtistScreen
 
-        tab_id, name = self._origin()
-        self.push_screen(ArtistScreen(artist_id, source=name, back_tab=tab_id))
-
-    def _origin(self) -> tuple[str, str]:
-        """Where a page opened from the ``i``/``g`` menu comes from: ``(tab id,
-        breadcrumb text)``. The id is the active tab of the main screen (the
-        artist page's Escape target; pushed pages have no tab bar of their own).
-        The text names the page underneath: an album or artist page, the album
-        or artist open inside a tab, or else the tab itself."""
-        names = dict(_TABS)
-        base = self.screen_stack[0]
-        try:
-            tab = base.query_one("#nav-tabs", Tabs).active
-        except NoMatches:
-            tab = ""
-        tab = tab if tab in names else "tracks"
-        title = getattr(self.screen, "page_title", None)
-        if title is None and self.screen is base:
-            with contextlib.suppress(NoMatches):
-                title = getattr(base.query_one(f"#view-{tab}"), "page_title", None)
-        return tab, title or names[tab]
+        self.push_screen(ArtistScreen(artist_id))
 
     def action_seek_back(self) -> None:
         if self._ctx is not self._local_ctx:

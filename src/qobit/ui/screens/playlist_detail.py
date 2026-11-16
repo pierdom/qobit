@@ -4,9 +4,8 @@ import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
-from textual import events, on, work
+from textual import on, work
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.content import Content
 from textual.css.query import NoMatches
@@ -25,6 +24,7 @@ from .._now_playing import (
     playing_content,
 )
 from .._utils import DETAIL_HEADER_CSS, strip_html
+from ..nav import page_header
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .artist_detail import _set_art_width
@@ -76,25 +76,17 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
 
 
 class PlaylistScreen(NowPlayingViewMixin, Screen):
-    BINDINGS = [Binding("escape", "app.pop_screen", "Back")]
+    """A playlist page pushed from the Playlists tab or Search."""
 
     DEFAULT_CSS = (
         DETAIL_HEADER_CSS
         + """
     PlaylistScreen { layout: vertical; }
-    PlaylistScreen #breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-    PlaylistScreen #breadcrumb:hover {
-        color: $text;
-        background: $panel;
-    }
     PlaylistScreen #playlist-panel {
         height: 1fr;
-        margin: 0 1 1 1;
+        /* Bottom only: the app's inset is the Screen's padding; side margins
+           put the panel a column inside the transport bar below it. */
+        margin: 0 0 1 0;
         layout: vertical;
         border: round $accent 40%;
         border-title-color: $accent 40%;
@@ -113,9 +105,16 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
     def __init__(self, playlist_id: str) -> None:
         super().__init__()
         self._playlist_id = playlist_id
+        self._name = "Playlist"
+
+    def nav_levels(self) -> list[str]:
+        return [self._name]
+
+    def nav_to(self, depth: int) -> None:
+        pass  # one level
 
     def compose(self) -> ComposeResult:
-        yield Label("← Playlists", id="breadcrumb")
+        yield from page_header(self.app)  # type: ignore[arg-type]
         with Vertical(id="playlist-panel"):
             with Horizontal(classes="detail-header"):
                 yield TGPImage(classes="detail-art")
@@ -154,6 +153,8 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
 
         try:
             panel = self.query_one("#playlist-panel")
+            self._name = playlist.name
+            app.nav_changed()
             panel.border_subtitle = ""
             panel.border_title = "Playlist"  # the name is in bold right below
 
@@ -214,7 +215,3 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)
             self.call_after_refresh(lv.focus)
-
-    @on(events.Click, "#breadcrumb")
-    def _on_breadcrumb_click(self) -> None:
-        self.app.pop_screen()

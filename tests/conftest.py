@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import pytest
 
+import qobit.ui.app as app_module
 from qobit import config, store
 from qobit.ui import _images
+from qobit.ui.screens import queue as queue_module
 
 
 @pytest.fixture(autouse=True)
@@ -39,3 +41,65 @@ def isolated_image_memory_cache():
     _images._IMAGE_CACHE.clear()
     yield
     _images._IMAGE_CACHE.clear()
+
+
+# ── headless UI ──────────────────────────────────────────────────────────────
+
+
+class _NoOpMediaKeys:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def update(self, *args, **kwargs):
+        pass
+
+    def set_artwork(self, *args, **kwargs):
+        pass
+
+    def close(self):
+        pass
+
+
+class StubClient:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def restore_session(self, *args, **kwargs):
+        return True
+
+    def is_closed(self):
+        return False
+
+    async def close(self):
+        pass
+
+    async def aclose(self):
+        pass
+
+    async def get_all_favorite_tracks(self):
+        return []
+
+    async def get_all_favorite_albums(self):
+        return []
+
+    async def get_all_favorite_artists(self):
+        return []
+
+
+async def _no_image(url):
+    return None
+
+
+@pytest.fixture
+def ui_app(monkeypatch):
+    """The real QobitApp for headless UI tests (``app.run_test()``): a stub
+    client (no network), no media keys, no images, no Connect, theme not
+    saved. Never starts mpv: tests set the timeline directly."""
+    monkeypatch.setattr(app_module, "MediaKeys", _NoOpMediaKeys)
+    monkeypatch.setattr(app_module, "QobuzClient", StubClient)
+    monkeypatch.setattr(app_module, "set_saved_theme", lambda *_: None)
+    monkeypatch.setattr(queue_module, "fetch_image", _no_image)
+    from qobit.ui.widgets import transport
+
+    monkeypatch.setattr(transport, "fetch_image", _no_image)
+    return app_module.QobitApp(connect=False)

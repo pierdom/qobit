@@ -9,10 +9,11 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.timer import Timer
 from textual.widget import Widget
-from textual.widgets import ContentSwitcher, Label
+from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
 from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, status_line
+from ..nav import Breadcrumb
 from .album_detail import AlbumDetailPanel
 from .artist_detail import LIBRARY_TILE_MIN_W, AlbumCard, AlbumGrid, ArtistHeader
 
@@ -58,16 +59,6 @@ class AlbumsView(Widget):
         border-title-color: $accent;
         border-subtitle-color: $accent;
     }
-    AlbumsView #album-breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-    AlbumsView #album-breadcrumb:hover {
-        color: $text;
-        background: $panel;
-    }
     """
 
     _album_view_active: bool = False
@@ -89,7 +80,7 @@ class AlbumsView(Widget):
             with Vertical(id="albums-grid-view"):
                 yield AlbumGrid(id="fav-albums-grid", tile_min_width=LIBRARY_TILE_MIN_W)
             with Vertical(id="albums-album-view"):
-                yield Label("← Favourite Albums", id="album-breadcrumb")
+                yield Breadcrumb()
                 yield ArtistHeader()
                 yield AlbumDetailPanel(id="album-panel")
 
@@ -98,13 +89,16 @@ class AlbumsView(Widget):
         grid.border_title = "Favourite Albums"
         self._update_subtitle()
 
-    @property
-    def page_title(self) -> str | None:
-        """Breadcrumb text for a page opened from this tab (``None``: the tab name)."""
+    def nav_levels(self) -> list[str]:
+        """Levels below the tab, for the breadcrumb trail (see nav.py)."""
         if not self._album_view_active:
-            return None
+            return []
         album = self.query_one("#album-panel", AlbumDetailPanel).album
-        return album.title if album else None
+        return [album.title if album else "Album"]
+
+    def nav_to(self, depth: int) -> None:
+        if depth == 0 and self._album_view_active:
+            self._show_grid()
 
     def activate(self) -> None:
         """Called by QobitApp when this tab becomes active: first load, focus."""
@@ -329,11 +323,13 @@ class AlbumsView(Widget):
         self._album_view_active = True
         self._apply_responsive(self.size.height)
         panel.focus_tracklist()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     def _show_grid(self) -> None:
         self.query_one("#albums-switcher", ContentSwitcher).current = "albums-grid-view"
         self._album_view_active = False
         self.query_one("#fav-albums-grid", AlbumGrid).focus()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     @on(AlbumCard.Selected)
     def _on_album_selected(self, event: AlbumCard.Selected) -> None:
@@ -343,7 +339,3 @@ class AlbumsView(Widget):
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         app.play_track(event.track, queue=event.queue)
-
-    @on(events.Click, "#album-breadcrumb")
-    def _on_breadcrumb_click(self) -> None:
-        self._show_grid()

@@ -2,77 +2,15 @@
 (QueueView._reconcile): after any change its rows match the timeline, a track
 ending remounts nothing, and a cursor the user moved stays put.
 
-Runs the real QobitApp headless with a stub client (no network, no mpv, no
-media keys, no images)."""
+Runs the real QobitApp headless (the ``ui_app`` fixture in conftest.py)."""
 
 from __future__ import annotations
 
 import asyncio
 import random
 
-import pytest
-
-import qobit.ui.app as app_module
 from qobit.qobuz.models import Track
-from qobit.ui.screens import queue as queue_module
 from qobit.ui.screens.queue import QueueView, SectionHeader, TimelineRow
-
-
-class _NoOpMediaKeys:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def update(self, *args, **kwargs):
-        pass
-
-    def set_artwork(self, *args, **kwargs):
-        pass
-
-    def close(self):
-        pass
-
-
-class _StubClient:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def restore_session(self, *args, **kwargs):
-        return True
-
-    def is_closed(self):
-        return False
-
-    async def close(self):
-        pass
-
-    async def aclose(self):
-        pass
-
-    async def get_all_favorite_tracks(self):
-        return []
-
-    async def get_all_favorite_albums(self):
-        return []
-
-    async def get_all_favorite_artists(self):
-        return []
-
-
-async def _no_image(url):
-    return None
-
-
-@pytest.fixture
-def app(monkeypatch):
-    monkeypatch.setattr(app_module, "MediaKeys", _NoOpMediaKeys)
-    monkeypatch.setattr(app_module, "QobuzClient", _StubClient)
-    monkeypatch.setattr(app_module, "set_saved_theme", lambda *_: None)
-    monkeypatch.setattr(queue_module, "fetch_image", _no_image)
-    from qobit.ui.widgets import transport
-
-    monkeypatch.setattr(transport, "fetch_image", _no_image)
-    return app_module.QobitApp(connect=False)
-
 
 POOL = [
     Track(id=str(i), title=f"T{i}", artist="A", album="B", album_id="1", duration=60)
@@ -109,7 +47,9 @@ def _actual(lv):
     return out
 
 
-def test_reconcile_tracks_the_timeline(app):
+def test_reconcile_tracks_the_timeline(ui_app):
+    app = ui_app
+
     async def run():
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.pause()

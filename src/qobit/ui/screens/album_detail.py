@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.content import Content
 from textual.css.query import NoMatches
@@ -34,6 +33,7 @@ from .._utils import (
     TWO_COL_BELOW,
     strip_html,
 )
+from ..nav import page_header
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 
@@ -269,41 +269,33 @@ class AlbumScreen(Screen):
 
     Wraps AlbumDetailPanel so Search → Album looks identical to the inline
     album view opened from the Albums and Artists tabs: big art, rich metadata
-    header, formatted tracklist with favourites.  Escape returns to Search."""
-
-    BINDINGS = [Binding("escape", "app.pop_screen", "Back")]
+    header, formatted tracklist with favourites. Escape (the app's ``back``)
+    closes it."""
 
     DEFAULT_CSS = """
     AlbumScreen { layout: vertical; }
-    AlbumScreen #breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-    AlbumScreen #breadcrumb:hover { color: $text; background: $panel; }
     /* Bottom margin only: the app's horizontal inset is the Screen's padding
        (see QobitApp.CSS). A left/right margin here put the panel one column
        inside the header and transport bar above and below it. */
     AlbumScreen AlbumDetailPanel { height: 1fr; margin: 0 0 1 0; }
     """
 
-    def __init__(self, album: Album, source: str = "Search results") -> None:
+    def __init__(self, album: Album) -> None:
         super().__init__()
         self._album = album
-        self._source = source
 
-    @property
-    def page_title(self) -> str:
-        """Breadcrumb text for a page opened from this one."""
-        return self._album.title
+    def nav_levels(self) -> list[str]:
+        return [self._album.title]
+
+    def nav_to(self, depth: int) -> None:
+        pass  # one level
 
     def compose(self) -> ComposeResult:
         # Lazy import avoids a circular dependency: artist_detail imports
         # AlbumDetailPanel from this module at the top level.
         from .artist_detail import ArtistHeader
 
-        yield Label(f"← {self._source}", id="breadcrumb", markup=False)
+        yield from page_header(self.app)  # type: ignore[arg-type]
         yield ArtistHeader()
         yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
@@ -350,10 +342,6 @@ class AlbumScreen(Screen):
         if self.is_attached:
             with contextlib.suppress(NoMatches):
                 self.query_one(ArtistHeader).populate(artist)
-
-    @on(events.Click, "#breadcrumb")
-    def _on_breadcrumb_click(self) -> None:
-        self.app.pop_screen()
 
     @on(AlbumDetailPanel.TrackSelected)
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:

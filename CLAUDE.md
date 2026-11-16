@@ -33,6 +33,7 @@ src/qobit/
 │                        over a PlayerPort; proto/ is generated (ruff-excluded)
 └── ui/
     ├── app.py           QobitApp: reactive state, transport, tabs, restore
+    ├── nav.py           TABS, breadcrumb trail (Breadcrumb), a page's tab bar
     ├── play_context.py  LocalPlayContext / ConnectPlayContext: the only
     │                    writers of _timeline/_cursor
     ├── themes.py        cyberdeck + ayu-dark/-mirage/-light; colours only
@@ -160,7 +161,7 @@ mounts the lazy backlog first. Albums/Artists/Playlists share
 `LIBRARY_TILE_MIN_W` (40) and `grid-gutter: 1 2`; each card's text must fit in
 5 rows. Playlist art uses `images300` (`images` are 50 px).
 
-**Tabs.** `_TABS` in app.py is the single source of truth `(id, name)`; labels
+**Tabs.** `nav.TABS` is the single source of truth `(id, name)`; labels
 (`[N] Name`, compact `N Name` below 90 cols) and the `1`–`7` keys derive from
 it. The Playback tab's id is `queue`. On activation the app calls the view's
 `activate()` (first load + focus); don't rely on `on_show` (Textual stopped
@@ -210,10 +211,20 @@ other at normal weight (`dim` made it unreadable on an unfocused panel).
 internals: an `ArtistCard._name()` helper shadowed `Widget._name` and crashed
 every tile.
 
-**Breadcrumbs.** Pages opened from `g`/`i` get `_origin()`: the main screen's
-active tab id (`screen_stack[0]`, the artist page's Escape target) and the text
-from the page underneath's `page_title` (album/artist page or inline detail),
-else the tab name. Never derive a tab id from a display name.
+**Navigation: pages + trail** (`nav.py`). Tabs open details inline (Albums,
+Artists); Search, `g`, `i` and Similar push pages (AlbumScreen, ArtistScreen,
+PlaylistScreen). Every level reports `nav_levels()` (its own labels, outermost
+first; a tab view only those below the tab) and `nav_to(depth)`;
+`QobitApp.nav_trail()` joins tab name + view levels + each page's levels, and
+`Breadcrumb` renders it (clickable crumbs; hidden at a tab's top level). Call
+`app.nav_changed()` whenever a level opens, closes or learns its title. Pages
+compose `page_header(app)` (a `PageTabs` bar with the origin tab lit, then the
+trail); its tab ids are prefixed `page-tab-` (a page's own `#albums` grid took
+the Albums tab's style). `1`–`7` and tab clicks call `action_switch_tab`, which
+closes pages first; Escape (`action_back`) goes up one level. The app's own
+`screen`-relative queries can hit a page: read the main screen through
+`screen_stack[0]` (`base_tab()`, `_base_view()`). Never derive a tab id from a
+display name.
 
 **Favourites.** `ensure_favorite_tracks/albums/artists()` fetch once each (one
 lock per list, loaded in parallel at startup); a failed load isn't cached.

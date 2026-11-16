@@ -32,8 +32,18 @@ release from this entry.
 - Empty, loading and error states look the same in every tab; tabs show
   "loading…" while they fetch.
 
+- Pages (an album, artist or playlist opened from Search, `g`, `i` or Similar)
+  keep the tab bar, with the tab they came from lit, and show the whole trail
+  (`Search › Mogwai › Mr. Beast`) instead of one `← back` label. Click any
+  part to go back there; Escape goes up one level. The Albums and Artists
+  tabs' inline details use the same trail.
+
 ### Fixed
 
+- `1`–`7` on an album, artist or playlist page switched the hidden tab under
+  it, so Escape then landed somewhere unexpected. They now close the page and
+  switch tab.
+- The playlist page's panel sat one column inside the transport bar.
 - Album names, artist names and titles containing `[…]` lost that part (it was
   read as markup) in list rows, breadcrumbs and the Now Playing panel.
 
