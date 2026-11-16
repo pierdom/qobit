@@ -293,8 +293,10 @@ class ConnectPlayContext:
         if result == "ok" and app._last_stream is not None:
             st = app._last_stream
             self.renderer.report_quality(st.format_id, round(st.sampling_rate), st.bit_depth or 16)
-        if result == "sample":
-            app._flash_status(f"Not streamable (preview only): {track.display_title}")
+        if result in ("sample", "unavailable"):
+            from .app import unplayable_notice
+
+            app._flash_status(unplayable_notice(track, result))
         # "stale": a newer load took over; not unplayable, so the renderer
         # mustn't skip past it.
         return result in ("ok", "stale")

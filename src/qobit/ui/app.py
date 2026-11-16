@@ -180,6 +180,13 @@ _HISTORY_MAX = 100
 _PREV_RESTART_THRESHOLD = 3.0
 
 
+def unplayable_notice(track: Track, result: str) -> str:
+    """The flash for a track qobit won't play ("sample" or "unavailable")."""
+    if result == "sample":
+        return f"Not streamable (preview only): {track.display_title}"
+    return f"Not available on Qobuz: {track.display_title}"
+
+
 class QobitApp(App[None]):
     TITLE = "qobit"
     COMMANDS = App.COMMANDS | {QobitCommands}
@@ -1338,7 +1345,9 @@ class QobitApp(App[None]):
         """Walk the quality fallback chain and return the first stream Qobuz
         hands back, or None. A preview (``stream.sample``) is returned as-is
         and ends the walk: Qobuz returns the same preview at every quality, so
-        trying the rest would only cost round-trips. Raises AuthExpiredError."""
+        trying the rest would only cost round-trips. Raises AuthExpiredError,
+        and NoStreamError when every quality was refused by a restriction (no
+        URL, no preview): unavailable, unlike a network failure (None)."""
         # Prefer the quality that worked last time for this track; fall through to
         # the full list on first play or if the cached quality fails.
         all_qualities = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
@@ -1347,16 +1356,20 @@ class QobitApp(App[None]):
             qualities = [cached] + [q for q in all_qualities if q != cached]
         else:
             qualities = all_qualities
+        restricted: NoStreamError | None = None
+        failed = False
         for quality in qualities:
             try:
                 data = await self._client.get_streaming_url(track_id, quality)
             except AuthExpiredError:
                 raise
             except QobuzError:
+                failed = True
                 continue
             try:
                 stream = StreamUrl.from_api(data)
-            except NoStreamError:
+            except NoStreamError as e:
+                restricted = e
                 continue  # restricted at this quality; maybe not at the next
             if stream.sample:
                 return stream
@@ -1364,16 +1377,19 @@ class QobitApp(App[None]):
             if len(self._track_quality_cache) > 1000:
                 del self._track_quality_cache[next(iter(self._track_quality_cache))]
             return stream
+        if restricted is not None and not failed:
+            raise restricted
         return None
 
     async def _do_play(self, track: Track, start: float = 0.0) -> None:
         """Local-context playback: start ``track``; on a preview, skip forward."""
         result = await self._play_stream(track, start)
-        if result == "sample":
+        if result in ("sample", "unavailable"):
             # Never play a preview: it's a 30 s MP3, not the FLAC. Treat the track
             # as unavailable — skip forward like the official apps do, or stop
-            # if nothing is queued after it.
-            self._flash_status(f"Not streamable (preview only): {track.display_title}")
+            # if nothing is queued after it. Same for a track Qobuz refuses
+            # outright (restricted: no URL, no preview).
+            self._flash_status(unplayable_notice(track, result))
             if self._cursor + 1 < len(self._timeline) or self.radio_mode:
                 self._advance_queue()
             elif self._player.running:
@@ -1381,7 +1397,8 @@ class QobitApp(App[None]):
 
     async def _play_stream(self, track: Track, start: float = 0.0) -> str:
         """Resolve and start ``track`` in mpv. Returns "ok", "sample" (preview
-        only — nothing started), "none" (no stream), "auth" (session expired)
+        only — nothing started), "unavailable" (Qobuz refuses the track: no
+        URL, no preview), "none" (no stream: request failures), "auth" (session expired)
         or "stale" (another track was requested while this one resolved; it
         took over, nothing started). Shared by both play contexts; skipping
         policy is the caller's."""
@@ -1393,6 +1410,11 @@ class QobitApp(App[None]):
         except AuthExpiredError:
             self.status_msg = "Session expired: log in again"
             return "auth"
+        except NoStreamError:
+            if gen != self._play_gen:
+                return "stale"
+            self.status_msg = ""
+            return "unavailable"
         if gen != self._play_gen:
             # Picking A then B quickly: if A's URL arrives last it would stop B
             # and play A while the queue's cursor says B.

@@ -120,9 +120,13 @@ so two qobits on one host are one device; when either leaves, Qobuz drops both.
 second instance joining, and `ConnectSession` rejoins on
 `SRVR_CTRL_REMOVE_RENDERER` for its own id (at most once per 10 s).
 
-**`_play_stream()`** returns "ok", "sample", "none", "auth" or "stale" and never
-skips; skip policy is the caller's (`_do_play` locally, the renderer in
-Connect). It bumps `_play_gen`; a call overtaken while resolving its URL returns
+**`_play_stream()`** returns "ok", "sample", "unavailable", "none", "auth" or
+"stale" and never skips; skip policy is the caller's (`_do_play` locally, the
+renderer in Connect). "unavailable": every quality answered with restriction
+codes and no URL (`StreamUrl.from_api` raises `NoStreamError`; a bare
+`data["url"]` once closed the app); skipped like "sample". "none" is request
+failures and is never auto-skipped (a flaky network would race through the
+queue). It bumps `_play_gen`; a call overtaken while resolving its URL returns
 "stale" without touching mpv (picking A then B fast could play A under B's
 cursor). Connect treats "stale" as handled, not unplayable.
 

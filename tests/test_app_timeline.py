@@ -314,13 +314,27 @@ _RESTRICTED = {
 }
 
 
-def test_resolve_stream_none_when_every_quality_is_restricted(app):
+def test_resolve_stream_raises_when_every_quality_is_restricted(app):
+    from qobit.qobuz.models import NoStreamError
+
     app._client = _FakeClient(
         {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _RESTRICTED, "FLAC_CD": _RESTRICTED}
     )
-    assert asyncio.run(app._resolve_stream("42")) is None
+    with pytest.raises(NoStreamError, match="SampleRestrictedByRightHolders"):
+        asyncio.run(app._resolve_stream("42"))
     assert app._client.calls == ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
     assert "42" not in app._track_quality_cache
+
+
+def test_resolve_stream_restricted_plus_failures_is_just_none(app):
+    """A request failure might hide a playable quality: not "unavailable",
+    so nothing skips on a flaky network."""
+    from qobit.qobuz.client import QobuzError
+
+    app._client = _FakeClient(
+        {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": QobuzError("x"), "FLAC_CD": _RESTRICTED}
+    )
+    assert asyncio.run(app._resolve_stream("42")) is None
 
 
 def test_resolve_stream_falls_back_past_a_restricted_quality(app):
@@ -330,17 +344,46 @@ def test_resolve_stream_falls_back_past_a_restricted_quality(app):
     assert app._track_quality_cache["42"] == "FLAC_24_96"
 
 
-def test_play_stream_reports_a_restricted_track_unplayable(app):
-    """The whole path the Next key took: no crash, "none" for the caller to
-    skip, and nothing handed to mpv."""
+def _all_restricted(app, monkeypatch) -> _FakePlayer:
     app._client = _FakeClient(
         {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _RESTRICTED, "FLAC_CD": _RESTRICTED}
     )
-    played: list = []
-    app._player.play = lambda *a, **k: played.append(a)
-    track = Track(id="42", title="t", artist="a", album="b", album_id="c", duration=1)
-    assert asyncio.run(app._play_stream(track)) == "none"
-    assert played == []
+    player = _FakePlayer()
+    monkeypatch.setattr(app, "_player", player)
+    return player
+
+
+def test_play_stream_reports_a_restricted_track_unavailable(app, monkeypatch):
+    """The path the Next key took: no crash, "unavailable", nothing to mpv."""
+    player = _all_restricted(app, monkeypatch)
+    assert asyncio.run(app._play_stream(_track("42"))) == "unavailable"
+    assert player.played == []
+
+
+def test_a_restricted_track_is_skipped_like_a_preview(app, monkeypatch):
+    """Next onto a restricted track left the old song playing under the new
+    cursor ("No stream available"); it's skipped instead."""
+    _all_restricted(app, monkeypatch)
+    advanced = []
+    monkeypatch.setattr(app, "_advance_queue", lambda: advanced.append(True))
+    flashes = []
+    monkeypatch.setattr(app, "_flash_status", flashes.append)
+    app._timeline = [_track("1"), _track("42"), _track("3")]
+    app._cursor = 1
+    asyncio.run(app._do_play(app._timeline[1]))
+    assert advanced == [True]
+    assert flashes == ["Not available on Qobuz: Track 42"]
+
+
+def test_a_restricted_last_track_stops(app, monkeypatch):
+    player = _all_restricted(app, monkeypatch)
+    player.running = True  # the previous song
+    monkeypatch.setattr(app, "_advance_queue", lambda: pytest.fail("nothing to skip to"))
+    monkeypatch.setattr(app, "_flash_status", lambda _m: None)
+    app._timeline = [_track("1"), _track("42")]
+    app._cursor = 1
+    asyncio.run(app._do_play(app._timeline[1]))
+    assert player.running is False
 
 
 def test_resolve_stream_propagates_auth_expired(app):
