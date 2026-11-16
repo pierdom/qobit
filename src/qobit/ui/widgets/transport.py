@@ -9,6 +9,7 @@ from rich.text import Text
 from textual import events, work
 from textual.app import ComposeResult
 from textual.color import Color
+from textual.constants import DIM_FACTOR
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.message import Message
@@ -54,16 +55,33 @@ def album_line(track: Track) -> str:
     return track.album
 
 
-# The empty part of the bar. A line, not a shade (░): the leading edge's
-# partial block leaves the rest of its cell unpainted, and next to a line that
-# reads as the track; next to a shade it showed as a dark gap.
-_TRACK = "─"
+# The empty part of the bar: a dim light shade.
+_TRACK = "░"
+# The leading edge's partial block (▌…) leaves the rest of its cell bare, a
+# dark gap next to the shade. That part gets the colour the shade reads as
+# from a distance: `dim` blends the accent DIM_FACTOR of the way from the
+# background (Textual's, 0.66), and a light shade covers about a quarter of
+# the cell.
+SHADE_COVERAGE = 0.25
+TIP_TINT = DIM_FACTOR * SHADE_COVERAGE
+
+
+def _tip_background(app: object, accent: str) -> str | None:
+    """The tip cell's background (see TIP_TINT), or None where the colour
+    behind it isn't known (theme background off: the terminal's) or can't be
+    blended (ANSI themes)."""
+    if getattr(app, "_transparent", False):
+        return None
+    background = getattr(app, "theme_variables", {}).get("background", "")  # no fallback
+    if not (accent.startswith("#") and background.startswith("#")):
+        return None
+    return Color.parse(background).blend(Color.parse(accent), TIP_TINT).hex
 
 
 def _progress_bar(app: object, width: int, position: float, duration: float) -> Text:
     """The progress bar: filled cells in the theme's bar colours (a gradient
     when ``qobit-bar-start`` and ``-end`` differ, as in cyberdeck), the edge
-    to an eighth of a cell, the rest a dim line. Rich Text doesn't resolve
+    to an eighth of a cell, the rest a dim shade. Rich Text doesn't resolve
     Textual's $variables, so the colours are the theme's actual values."""
     accent = theme_color(app, "accent")
     colours = _gradient(theme_color(app, BAR_START), theme_color(app, BAR_END), width)
@@ -73,7 +91,9 @@ def _progress_bar(app: object, width: int, position: float, duration: float) -> 
     for i in range(full):
         bar.append("█", style=colours[i])
     if eighth and full < width:
-        bar.append(_EIGHTHS[eighth], style=colours[full])
+        tip_bg = _tip_background(app, accent)
+        tip = f"{colours[full]} on {tip_bg}" if tip_bg else colours[full]
+        bar.append(_EIGHTHS[eighth], style=tip)
         full += 1
     bar.append(_TRACK * (width - full), style=f"dim {accent}".strip())
     return bar

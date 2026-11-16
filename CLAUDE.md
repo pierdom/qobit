@@ -290,9 +290,12 @@ whenever a track is loaded (`-has-track`), not only while playing.
   themes stay static) on its own ~12 fps timer, paused otherwise; the phase
   comes from `time.monotonic()` so every page's copy is in step. Textual's
   `Content ==` compares text only: tests compare `.spans`.
-- The progress bar's empty part is `─` (`transport._TRACK`), not `░`: the
-  leading edge's partial block leaves its cell's remainder unpainted, which
-  next to a shade read as a dark gap.
+- The progress bar's tip (the partial block) gets a background
+  (`_tip_background`: theme background + `TIP_TINT` of the accent, the
+  colour the dim `░` track reads as: Textual's `DIM_FACTOR` × the shade's
+  ~25% coverage; measured on rendered cells, `dim` is not 50%) so its bare part isn't a dark gap. Not
+  with the theme background off (the terminal's colour is unknown) or on
+  ANSI themes. A `─` track was tried and rejected for its look.
 
 **Status line.** `status_msg` is the transport's `artist — title` line; use
 `_flash_status()` for transient notices (auto-clears after ~3 s).

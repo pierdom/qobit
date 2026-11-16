@@ -19,7 +19,7 @@ from qobit.ui.nav import (
     wordmark_palette,
 )
 from qobit.ui.themes import BAR_END, BAR_START, QOBIT_THEMES, qobit_variable_defaults
-from qobit.ui.widgets.transport import _TRACK, _progress_bar, album_line
+from qobit.ui.widgets.transport import _TRACK, TIP_TINT, _progress_bar, album_line
 
 
 def _track(**kw) -> Track:
@@ -90,16 +90,38 @@ def _app_with(variables: dict[str, str]) -> SimpleNamespace:
 _BAR_VARS = {"accent": "#00ffff", BAR_START: "#00ffff", BAR_END: "#ff00ff"}
 
 
-def test_bar_track_is_a_line():
+def test_bar_track_is_a_shade():
     bar = _progress_bar(_app_with(_BAR_VARS), 10, 0.0, 100.0)
-    assert bar.plain == _TRACK * 10
+    assert bar.plain == _TRACK * 10 == "░" * 10
 
 
-def test_bar_tip_is_followed_by_the_line():
-    # 10 cells, 45% → 4 full cells, a half-cell tip, then 5 cells of track.
-    bar = _progress_bar(_app_with(_BAR_VARS), 10, 45.0, 100.0)
+def _tip_style(bar):
+    # 10 cells, 45%: 4 full cells, then the half-cell tip at index 4.
     assert bar.plain == "████▌" + _TRACK * 5
-    assert "░" not in bar.plain
+    return next(s.style for s in bar.spans if s.start <= 4 < s.end)
+
+
+def test_bar_tip_is_tinted_like_the_shade():
+    bar = _progress_bar(_app_with(_BAR_VARS | {"background": "#000000"}), 10, 45.0, 100.0)
+    style = str(_tip_style(bar))
+    tint = Color.parse("#000000").blend(Color.parse("#00ffff"), TIP_TINT).hex
+    assert style.endswith(f"on {tint}")
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"background": "#000000", "_transparent": True},  # terminal's colour: unknown
+        {"background": "ansi_default"},  # ANSI theme: no blending
+        {},  # no background known at all
+    ],
+)
+def test_bar_tip_untinted_where_the_background_is_unknown(extra):
+    transparent = extra.pop("_transparent", False)
+    app = _app_with(_BAR_VARS | extra)
+    app._transparent = transparent
+    style = str(_tip_style(_progress_bar(app, 10, 45.0, 100.0)))
+    assert " on " not in style
 
 
 def test_bar_full_and_unknown_duration():

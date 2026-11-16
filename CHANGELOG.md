@@ -18,8 +18,8 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 - While a track plays, the `◢◤ qobit` mark in the top right slowly cycles
   through the theme's progress-bar colours (the accent and HI-RES colours in
   themes whose bar is a single colour).
-- The empty part of the progress bar is a thin line instead of a shaded
-  track, so its moving tip no longer shows a dark gap.
+- The progress bar's moving tip no longer shows a dark gap: the unfilled
+  part of its cell takes the shaded track's colour.
 
 ### Fixed
 
