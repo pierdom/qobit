@@ -14,6 +14,7 @@ from textual.color import Color
 from qobit.qobuz.models import Album, Track
 from qobit.ui.nav import (
     WORDMARK_TEXT,
+    WORDMARK_UNITS,
     Wordmark,
     wordmark_colours,
     wordmark_palette,
@@ -162,7 +163,7 @@ def test_palette_is_none_for_ansi_themes():
 
 def test_colours_loop_seamlessly():
     a, b = Color.parse("#00ffff"), Color.parse("#ff00ff")
-    n = len(WORDMARK_TEXT)
+    n = len(WORDMARK_UNITS)
     assert wordmark_colours(a, b, 0.0, n) == wordmark_colours(a, b, 1.0, n)
     # At phase 0 the first letter is the start colour; half a loop on, the end.
     assert wordmark_colours(a, b, 0.0, n)[0] == a.hex
@@ -195,3 +196,24 @@ async def _wordmark_cycles(ui_app):
         await pilot.pause()
         assert mark._timer._active.is_set() is False
         assert mark.render().spans == static
+
+
+def test_the_mark_glyphs_share_one_colour(ui_app):
+    """◢◤ is one shape: cycled per character, the gradient split it."""
+    asyncio.run(_mark_one_colour(ui_app))
+
+
+async def _mark_one_colour(ui_app):
+    async with ui_app.run_test(size=(160, 40)) as pilot:
+        mark = ui_app.screen.query_one(Wordmark)
+        ui_app.now_playing = _track()
+        ui_app.is_playing = True
+        await pilot.pause()
+        for _ in range(5):
+            content = mark.render()
+            assert content.plain == WORDMARK_TEXT
+            styles = {str(s.style) for s in content.spans if s.start < 2}
+            assert len(styles) == 1
+            covered = [s for s in content.spans if s.start == 0]
+            assert covered and covered[0].end == 2
+            await pilot.pause(0.15)

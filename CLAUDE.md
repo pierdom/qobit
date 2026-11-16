@@ -286,7 +286,8 @@ whenever a track is loaded (`-has-track`), not only while playing.
 - `nav.Wordmark` sits on the Screen's `overlay` layer, docked right with height
   1, so it shares the tab bar's row; it hides below `Wordmark.MIN_WIDTH`.
   While playing (not paused) it cycles the progress bar's gradient along its
-  letters (`wordmark_palette`: bar start/end, else accent text ↔ HI-RES; ANSI
+  letters, `◢◤` as one unit (`WORDMARK_UNITS`; `wordmark_palette`: bar
+  start/end, else accent text ↔ HI-RES; ANSI
   themes stay static) on its own ~12 fps timer, paused otherwise; the phase
   comes from `time.monotonic()` so every page's copy is in step. Textual's
   `Content ==` compares text only: tests compare `.spans`.

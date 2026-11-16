@@ -156,6 +156,10 @@ def page_screens(app: QobitApp) -> list:
 # every CYCLE_SECS, and the word spans SPREAD of a loop, so it reads like the
 # progress bar's gradient sliding along the letters.
 WORDMARK_TEXT = "◢◤ qobit"
+# What takes one colour each: the mark's two glyphs are one shape and change
+# together (cycled per character, the gradient split them); the space has no
+# colour to show and is left out.
+WORDMARK_UNITS = ("◢◤", "q", "o", "b", "i", "t")
 CYCLE_SECS = 6.0
 SPREAD = 0.5
 _FRAME_SECS = 1 / 12
@@ -234,9 +238,13 @@ class Wordmark(Widget):
         if palette is None:
             return Content.assemble(("◢◤", "$qobit-accent-text"), (" qobit", "bold $qobit-muted"))
         phase = (time.monotonic() / CYCLE_SECS) % 1.0
-        colours = wordmark_colours(*palette, phase, len(WORDMARK_TEXT))
+        mark, *letters = zip(
+            WORDMARK_UNITS,
+            wordmark_colours(*palette, phase, len(WORDMARK_UNITS)),
+            strict=True,
+        )
         return Content.assemble(
-            *((ch, f"bold {c}") for ch, c in zip(WORDMARK_TEXT, colours, strict=True))
+            (mark[0], f"bold {mark[1]}"), " ", *((ch, f"bold {c}") for ch, c in letters)
         )
 
 
