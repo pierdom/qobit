@@ -30,8 +30,9 @@ src/qobit/
 │                        bit-perfect ones flagged and sorted first
 ├── audio/player.py      mpv subprocess + IPC, bit-perfect flags, _stop_gen
 ├── audio/verify.py      bit-perfect check: mpv IPC + (Linux) ALSA hw_params
-├── audio/media_keys.py  macOS Now Playing / Linux MPRIS2 (pydbus); degrades
+├── audio/media_keys.py  OS media keys: macOS Now Playing (pyobjc); degrades
 │                        silently without the optional deps
+├── audio/mpris.py       Linux MPRIS2 (dbus-fast) on its own loop + thread
 ├── connect/             Qobuz Connect renderer, UI-agnostic (no Textual):
 │                        wire.py framing, session.py join/keepalive/reconnect,
 │                        queue.py server-queue mirror, renderer.py state machine
@@ -345,9 +346,16 @@ computed styles: they misled three times):
 - Numbered lists show the number only; unnumbered ones show `♪`. Secondary
   lines use `  ·  `.
 
-**MPRIS2.** pydbus `publish()` fails unless every `<signal>` in the XML has a
-matching `signal()` attribute (`Seeked`, `PropertiesChanged`), and
-`MediaKeys.__init__` swallows the error.
+**MPRIS2** (`audio/mpris.py`, dbus-fast). The bus runs on its own asyncio
+loop in a daemon thread: the transport callbacks must arrive off the app's
+thread (the app wraps them in `call_from_thread`), and `update()` hands a
+`PlayerState` snapshot to the loop with `call_soon_threadsafe`; interface
+state is only touched there. Connecting never blocks startup; any failure
+leaves media keys off. A second qobit takes `org.mpris.MediaPlayer2.qobit.
+instance<pid>`. D-Bus signatures are `dbus_fast.annotations` types
+(`DBusStr`, …); with `from __future__ import annotations` a `@dbus_method`
+must not annotate `-> None` (read as the string "None": TypeError at import).
+`tests/test_mpris.py` runs a private `dbus-daemon`, never the session bus.
 
 ## Qobuz API
 

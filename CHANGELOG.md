@@ -7,6 +7,16 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Changed
+
+- **Nothing to compile on Linux.** Media keys and the desktop's now-playing
+  widget (MPRIS) now use dbus-fast instead of pydbus and PyGObject, so
+  installing qobit needs only mpv: no compiler, headers or `-dev` packages.
+  A second qobit running at the same time shows up as its own player
+  instead of having no media keys.
+
 ## [0.9.0] - 2026-11-16
 
 ### Added

@@ -18,14 +18,6 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
-      # PyGObject/pycairo (Linux media keys, MPRIS) ship no wheels and compile
-      # against these; without them `uv sync` fails before anything runs.
-      # Same list as the README's Debian/Ubuntu line (needs GLib >= 2.80).
-      - name: System packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config python3-dev libcairo2-dev libgirepository-2.0-dev
       - run: uv sync --group dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -44,11 +36,14 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
-      - name: System packages
+      # tests/test_mpris.py talks to a private dbus-daemon; without one those
+      # tests skip, so make sure it's there.
+      - name: dbus-daemon
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config python3-dev libcairo2-dev libgirepository-2.0-dev
+          command -v dbus-daemon || {
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends dbus-daemon
+          }
       - run: uv sync --group dev
       - run: uv run pytest -v

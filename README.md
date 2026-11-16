@@ -58,18 +58,17 @@ Requirements: a Qobuz subscription (Hi-Res for 24-bit), Python 3.11+,
 [uv](https://docs.astral.sh/uv/), [mpv](https://mpv.io/), and a terminal that
 supports the Kitty graphics protocol (see [Terminal](#terminal)).
 
-Install mpv and uv first. On Linux, the media-key support also builds against
-system headers:
+Install mpv and uv first:
 
 ```bash
 # macOS (Homebrew)
 brew install mpv uv
-# Debian / Ubuntu 24.04+
-sudo apt install mpv build-essential pkg-config python3-dev libcairo2-dev libgirepository-2.0-dev
-# Fedora 40+
-sudo dnf install mpv gcc pkgconf-pkg-config python3-devel cairo-devel cairo-gobject-devel gobject-introspection-devel
+# Debian / Ubuntu
+sudo apt install mpv
+# Fedora
+sudo dnf install mpv
 # Arch
-sudo pacman -S --needed mpv base-devel pkgconf cairo gobject-introspection
+sudo pacman -S mpv
 ```
 
 (On Linux, get uv from your package manager or the
