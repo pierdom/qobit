@@ -80,3 +80,27 @@ def test_hearts_follow_a_toggle(ui_app):
             assert calls == [("album", "a1", False), ("artist", "r1", False), ("album", "a1", True)]
 
     asyncio.run(run())
+
+
+def test_artist_header_bio_is_plain_text(ui_app):
+    """The artist page showed the API's HTML (<p>…) as text; the Now
+    Playing bio already stripped it."""
+    _stub(ui_app)
+    _favourites(ui_app, albums=False, artists=False)
+    bio = "<p>Trumpeter &amp; composer.<br/>Born in <b>Alton</b>, Illinois.</p>"
+    c = ui_app._client
+
+    async def artist(*_a, **_k):
+        return {**ARTIST, "biography": {"content": bio}}
+
+    c.get_artist_detail = artist
+
+    async def run():
+        async with ui_app.run_test(size=(130, 50)) as pilot:
+            _panel, header = await _open(ui_app, pilot, "page")
+            await pilot.pause(0.3)
+            text = str(header.query_one(".ah-bio", Label).content)
+            assert "<" not in text and "&amp;" not in text
+            assert text == "Trumpeter & composer. Born in Alton, Illinois."
+
+    asyncio.run(run())

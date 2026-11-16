@@ -29,6 +29,10 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
   panel); the art shrinks to fit, the artist header steps aside when there's
   no room for it, and on very short terminals the art goes and the
   tracklist splits into two columns.
+- Artist pages showed the biography's HTML (`<p>…`) as text; it's plain
+  text now, as in the Now Playing panel. Text from Qobuz HTML (bios,
+  album and playlist descriptions) no longer gets stray double spaces or a
+  space before punctuation where a tag was.
 
 ## [0.10.0] - 2026-11-16
 

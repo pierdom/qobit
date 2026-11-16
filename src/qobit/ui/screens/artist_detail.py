@@ -30,7 +30,7 @@ from .._now_playing import (
     plain_if_highlighted,
     playing_content,
 )
-from .._utils import readout
+from .._utils import readout, strip_html
 from ..nav import page_header
 from ..themes import HEART, theme_color
 from ..widgets.art import Art
@@ -1122,7 +1122,9 @@ class ArtistHeader(Widget):
         self._load_heart(artist.id)
         self.query_one(Art).placeholder = artist.name
         if artist.biography:
-            self.query_one(".ah-bio", Label).update(escape(artist.biography))
+            # API HTML (<p>, <br/>, entities) as plain text, like the Now
+            # Playing bio; then escaped, the Label takes markup.
+            self.query_one(".ah-bio", Label).update(escape(strip_html(artist.biography)))
         if artist.image_url:
             self._fetch_image(artist.image_url)
         if self._similar:

@@ -5,8 +5,17 @@ import re
 
 
 def strip_html(text: str) -> str:
-    """Strip HTML tags and decode HTML entities to plain text."""
-    return _html.unescape(re.sub(r"<[^>]+>", " ", text)).strip()
+    """Strip HTML tags and decode HTML entities to plain text. Block and
+    break tags (p, br, div, li) separate words with a space; inline ones
+    (b, i, a, span…) just go ("<b>Alton</b>, IL" read "Alton , IL").
+    Runs of spaces collapse to one; line breaks stay."""
+    spaced = _BLOCK_TAG.sub(" ", text)
+    plain = _html.unescape(_ANY_TAG.sub("", spaced))
+    return re.sub(r"[ \t]+", " ", plain).strip()
+
+
+_BLOCK_TAG = re.compile(r"</?(?:p|br|div|li|ul|ol|h[1-6]|tr|td|blockquote)\b[^>]*>", re.I)
+_ANY_TAG = re.compile(r"<[^>]+>")
 
 
 # Shared "art + metadata header" layout used by both AlbumDetailPanel
