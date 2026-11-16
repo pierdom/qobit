@@ -68,6 +68,13 @@ release from this entry.
 
 ### Fixed
 
+- A selected row, card or menu option is readable in every theme. Its text
+  was the accent on an accent tint, unreadable in most of Textual's themes
+  and every light one, and in ANSI themes (`ansi-dark`) the same colour as
+  its background. qobit now picks the selection's text colour per theme by
+  measuring contrast (ANSI themes use their own cursor colours), and
+  everything on a selection, hearts and HI-RES included, takes it. The
+  playing row, hearts and HI-RES also stay readable on light themes.
 - Backgrounds are consistent: no page section paints one (the album and
   artist headers, the footer, the search box, scrollbar tracks and cover
   placeholders did, some only with the theme background on, some even with

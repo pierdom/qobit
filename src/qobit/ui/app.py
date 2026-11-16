@@ -12,14 +12,13 @@ from rich.style import Style as _RichStyle
 from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.color import Color
 from textual.command import Hit, Hits, Provider
 from textual.css.query import NoMatches
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import ContentSwitcher, Footer, Label, ListView, Tab, Tabs
+from textual.widgets import ContentSwitcher, Footer, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
 from ..audio.media_keys import MediaKeys
@@ -55,7 +54,7 @@ from .screens.playlists import PlaylistsView
 from .screens.queue import QueueView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
-from .themes import BAR_END, BAR_START, CYBERDECK_THEME, HEART, HIRES, QOBIT_THEMES, READOUT, SELECT
+from .themes import CYBERDECK_THEME, QOBIT_THEMES, qobit_variable_defaults
 from .widgets.transport import TransportBar
 
 
@@ -231,23 +230,25 @@ class QobitApp(App[None]):
        cleared here. */
     Footer, Footer > *, Input { background: transparent; }
 
-    /* List highlight: the accent tint, like the grid cards' selection.
-       Textual 8 marks the row with `-highlight` (it was `--highlight` in
-       older Textual; a rule on the old name silently stopped matching and
-       every list fell back to Textual's solid primary-colour cursor).
-       Focused list: full tint. Unfocused list: a faint tint, so the Search
-       tab's three lists don't all look selected. Labels go transparent so
-       the row's tint shows behind the text under Screen.-transparent too
-       (same fix as .grid-card). */
+    /* List highlight. Textual 8 marks the row with `-highlight` (it was
+       `--highlight` in older Textual; a rule on the old name silently
+       stopped matching). Focused list: the selection, every label in the
+       selection's text colour (themes.qobit_variable_defaults measures the
+       pair per theme; the row drops its own span colours while highlighted,
+       see _now_playing.plain_if_highlighted). Unfocused list: a faint tint
+       and the row's normal colours, so the Search tab's three lists don't
+       all look selected. Labels go transparent so the row's fill shows
+       behind the text under Screen.-transparent too (same fix as .grid-card). */
     ListView > ListItem.-highlight {
-        color: $foreground;
-        background: $accent 12%;
+        background: $qobit-select-dim;
         text-style: none;
     }
     ListView:focus > ListItem.-highlight {
-        color: $foreground;
         background: $qobit-select;
         text-style: none;
+    }
+    ListView:focus > ListItem.-highlight Label {
+        color: $qobit-select-text;
     }
     ListItem.-highlight > Label {
         background: transparent;
@@ -277,9 +278,6 @@ class QobitApp(App[None]):
     Footer {
         scrollbar-size-horizontal: 0;
     }
-    Label.-hl {
-        color: $accent;
-    }
     /* Grid card selection — one style for every library grid tile
        (AlbumCard / ArtistCard / PlaylistCard all carry .grid-card), matching
        a highlighted list row: accent tint + accent text, primary line bold.
@@ -306,11 +304,12 @@ class QobitApp(App[None]):
         background: transparent;
     }
     .grid-card.-selected .card-primary {
-        color: $accent;
+        color: $qobit-select-text;
         text-style: bold;
     }
-    .grid-card.-selected .card-secondary {
-        color: $accent;
+    .grid-card.-selected .card-secondary,
+    .grid-card.-selected TGPImage {
+        color: $qobit-select-text;
     }
     /* Selection/status backgrounds that must survive transparency mode.
        Textual gives this App.CSS stylesheet an unconditional priority layer
@@ -331,7 +330,7 @@ class QobitApp(App[None]):
         background: transparent;
     }
     Screen.-transparent TimelineRow.-now {
-        background: $accent 8%;
+        background: $qobit-now;
     }
     /* ...and their labels see-through, or `Screen.-transparent *` paints them
        ansi_default and the tint shows only in the 1-col padding at each end
@@ -533,20 +532,10 @@ class QobitApp(App[None]):
         prune_disk_cache()
 
     def get_theme_variable_defaults(self) -> dict[str, str]:
-        """qobit's theme variables (themes.py) for themes that don't set
-        them, Textual's built-ins included: a flat accent bar, HI-RES in the
-        warning colour (amber in most; their $secondary is often too dark to
-        read). Computed from the current theme on every switch."""
-        theme = self.current_theme
-        accent = theme.accent or theme.primary
-        return {
-            BAR_START: accent,
-            BAR_END: accent,
-            HIRES: theme.warning or accent,
-            HEART: accent,
-            READOUT: accent,
-            SELECT: Color.parse(accent).with_alpha(0.35).hex,  # rows and grid cards
-        }
+        """qobit's theme variables (themes.py) for themes that don't set them,
+        Textual's built-ins included, computed from the current theme on every
+        switch (selection and accent-text colours checked for contrast)."""
+        return qobit_variable_defaults(self.current_theme)
 
     def watch_theme(self, theme: str) -> None:
         if getattr(self, "_theme_ready", False):
@@ -685,22 +674,6 @@ class QobitApp(App[None]):
 
     def action_focus_tabs(self) -> None:
         self.query_one("#nav-tabs", Tabs).focus()
-
-    _hl_item: object = None
-
-    @on(ListView.Highlighted)
-    def _on_list_highlighted(self, event: ListView.Highlighted) -> None:
-        # Only touch the previously highlighted row, not every row in the list —
-        # a full query(Label) over a long list on each arrow press is what made
-        # the track list feel laggy.
-        prev = self._hl_item
-        if prev is not None and prev is not event.item:
-            for label in prev.query(Label):
-                label.remove_class("-hl")
-        if event.item:
-            for label in event.item.query(Label):
-                label.add_class("-hl")
-        self._hl_item = event.item
 
     def _focus_search_input(self) -> None:
         with contextlib.suppress(Exception):

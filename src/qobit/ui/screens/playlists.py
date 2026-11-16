@@ -18,7 +18,13 @@ from ...qobuz.models import Playlist
 from .._images import fetch_image
 from .._utils import readout, status_line
 from ..widgets.art import Art
-from .artist_detail import GRID_CARD_IMG_H, LIBRARY_TILE_MIN_W, _GridNav, _set_art_width
+from .artist_detail import (
+    GRID_CARD_IMG_H,
+    LIBRARY_TILE_MIN_W,
+    _GridNav,
+    _set_art_width,
+    select_card,
+)
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -96,22 +102,18 @@ class PlaylistCard(Widget):
         yield Art(self._playlist.name)
         with Vertical(classes="card-info"):
             yield Label(escape(self._playlist.name), classes="card-name card-primary", markup=True)
+            # Plain text: the CSS gives the muted colour, or the selection's
+            # text colour when selected ([dim] markup halved it there).
             yield Label(
-                f"[dim]by[/dim] {escape(self._playlist.owner)}",
-                classes="card-owner card-secondary",
-                markup=True,
+                f"by {self._playlist.owner}", classes="card-owner card-secondary", markup=False
             )
             dur = self._playlist.duration_str
             meta = f"{self._playlist.tracks_count} tracks"
             if dur:
                 meta += f"  ·  {dur}"
-            yield Label(
-                f"[dim]{escape(meta)}[/dim]", classes="card-meta card-secondary", markup=True
-            )
+            yield Label(meta, classes="card-meta card-secondary", markup=False)
             date = self._playlist.date_str
-            yield Label(
-                f"[dim]{escape(date)}[/dim]", classes="card-date card-secondary", markup=True
-            )
+            yield Label(date, classes="card-date card-secondary", markup=False)
 
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
@@ -188,9 +190,9 @@ class PlaylistGrid(_GridNav, ScrollableContainer):
         if not cards or idx < 0 or idx >= len(cards):
             return
         if self._cursor >= 0 and self._cursor < len(cards):
-            cards[self._cursor].remove_class("-selected")
+            select_card(cards[self._cursor], False)
         self._cursor = idx
-        cards[idx].add_class("-selected")
+        select_card(cards[idx], True)
         if top:
             cards[idx].scroll_visible(animate=False, top=True)
         else:

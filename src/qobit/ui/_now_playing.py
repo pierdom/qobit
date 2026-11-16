@@ -94,8 +94,16 @@ def playing_content(
     """
     if is_playing:
         icon = playing_icon(width, is_paused)
-        return Content.assemble((gutter(icon, width) + text, "$accent"), *suffix)
+        return Content.assemble((gutter(icon, width) + text, "$qobit-accent-text"), *suffix)
     return Content.assemble(gutter(lead, width) + text, *suffix)
+
+
+def plain_if_highlighted(row: object, content: Content) -> Content:
+    """A row's title while it's highlighted: its text without span colours
+    (♥, the playing ▶ and text, HI-RES), so it all takes the selection's text
+    colour. Span colours would ignore the selection and could match it (in
+    ANSI themes the accent text sat on an accent background)."""
+    return Content(content.plain) if getattr(row, "highlighted", False) else content
 
 
 def heart_suffix(favorite: bool, pad: str = "  ") -> tuple[str, str] | str:
@@ -126,7 +134,12 @@ class NowPlayingRowMixin:
 
     def _refresh_primary(self) -> None:
         with contextlib.suppress(NoMatches):
-            self.query_one(".row-title", Label).update(self._primary())  # type: ignore[attr-defined]
+            title = plain_if_highlighted(self, self._primary())  # type: ignore[attr-defined]
+            self.query_one(".row-title", Label).update(title)
+
+    def watch_highlighted(self, value: bool) -> None:
+        super().watch_highlighted(value)  # type: ignore[misc]  # ListItem: -highlight class
+        self._refresh_primary()
 
 
 class NowPlayingViewMixin:

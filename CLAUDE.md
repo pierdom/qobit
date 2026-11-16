@@ -301,9 +301,20 @@ computed styles: they misled three times):
   `transparent`), or it shows in one mode only. Check with a background audit
   of rendered strips in both modes, not by reading CSS.
 - Lists are `background: transparent` (Textual's `$surface` boxes them).
-- List highlight targets Textual 8's `-highlight` class: `$accent 35%` focused,
-  `12%` unfocused, labels transparent. Grid cards share `.grid-card` in
-  `QobitApp.CSS`; never add per-card `.-selected` rules.
+- Selection colours are measured per theme, never assumed:
+  `themes.qobit_variable_defaults` computes `qobit-select` / `-select-text`
+  (first of accent, foreground, black/white at 4.5:1 on the selection),
+  `-select-dim` (unfocused, 10%), `-now` (the playing row's tint) and
+  `-accent-text` (accent moved just enough to read on the page and the
+  tint). ANSI themes can't blend: they get Textual's block-cursor pair and
+  no tints. All text on a selection takes `$qobit-select-text`: a
+  highlighted row's title drops its span colours (`plain_if_highlighted`,
+  rows' `watch_highlighted`), selected cards too (`select_card()` →
+  `refresh_selected()`); no `dim` style on card text (CSS gives the muted
+  colour). The list highlight targets Textual 8's `-highlight` class. Grid
+  cards share `.grid-card` in `QobitApp.CSS`; never add per-card
+  `.-selected` rules. `tests/test_themes.py` holds every theme, Textual's
+  included, to 4.5:1.
 - Never give a Label the classes `primary`, `secondary`, `accent`, `success`,
   `warning` or `error` (Textual 8 Label variants). Rows use `row-title` /
   `row-meta`.

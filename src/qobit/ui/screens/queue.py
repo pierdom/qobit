@@ -24,6 +24,7 @@ from .._now_playing import (
     GUTTER_NUM,
     heart_suffix,
     meta_indent,
+    plain_if_highlighted,
     playing_content,
     playing_icon,
     track_live,
@@ -119,9 +120,11 @@ class TimelineRow(ListItem):
     TimelineRow.-next .row-meta { color: $text-muted; }
     TimelineRow.-history .row-title { color: $text-muted; }
     TimelineRow.-history .row-meta { color: $text-muted 60%; }
-    TimelineRow.-now { background: $accent 8%; }
-    TimelineRow.-now .row-title { text-style: bold; color: $accent; }
-    TimelineRow.-now .row-meta { color: $accent 70%; }  /* 60% was 4.2:1 in Ayu */
+    /* Accent text in its readable variant ($qobit-accent-text: darker in a
+       light theme), on a tint that's none in ANSI themes (they can't blend). */
+    TimelineRow.-now { background: $qobit-now; }
+    TimelineRow.-now .row-title { text-style: bold; color: $qobit-accent-text; }
+    TimelineRow.-now .row-meta { color: $qobit-accent-text; }
     """
 
     role: Role | None = None  # set by the first configure()
@@ -179,7 +182,12 @@ class TimelineRow(ListItem):
 
     def _refresh_title(self) -> None:
         with contextlib.suppress(NoMatches):
-            self.query_one(".row-title", Label).update(self._primary())
+            self.query_one(".row-title", Label).update(plain_if_highlighted(self, self._primary()))
+
+    def watch_highlighted(self, value: bool) -> None:
+        super().watch_highlighted(value)  # ListItem: the -highlight class
+        if self.role is not None:
+            self._refresh_title()
 
     def compose(self) -> ComposeResult:
         yield Label(self._primary(), classes="row-title")

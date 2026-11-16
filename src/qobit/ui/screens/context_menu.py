@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import contextlib
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.content import Content
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
+from .._now_playing import plain_if_highlighted
 from .search import ICON_ALBUM, ICON_ARTIST
 
 # (action id, icon, label). Icons are all single-width, monochrome BMP glyphs of
@@ -79,14 +83,21 @@ class MenuOption(ListItem):
         self._number = number
         self._label_w = label_w
 
-    def compose(self) -> ComposeResult:
-        yield Label(
-            Content.assemble(
-                (f"{self._icon}   ", "$accent"),
-                f"{self._label:<{self._label_w}}",
-                (str(self._number), "$text-muted"),
-            )
+    def _content(self) -> Content:
+        content = Content.assemble(
+            (f"{self._icon}   ", "$accent"),
+            f"{self._label:<{self._label_w}}",
+            (str(self._number), "$text-muted"),
         )
+        return plain_if_highlighted(self, content)
+
+    def compose(self) -> ComposeResult:
+        yield Label(self._content())
+
+    def watch_highlighted(self, value: bool) -> None:
+        super().watch_highlighted(value)
+        with contextlib.suppress(NoMatches):
+            self.query_one(Label).update(self._content())
 
 
 class ContextMenu(ModalScreen[str | None]):

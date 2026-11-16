@@ -29,7 +29,13 @@ def initials(text: str) -> str:
 
 
 class Art(TGPImage, Renderable=TGPRenderable):
-    """Cover art; a ░ tile with ``placeholder``'s initials until it loads."""
+    """Cover art; a ░ tile with ``placeholder``'s initials until it loads.
+    The initials take the widget's CSS colour (the accent; the selection's
+    text colour on a selected card)."""
+
+    DEFAULT_CSS = """
+    Art { color: $accent; }
+    """
 
     def __init__(self, placeholder: str = "", **kwargs: object) -> None:
         super().__init__(**kwargs)  # type: ignore[arg-type]
@@ -56,7 +62,7 @@ class Art(TGPImage, Renderable=TGPRenderable):
         # Glyphs only, no background (qobit's sections paint none, and this
         # stays the same with the theme background off): a ░ texture in the
         # panel colour, the initials in the accent.
-        texture, letters = "$panel-lighten-2", "bold $accent"
+        texture, letters = "$panel-lighten-2", "bold"
         lines: list[Content] = []
         for y in range(height):
             if y == middle and mark:

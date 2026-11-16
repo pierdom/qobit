@@ -72,6 +72,10 @@ class MixCard(Widget, can_focus=True):
     MixCard .mix-name { text-style: bold; height: 2; }
     MixCard.-selected .mix-name { color: $accent; }
     MixCard:focus { border: round $accent; background: $qobit-select; }
+    /* After .-selected .mix-name (same specificity: the later rule wins). */
+    MixCard:focus .mix-name, MixCard:focus .mix-desc, MixCard:focus .mix-status {
+        color: $qobit-select-text;
+    }
     MixCard .mix-desc { color: $text-muted; height: 1; }
     MixCard .mix-status { color: $text-muted; height: 1; }
     """

@@ -27,6 +27,7 @@ from .._now_playing import (
     NowPlayingRowMixin,
     heart_suffix,
     meta_indent,
+    plain_if_highlighted,
     playing_content,
 )
 from .._utils import readout
@@ -51,6 +52,14 @@ GRID_CARD_IMG_H = 5
 # were mostly empty space: 2 and 4).
 LIBRARY_TILE_MIN_W = 32
 _TILE_MIN_W = 22
+
+
+def select_card(card: Widget, selected: bool) -> None:
+    """Mark a grid card (un)selected; cards with span colours (a heart, HI-RES)
+    redraw them plain while selected, in the selection's text colour."""
+    card.set_class(selected, "-selected")
+    if hasattr(card, "refresh_selected"):
+        card.refresh_selected()
 
 
 def is_hires_album(album: Album) -> bool:
@@ -413,11 +422,24 @@ class AlbumCard(Widget):
             yield Label(
                 escape(self._album.artist or ""), classes="card-artist card-secondary", markup=True
             )
-            year = str(self._album.year) if self._album.year else "—"
-            hires = (
-                ("  ·  ", ("HI-RES", "bold $qobit-hires")) if is_hires_album(self._album) else ()
-            )
-            yield Label(Content.assemble((year, "dim"), *hires), classes="card-year card-secondary")
+            yield Label(self._year_line(), classes="card-year card-secondary")
+
+    def _year_line(self) -> Content:
+        """``1997  ·  HI-RES``. Colour comes from the CSS (muted; the
+        selection's text colour when selected), so no `dim` here: on a
+        selected card it halved the contrast."""
+        year = str(self._album.year) if self._album.year else "—"
+        hires = ("  ·  ", ("HI-RES", "bold $qobit-hires")) if is_hires_album(self._album) else ()
+        return plain_if_highlighted(self, Content.assemble(year, *hires))
+
+    @property
+    def highlighted(self) -> bool:
+        """Selected in its grid (for plain_if_highlighted)."""
+        return self.has_class("-selected")
+
+    def refresh_selected(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.query_one(".card-year", Label).update(self._year_line())
 
     def on_mount(self) -> None:
         img_h = GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H
@@ -682,9 +704,9 @@ class AlbumGrid(_GridNav, ScrollableContainer):
         if not cards or idx < 0 or idx >= len(cards):
             return
         if self._cursor >= 0 and self._cursor < len(cards):
-            cards[self._cursor].remove_class("-selected")
+            select_card(cards[self._cursor], False)
         self._cursor = idx
-        cards[idx].add_class("-selected")
+        select_card(cards[idx], True)
         if top:
             cards[idx].scroll_visible(animate=False, top=True)
         else:
@@ -742,7 +764,17 @@ class ArtistCard(Widget):
             self.query_one(".card-name", Label).update(self._label())
 
     def _label(self) -> Content:
-        return Content.assemble(self._artist.name, heart_suffix(self._followed))
+        content = Content.assemble(self._artist.name, heart_suffix(self._followed))
+        return plain_if_highlighted(self, content)
+
+    @property
+    def highlighted(self) -> bool:
+        """Selected in its grid (for plain_if_highlighted)."""
+        return self.has_class("-selected")
+
+    def refresh_selected(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.query_one(".card-name", Label).update(self._label())
 
     @property
     def artist(self) -> Artist:
@@ -857,9 +889,9 @@ class ArtistGrid(_GridNav, ScrollableContainer):
         if not cards or idx < 0 or idx >= len(cards):
             return
         if self._cursor >= 0 and self._cursor < len(cards):
-            cards[self._cursor].remove_class("-selected")
+            select_card(cards[self._cursor], False)
         self._cursor = idx
-        cards[idx].add_class("-selected")
+        select_card(cards[idx], True)
         if top:
             cards[idx].scroll_visible(animate=False, top=True)
         else:
