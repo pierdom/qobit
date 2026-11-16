@@ -76,6 +76,22 @@ it shows "Not streamable (preview only)" and skips to the next track.
 
 `qobit play` checks the output: after the track starts, it reads mpv's actual
 output format over IPC, compares it with the stream, and prints
-`✓ 24/192 bit-perfect` when they match. The TUI doesn't run this check. It shows
-the stream's format on the transport bar (`[ 24-BIT · 192 kHz ]`), and Qobuz
-Connect reports the same format to the apps.
+`✓ 24/192 bit-perfect` when they match.
+
+The TUI runs a fuller check a couple of seconds into every track and shows the
+verdict on the transport bar and the Now Playing panel:
+
+| Lamp | Meaning |
+|------|---------|
+| `◉ BIT-PERFECT` | mpv outputs the file's rate and bit depth, and (Linux) the DAC runs at them too |
+| `◌ RESAMPLED 96 → 48 kHz` | mpv, or the sound server behind it, changes the sample rate |
+| `◌ REDUCED 24 → 16-BIT` | fewer bits reach the output than the file has |
+| `◌ SOFTWARE VOLUME 80%` | software volume is on and below 100%: that's DSP |
+
+On Linux the DAC side comes from `/proc/asound/card*/pcm*p/sub*/hw_params`, the
+rate and format the hardware is actually opened at. That catches PipeWire
+resampling when its graph didn't follow the track's rate (see the
+`allowed-rates` drop-in above), which mpv alone can't see. If several devices
+are playing at once, or on macOS, the lamp goes by mpv alone. No lamp means the
+check couldn't run (mpv didn't answer). Qobuz Connect reports the stream's
+format to the apps.

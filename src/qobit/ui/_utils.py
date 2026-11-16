@@ -29,7 +29,6 @@ DETAIL_HEADER_CSS = """
     height: 16;
     layout: horizontal;
     padding: 1 2;
-    background: $boost;
 }
 .detail-art {
     width: 16;
@@ -41,10 +40,29 @@ DETAIL_HEADER_CSS = """
    overflowing to the right (the description in particular). */
 .detail-meta Label { width: 1fr; }
 .detail-title { height: auto; text-style: bold; }
-.detail-sub   { height: auto; color: $text-muted; margin-top: 1; }
-.detail-desc  { height: auto; color: $text-muted; margin-top: 1; }
+.detail-sub   { height: auto; color: $qobit-muted; margin-top: 1; }
+.detail-desc  { height: auto; color: $qobit-muted; margin-top: 1; }
 .detail-tracklist {
     height: 1fr;
     border-top: round $accent 40%;
 }
 """
+
+
+def status_line(text: str, *, error: bool = False, id: str | None = None):  # -> Label
+    """The one look for an empty or failed list/grid: a muted line (``$error``
+    for failures; styled in QobitApp.CSS). Plain text, never markup: an
+    exception message or a search query may contain ``[``."""
+    from textual.widgets import Label
+
+    return Label(
+        text, classes="status-line -error" if error else "status-line", id=id, markup=False
+    )
+
+
+def readout(text: str) -> str:
+    """A panel title in qobit's readout style: uppercase, like the queue's
+    ``── UP NEXT ──`` dividers and the transport's ``[ ▶ PLAYING ]``. Keeps
+    the length (a letter whose uppercase is longer, like ß, stays as is):
+    clickable titles map a click to a name by its position."""
+    return "".join(u if len(u := c.upper()) == 1 else c for c in text)

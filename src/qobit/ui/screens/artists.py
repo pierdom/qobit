@@ -8,9 +8,11 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.timer import Timer
 from textual.widget import Widget
-from textual.widgets import ContentSwitcher, Label
+from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
+from .._utils import readout, status_line
+from ..nav import Breadcrumb
 from .album_detail import AlbumDetailPanel
 from .artist_detail import (
     LIBRARY_TILE_MIN_W,
@@ -51,26 +53,16 @@ class ArtistsView(Widget):
         height: 1fr;
         grid-rows: 5;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
         padding: 0 1 0 1;
     }
     ArtistsView ArtistGrid:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
-    }
-    ArtistsView #artist-breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-    ArtistsView #artist-breadcrumb:hover {
-        color: $text;
-        background: $panel;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     ArtistsView #artist-detail-view { height: 1fr; }
     ArtistsView #artist-content-switcher { height: 1fr; }
@@ -78,23 +70,13 @@ class ArtistsView(Widget):
         height: 1fr;
         grid-rows: 4;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
         padding: 0 1 0 1;
     }
     ArtistsView #artist-albums-grid:focus {
         border: round $accent;
-        border-title-color: $accent;
-    }
-    ArtistsView #album-breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-    ArtistsView #album-breadcrumb:hover {
-        color: $text;
-        background: $panel;
+        border-title-color: $qobit-accent-text;
     }
     """
 
@@ -119,7 +101,7 @@ class ArtistsView(Widget):
             with Vertical(id="artists-grid-view"):
                 yield ArtistGrid(id="fav-artists-grid", tile_min_width=LIBRARY_TILE_MIN_W)
             with Vertical(id="artist-detail-view"):
-                yield Label("← Favourite Artists", id="artist-breadcrumb")
+                yield Breadcrumb()
                 yield ArtistHeader(similar=True)
                 with ContentSwitcher(
                     initial="artist-tracks-albums-view", id="artist-content-switcher"
@@ -128,11 +110,10 @@ class ArtistsView(Widget):
                         yield ArtistTracks()
                         yield ArtistReleases("artist-albums-grid")
                     with Vertical(id="artist-album-detail-view"):
-                        yield Label("", id="album-breadcrumb")
                         yield AlbumDetailPanel(id="album-panel")
 
     def on_mount(self) -> None:
-        self.query_one("#fav-artists-grid", ArtistGrid).border_title = "Favourite Artists"
+        self.query_one("#fav-artists-grid", ArtistGrid).border_title = readout("Favourite Artists")
         self._update_subtitle()
 
     @property
@@ -140,13 +121,21 @@ class ArtistsView(Widget):
         """The open artist (detail or one of their albums), for the ``i`` menu."""
         return self._current_artist if self._view != "grid" else None
 
-    @property
-    def page_title(self) -> str | None:
-        """Breadcrumb text for a page opened from this tab (``None``: the tab name)."""
+    def nav_levels(self) -> list[str]:
+        """Levels below the tab, for the breadcrumb trail (see nav.py)."""
+        if self._view == "grid":
+            return []
+        levels = [self._current_artist.name if self._current_artist else "Artist"]
         if self._view == "album":
             album = self.query_one("#album-panel", AlbumDetailPanel).album
-            return album.title if album else None
-        return self.page_artist.name if self.page_artist else None
+            levels.append(album.title if album else "Album")
+        return levels
+
+    def nav_to(self, depth: int) -> None:
+        if depth == 0 and self._view != "grid":
+            self._show_grid()
+        elif depth == 1 and self._view == "album":
+            self._show_artist_content()
 
     def activate(self) -> None:
         """Called by QobitApp when this tab becomes active: first load, focus."""
@@ -163,6 +152,15 @@ class ArtistsView(Widget):
             self.call_after_refresh(self.query_one("#fav-artists-grid", ArtistGrid).focus)
 
     # ── filter ───────────────────────────────────────────────────────────────
+
+    def can_navigate_back(self) -> bool:
+        return self._view != "grid" or self._filter_active or bool(self._filter_query)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        # Sort and filter act on the grid: hide them on an artist or album page.
+        if action in ("cycle_sort", "toggle_reverse", "start_filter"):
+            return self._view == "grid"
+        return True
 
     def action_navigate_back(self) -> bool:
         if self._view == "album":
@@ -184,6 +182,7 @@ class ArtistsView(Widget):
             return
         self._filter_active = True
         self._update_subtitle()
+        self.refresh_bindings()
 
     def on_key(self, event: events.Key) -> None:
         if not self._filter_active or self._view != "grid":
@@ -263,7 +262,7 @@ class ArtistsView(Widget):
     def _set_empty(self, grid: ArtistGrid, show: bool) -> None:
         existing = list(grid.query("#grid-empty"))
         if show and not existing:
-            grid.mount(Label("[dim]No matches.[/dim]", id="grid-empty", markup=True))
+            grid.mount(status_line("No matches.", id="grid-empty"))
         elif not show and existing:
             existing[0].remove()
 
@@ -285,7 +284,7 @@ class ArtistsView(Widget):
         if version != self._render_version:
             return
         if not artists:
-            await grid.mount(Label("[dim]No favourite artists yet.[/dim]", markup=True))
+            await grid.mount(status_line("No favourite artists yet."))
             return
         await grid.set_cards([ArtistCard(a) for a in artists])
         self._apply_filter()
@@ -294,10 +293,12 @@ class ArtistsView(Widget):
     async def _load(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
+        grid.border_subtitle = "loading…"
         try:
             self._artists = list(await app.ensure_favorite_artists())
         except Exception as e:
-            await grid.mount(Label(f"[red]{e}[/red]", markup=True))
+            grid.border_subtitle = ""
+            await grid.mount(status_line(str(e), error=True))
             return
         self._update_subtitle()
         self._render_grid()
@@ -330,6 +331,7 @@ class ArtistsView(Widget):
         self.query_one("#artists-switcher", ContentSwitcher).current = "artist-detail-view"
         self._view = "artist"
         self.call_after_refresh(grid.focus)
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
         self._load_artist_detail(artist.id)
         self.query_one(ArtistTracks).load(artist.id)
@@ -337,23 +339,24 @@ class ArtistsView(Widget):
     def _open_album(self, album: Album) -> None:
         panel = self.query_one("#album-panel", AlbumDetailPanel)
         panel.load(album)
-        artist_name = self._current_artist.name if self._current_artist else "Artist"
-        self.query_one("#album-breadcrumb", Label).update(f"← {artist_name}")
         inner_cs = self.query_one("#artist-content-switcher", ContentSwitcher)
         inner_cs.current = "artist-album-detail-view"
         self._view = "album"
         panel.focus_tracklist()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     def _show_artist_content(self) -> None:
         inner_cs = self.query_one("#artist-content-switcher", ContentSwitcher)
         inner_cs.current = "artist-tracks-albums-view"
         self._view = "artist"
         self.query_one("#artist-albums-grid", AlbumGrid).focus()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     def _show_grid(self) -> None:
         self.query_one("#artists-switcher", ContentSwitcher).current = "artists-grid-view"
         self._view = "grid"
         self.query_one("#fav-artists-grid", ArtistGrid).focus()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     @work(exclusive=True, group="_load_artist_detail")  # a newer request cancels a stale one
     async def _load_artist_detail(self, artist_id: str) -> None:
@@ -384,11 +387,3 @@ class ArtistsView(Widget):
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         app.play_track(event.track, queue=event.queue)
-
-    @on(events.Click, "#artist-breadcrumb")
-    def _on_artist_breadcrumb_click(self) -> None:
-        self._show_grid()
-
-    @on(events.Click, "#album-breadcrumb")
-    def _on_album_breadcrumb_click(self) -> None:
-        self._show_artist_content()

@@ -1,24 +1,109 @@
 from __future__ import annotations
 
 import contextlib
+import weakref
 
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.widgets import Label, ListView
 
+# Every track row is a fixed-width gutter, then the text: ``  ♪  title`` or
+# `` 12.  title``, with the second (meta) line indented to the text column.
+# The gutter holds the row's lead mark (♪, ↺ or its number) right-aligned in
+# ``width`` cells; on the playing row ▶/⏸ takes the lead's place, so nothing
+# shifts. Lists pick one width for all their rows so the columns line up.
+GUTTER_ICON = 1  # ♪ / ↺ lists
+GUTTER_NUM = 3  # numbered lists up to 99 (" 1." … "99.")
+GUTTER_NUM_LONG = 4  # playlists (up to "999.")
+_GUTTER_GAP = "  "
+
+
+def gutter(lead: str, width: int) -> str:
+    """The lead cell of a row: ``lead`` right-aligned in ``width``, then the gap."""
+    return f"{lead:>{width}}{_GUTTER_GAP}"
+
+
+def meta_indent(width: int) -> str:
+    """Indent for a row's second line, so it starts under the title text."""
+    return " " * (width + len(_GUTTER_GAP))
+
+
+# ── playing bars ─────────────────────────────────────────────────────────────
+# While a track plays, its row's ▶ becomes a small bar meter (▁▃▅) that the
+# app's beat timer animates. Decorative only: qobit never reads the audio.
+# Paused (or not started) shows ⏸ / ▶ as before.
+
+_LEVELS = "▁▂▃▄▅▆▇"
+# One loop per bar, out of phase, so the meter never pulses in unison.
+_BAR_LOOPS = (
+    (1, 3, 5, 6, 4, 2, 3, 5, 6, 4),
+    (5, 6, 3, 1, 2, 4, 6, 5, 2, 3),
+    (2, 1, 3, 5, 6, 5, 3, 1, 4, 6),
+)
+_beat = {"frame": 0, "live": False}  # set by tick(); read by every row
+_LIVE_ROWS: weakref.WeakSet = weakref.WeakSet()  # rows showing the meter
+
+
+def playing_icon(width: int, paused: bool) -> str:
+    """The playing row's lead: the bar meter (up to 3 bars, one per gutter
+    cell) while playback runs, else ⏸ paused / ▶ starting."""
+    if paused:
+        return "⏸"
+    if not _beat["live"]:
+        return "▶"
+    f = _beat["frame"]
+    n = max(1, min(width, len(_BAR_LOOPS)))
+    loops = _BAR_LOOPS[1:2] if n == 1 else _BAR_LOOPS[:n]
+    return "".join(_LEVELS[loop[f % len(loop)]] for loop in loops)
+
+
+def track_live(row: object, live: bool) -> None:
+    """Register (or drop) a row whose title shows the meter, for tick()."""
+    if live:
+        _LIVE_ROWS.add(row)
+    else:
+        _LIVE_ROWS.discard(row)
+
+
+def tick(playing: bool) -> None:
+    """The app's beat (a few times a second): advance the meter and redraw
+    the rows showing it. ``playing`` False freezes them on ▶/⏸."""
+    changed = playing != _beat["live"]
+    _beat["live"] = playing
+    if not playing and not changed:
+        return
+    _beat["frame"] += 1
+    for row in list(_LIVE_ROWS):
+        with contextlib.suppress(Exception):
+            row._refresh_primary()  # type: ignore[attr-defined]
+
 
 def playing_content(
-    text: str, is_playing: bool, is_paused: bool, *suffix: tuple[str, str] | str
+    lead: str,
+    text: str,
+    is_playing: bool,
+    is_paused: bool,
+    *suffix: tuple[str, str] | str,
+    width: int = GUTTER_ICON,
 ) -> Content:
-    """Assemble a Content for a track-row primary label.
+    """Assemble a track row's primary label: gutter + text + ``suffix`` parts.
 
-    When is_playing, prepends ▶/⏸ in accent colour and wraps text in accent.
-    suffix elements are forwarded to Content.assemble (e.g. a heart-icon tuple).
+    On the playing row the meter (or ⏸/▶) replaces ``lead`` in the gutter and
+    the text turns accent. ``suffix`` parts go to Content.assemble (e.g.
+    ``heart_suffix``).
     """
     if is_playing:
-        icon = "⏸" if is_paused else "▶"
-        return Content.assemble((f"{icon}  {text}", "$accent"), *suffix)
-    return Content.assemble(text, *suffix)
+        icon = playing_icon(width, is_paused)
+        return Content.assemble((gutter(icon, width) + text, "$qobit-accent-text"), *suffix)
+    return Content.assemble(gutter(lead, width) + text, *suffix)
+
+
+def plain_if_highlighted(row: object, content: Content) -> Content:
+    """A row's title while it's highlighted: its text without span colours
+    (♥, the playing ▶ and text, HI-RES), so it all takes the selection's text
+    colour. Span colours would ignore the selection and could match it (in
+    ANSI themes the accent text sat on an accent background)."""
+    return Content(content.plain) if getattr(row, "highlighted", False) else content
 
 
 def heart_suffix(favorite: bool, pad: str = "  ") -> tuple[str, str] | str:
@@ -26,7 +111,7 @@ def heart_suffix(favorite: bool, pad: str = "  ") -> tuple[str, str] | str:
     row appends to its primary label — "" when not favourited."""
     from .screens.search import ICON_FAV
 
-    return (f"{pad}{ICON_FAV}", "$accent") if favorite else ""
+    return (f"{pad}{ICON_FAV}", "$qobit-heart") if favorite else ""
 
 
 class NowPlayingRowMixin:
@@ -44,11 +129,17 @@ class NowPlayingRowMixin:
             return
         self._is_playing = playing
         self._is_paused = paused
+        track_live(self, playing)
         self._refresh_primary()
 
     def _refresh_primary(self) -> None:
         with contextlib.suppress(NoMatches):
-            self.query_one(".row-title", Label).update(self._primary())  # type: ignore[attr-defined]
+            title = plain_if_highlighted(self, self._primary())  # type: ignore[attr-defined]
+            self.query_one(".row-title", Label).update(title)
+
+    def watch_highlighted(self, value: bool) -> None:
+        super().watch_highlighted(value)  # type: ignore[misc]  # ListItem: -highlight class
+        self._refresh_primary()
 
 
 class NowPlayingViewMixin:
@@ -77,6 +168,14 @@ class NowPlayingViewMixin:
 
         # O(1): clear the previously-playing row via stored reference.
         prev = self._np_playing_row
+        # The cursor follows playback only if it was on the playing row (or
+        # nowhere): moving it on every track change lost your place while
+        # browsing a list that's playing.
+        follow = True
+        if self._np_list_sel is not None:
+            with contextlib.suppress(NoMatches):
+                lv = self.query_one(self._np_list_sel, ListView)  # type: ignore[attr-defined]
+                follow = lv.index is None or lv.highlighted_child is prev
         if prev is not None:
             with contextlib.suppress(Exception):
                 prev.set_playing(False)  # type: ignore[attr-defined]
@@ -97,7 +196,7 @@ class NowPlayingViewMixin:
                     if isinstance(row, self._np_row_cls) and row.track.id == now_id:
                         row.set_playing(True, paused=paused)
                         self._np_playing_row = row
-                        if idx < len(lv.children):
+                        if follow and idx < len(lv.children):
                             lv.index = idx
                         break
                 return

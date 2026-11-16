@@ -9,10 +9,11 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.timer import Timer
 from textual.widget import Widget
-from textual.widgets import ContentSwitcher, Label
+from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
-from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW
+from .._utils import HIDE_ARTIST_BELOW, SMALL_ART_BELOW, TWO_COL_BELOW, readout, status_line
+from ..nav import Breadcrumb
 from .album_detail import AlbumDetailPanel
 from .artist_detail import LIBRARY_TILE_MIN_W, AlbumCard, AlbumGrid, ArtistHeader
 
@@ -47,26 +48,16 @@ class AlbumsView(Widget):
         grid-rows: 5;  /* GRID_CARD_IMG_H */
         grid-gutter: 1 2;  /* same gaps as the Artists and Playlists grids */
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
         padding: 0 1 0 1;
     }
     AlbumsView AlbumGrid:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
-    }
-    AlbumsView #album-breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-    AlbumsView #album-breadcrumb:hover {
-        color: $text;
-        background: $panel;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     """
 
@@ -89,22 +80,25 @@ class AlbumsView(Widget):
             with Vertical(id="albums-grid-view"):
                 yield AlbumGrid(id="fav-albums-grid", tile_min_width=LIBRARY_TILE_MIN_W)
             with Vertical(id="albums-album-view"):
-                yield Label("← Favourite Albums", id="album-breadcrumb")
+                yield Breadcrumb()
                 yield ArtistHeader()
                 yield AlbumDetailPanel(id="album-panel")
 
     def on_mount(self) -> None:
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
-        grid.border_title = "Favourite Albums"
+        grid.border_title = readout("Favourite Albums")
         self._update_subtitle()
 
-    @property
-    def page_title(self) -> str | None:
-        """Breadcrumb text for a page opened from this tab (``None``: the tab name)."""
+    def nav_levels(self) -> list[str]:
+        """Levels below the tab, for the breadcrumb trail (see nav.py)."""
         if not self._album_view_active:
-            return None
+            return []
         album = self.query_one("#album-panel", AlbumDetailPanel).album
-        return album.title if album else None
+        return [album.title if album else "Album"]
+
+    def nav_to(self, depth: int) -> None:
+        if depth == 0 and self._album_view_active:
+            self._show_grid()
 
     def activate(self) -> None:
         """Called by QobitApp when this tab becomes active: first load, focus."""
@@ -132,6 +126,15 @@ class AlbumsView(Widget):
 
     # ── filter ───────────────────────────────────────────────────────────────
 
+    def can_navigate_back(self) -> bool:
+        return self._album_view_active or self._filter_active or bool(self._filter_query)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        # Sort and filter act on the grid: hide them while an album is open.
+        if action in ("cycle_sort", "toggle_reverse", "start_filter"):
+            return not self._album_view_active
+        return True
+
     def action_navigate_back(self) -> bool:
         if self._album_view_active:
             self._show_grid()
@@ -149,6 +152,7 @@ class AlbumsView(Widget):
             return
         self._filter_active = True
         self._update_subtitle()
+        self.refresh_bindings()
 
     def on_key(self, event: events.Key) -> None:
         if not self._filter_active or self._album_view_active:
@@ -239,7 +243,7 @@ class AlbumsView(Widget):
     def _set_empty(self, grid: AlbumGrid, show: bool) -> None:
         existing = list(grid.query("#grid-empty"))
         if show and not existing:
-            grid.mount(Label("[dim]No matches.[/dim]", id="grid-empty", markup=True))
+            grid.mount(status_line("No matches.", id="grid-empty"))
         elif not show and existing:
             existing[0].remove()
 
@@ -261,7 +265,7 @@ class AlbumsView(Widget):
         if version != self._render_version:
             return
         if not albums:
-            await grid.mount(Label("[dim]No favourite albums yet.[/dim]", markup=True))
+            await grid.mount(status_line("No favourite albums yet."))
             return
         await grid.set_cards([AlbumCard(a, show_artist=True) for a in albums])
         self._apply_filter()
@@ -270,10 +274,12 @@ class AlbumsView(Widget):
     async def _load(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
+        grid.border_subtitle = "loading…"
         try:
             self._albums = list(await app.ensure_favorite_albums())
         except Exception as e:
-            await grid.mount(Label(f"[red]{e}[/red]", markup=True))
+            grid.border_subtitle = ""
+            await grid.mount(status_line(str(e), error=True))
             return
         self._update_subtitle()
         self._render_grid()
@@ -317,11 +323,13 @@ class AlbumsView(Widget):
         self._album_view_active = True
         self._apply_responsive(self.size.height)
         panel.focus_tracklist()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     def _show_grid(self) -> None:
         self.query_one("#albums-switcher", ContentSwitcher).current = "albums-grid-view"
         self._album_view_active = False
         self.query_one("#fav-albums-grid", AlbumGrid).focus()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     @on(AlbumCard.Selected)
     def _on_album_selected(self, event: AlbumCard.Selected) -> None:
@@ -331,7 +339,3 @@ class AlbumsView(Widget):
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         app.play_track(event.track, queue=event.queue)
-
-    @on(events.Click, "#album-breadcrumb")
-    def _on_breadcrumb_click(self) -> None:
-        self._show_grid()

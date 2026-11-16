@@ -54,8 +54,11 @@ def test_menu_options_wrap_around():
 
     options = track_options(favorite=False)
 
+    class _App(App):
+        get_theme_variable_defaults = QobitApp.get_theme_variable_defaults  # qobit-* vars
+
     async def run():
-        app = App()
+        app = _App()
         async with app.run_test() as pilot:
             app.push_screen(ContextMenu("Title", "Artist", options))
             await pilot.pause()
@@ -77,6 +80,7 @@ def test_page_behind_a_menu_does_not_shift():
 
     class _App(App):
         CSS = QobitApp.CSS
+        get_theme_variable_defaults = QobitApp.get_theme_variable_defaults  # qobit-* vars
 
         def compose(self):
             yield Label("MARKER")
@@ -103,6 +107,7 @@ def test_images_behind_a_menu_keep_their_ids():
 
     class _App(App):
         CSS = QobitApp.CSS + " TGPImage { width: 10; height: 5; }"
+        get_theme_variable_defaults = QobitApp.get_theme_variable_defaults
 
         def compose(self):
             yield TGPImage(Image.new("RGB", (40, 40), "red"))

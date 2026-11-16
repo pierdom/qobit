@@ -18,11 +18,12 @@ from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import ContentSwitcher, Footer, Label, ListView, Tab, Tabs
+from textual.widgets import ContentSwitcher, Footer, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
 from ..audio.media_keys import MediaKeys
 from ..audio.player import MpvPlayer
+from ..audio.verify import Signal, check_signal
 from ..config import (
     get_audio_device,
     get_connect_enabled,
@@ -43,6 +44,8 @@ from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
+from ._now_playing import tick
+from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, Wordmark, page_screens, tab_label
 from .play_context import ConnectPlayContext, LocalPlayContext
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
@@ -51,7 +54,7 @@ from .screens.playlists import PlaylistsView
 from .screens.queue import QueueView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
-from .themes import CYBERDECK_THEME, QOBIT_THEMES
+from .themes import CYBERDECK_THEME, QOBIT_THEMES, qobit_variable_defaults
 from .widgets.transport import TransportBar
 
 
@@ -152,37 +155,14 @@ _QUEUE_SAVE_DELAY = 1.0  # debounce — queue_version bumps in bursts
 # One Connect device per machine (see connect.acquire_instance_lock).
 _CONNECT_LOCK_FILE = "connect.lock"
 
+# The playing rows' bar meter advances this often.
+_BEAT_SECS = 0.18
+
 # Most recently-played tracks kept in the session history (oldest dropped first).
 _HISTORY_MAX = 100
 # Pressing "previous" past this many seconds into a track restarts it; before
 # it, steps back to the previous track in history (standard media convention).
 _PREV_RESTART_THRESHOLD = 3.0
-
-# Top bar, left to right: (tab id, display name). The bar shows "[N] Name" and
-# the number keys follow this order — both are generated from this list. Ids are
-# internal and stable (the Playback tab keeps the id "queue" / QueueView); names
-# are display-only — never derive an id from a name.
-_TABS = [
-    ("queue", "Playback"),
-    ("tracks", "Tracks"),
-    ("artists", "Artists"),
-    ("albums", "Albums"),
-    ("playlists", "Playlists"),
-    ("mixes", "Mixes"),
-    ("search", "Search"),
-]
-
-
-def _tab_label(n: int, name: str, compact: bool) -> str:
-    return f"{n} {name}" if compact else f"[{n}] {name}"
-
-
-# Columns the full "[N] Name" bar needs: the bar's 1-col leading offset, then
-# each label plus Tab's 1-col padding on both sides (measured: 90). Narrower
-# terminals get the compact "N Name" labels instead of a clipped last tab.
-_TABBAR_FULL_WIDTH = 1 + sum(
-    len(_tab_label(n, name, False)) + 2 for n, (_, name) in enumerate(_TABS, 1)
-)
 
 
 class QobitApp(App[None]):
@@ -191,6 +171,8 @@ class QobitApp(App[None]):
     CSS = """
     Screen {
         layout: vertical;
+        /* overlay: the tab bar's wordmark (nav.Wordmark) shares its row. */
+        layers: default overlay;
         /* The whole app's horizontal inset lives here, not on individual
            children's margin. Textual's vertical-layout arrangement
            subtracts a margined child's *own* left+right margin from the
@@ -211,13 +193,15 @@ class QobitApp(App[None]):
          the image id. Tinting the page behind a modal changed those colours,
          and every image vanished while the menu was open. */
     ModalScreen { padding: 0; background: transparent; }
-    /* Unified scrollbar design across every scrollable widget / page. */
+    /* Unified scrollbar design across every scrollable widget / page: a
+       thumb on no track (a $surface track was a stripe of background that
+       stayed with the theme background off). */
     * {
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 1;
-        scrollbar-background: $surface;
-        scrollbar-background-hover: $surface;
-        scrollbar-background-active: $surface;
+        scrollbar-background: $background 0%;
+        scrollbar-background-hover: $background 0%;
+        scrollbar-background-active: $background 0%;
         scrollbar-color: $surface-lighten-2;
         scrollbar-color-hover: $surface-lighten-2;
         scrollbar-color-active: $accent;
@@ -237,41 +221,85 @@ class QobitApp(App[None]):
        lighter box, larger than its rounded border. (Popups that want a
        surface, like the `i` menu, set it explicitly and win on specificity.) */
     ListView { background: transparent; }
-
-    /* List highlight: the accent tint, like the grid cards' selection.
-       Textual 8 marks the row with `-highlight` (it was `--highlight` in
-       older Textual; a rule on the old name silently stopped matching and
-       every list fell back to Textual's solid primary-colour cursor).
-       Focused list: full tint. Unfocused list: a faint tint, so the Search
-       tab's three lists don't all look selected. Labels go transparent so
-       the row's tint shows behind the text under Screen.-transparent too
-       (same fix as .grid-card). */
-    ListView > ListItem.-highlight {
+    /* Backgrounds: page sections paint none (panels are set apart by their
+       round borders), so the theme background, or the terminal's with it
+       off, shows through everywhere and both modes look alike. The only
+       fills are state (the selection, the now-playing row) and floating
+       layers that must stay readable over the page (the i/g menu, the
+       command palette). Textual's footer and Input bring their own fills:
+       cleared here. */
+    Footer, Footer > *, Input { background: transparent; }
+    /* With no footer bar, the footer's text sits on the page: use colours
+       that read there. Themes colour it for their own bar (solarized-light:
+       near-white on blue, so with the bar gone it was invisible). Keys take
+       the readout colour (amber in cyberdeck), descriptions the foreground. */
+    FooterKey .footer-key--key {
+        color: $qobit-readout;
+        background: transparent;
+    }
+    FooterKey .footer-key--description {
         color: $foreground;
-        background: $accent 12%;
+        background: transparent;
+    }
+    /* Tab labels: Textual fades the inactive ones to $foreground 50% (dim
+       too in ANSI themes), 1.6:1 in some themes. Inactive: qobit's readable
+       muted colour; active: the foreground, bold. With the bar focused,
+       Textual's block-cursor pair still draws the active tab. */
+    Tabs Tab { color: $qobit-muted; text-style: none; }
+    Tabs Tab:hover, Tabs Tab.-active { color: $foreground; }
+    Tabs Tab.-active { text-style: bold; }
+    Tabs:focus Tab.-active {
+        color: $block-cursor-foreground;
+        background: $block-cursor-background;
+    }
+
+    /* List highlight. Textual 8 marks the row with `-highlight` (it was
+       `--highlight` in older Textual; a rule on the old name silently
+       stopped matching). Focused list: the selection, every label in the
+       selection's text colour (themes.qobit_variable_defaults measures the
+       pair per theme; the row drops its own span colours while highlighted,
+       see _now_playing.plain_if_highlighted). Unfocused list: a faint tint
+       and the row's normal colours, so the Search tab's three lists don't
+       all look selected. Labels go transparent so the row's fill shows
+       behind the text under Screen.-transparent too (same fix as .grid-card). */
+    ListView > ListItem.-highlight {
+        background: $qobit-select-dim;
         text-style: none;
     }
     ListView:focus > ListItem.-highlight {
-        color: $foreground;
-        background: $accent 35%;
+        background: $qobit-select;
         text-style: none;
+    }
+    ListView:focus > ListItem.-highlight Label {
+        color: $qobit-select-text;
     }
     ListItem.-highlight > Label {
         background: transparent;
     }
+    /* Empty and failed lists/grids (_utils.status_line): one look everywhere. */
+    .status-line {
+        width: 1fr;
+        padding: 0 1;
+        color: $qobit-muted;
+        text-style: italic;
+    }
+    .status-line.-error { color: $error; text-style: none; }
+    /* Row lines never wrap: a long album name wrapped into the next row's
+       space (or onto a stray third line). Cut it with an ellipsis instead. */
+    .row-title, .row-meta {
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
+    }
     /* Active-tab underline in the accent colour too (Textual draws it with
        $block-cursor-background, i.e. the theme's primary). */
     Tabs Underline > .underline--bar {
-        color: $accent;
+        color: $qobit-accent-text;
     }
     /* The footer scrolls horizontally when its key hints don't fit (narrow
        terminals), and its scrollbar then covers the hints. Hide it: the
        hints that fit stay visible. */
     Footer {
         scrollbar-size-horizontal: 0;
-    }
-    Label.-hl {
-        color: $accent;
     }
     /* Grid card selection — one style for every library grid tile
        (AlbumCard / ArtistCard / PlaylistCard all carry .grid-card), matching
@@ -291,18 +319,20 @@ class QobitApp(App[None]):
        paint over the parent's outline cells, so it only ever showed on cards
        with spare rows (Artists) — the visible inconsistency. */
     .grid-card.-selected {
-        background: $accent 35%;
+        background: $qobit-select;
     }
     .grid-card.-selected .card-info,
-    .grid-card.-selected .card-info > Label {
+    .grid-card.-selected .card-info > Label,
+    .grid-card.-selected TGPImage {
         background: transparent;
     }
     .grid-card.-selected .card-primary {
-        color: $accent;
+        color: $qobit-select-text;
         text-style: bold;
     }
-    .grid-card.-selected .card-secondary {
-        color: $accent;
+    .grid-card.-selected .card-secondary,
+    .grid-card.-selected TGPImage {
+        color: $qobit-select-text;
     }
     /* Selection/status backgrounds that must survive transparency mode.
        Textual gives this App.CSS stylesheet an unconditional priority layer
@@ -312,18 +342,36 @@ class QobitApp(App[None]):
        override can actually win against Screen.-transparent * below is
        here, scoped under it so it only applies in transparent mode (the
        widgets' own rules already supply the same values the rest of the
-       time). These are UI *state* — selection, now-playing, a divider, a
+       time). These are UI *state* — selection, now-playing, a
        modal's legibility — not page background, and losing them silently
        under transparency is worse than the terminal not showing through
        there specifically. */
-    Screen.-transparent MixCard.-selected {
-        background: $boost;
+    Screen.-transparent MixCard:focus {
+        background: $qobit-select;
     }
-    Screen.-transparent NowPlayingListRow {
-        background: $accent 8%;
+    Screen.-transparent MixCard:focus Label {
+        background: transparent;
     }
-    Screen.-transparent SectionHeader {
-        background: $surface;
+    Screen.-transparent TimelineRow.-now {
+        background: $qobit-now;
+    }
+    /* ...and their labels see-through, or `Screen.-transparent *` paints them
+       ansi_default and the tint shows only in the 1-col padding at each end
+       (same fix as .grid-card.-selected). */
+    Screen.-transparent TimelineRow.-now Label {
+        background: transparent;
+    }
+    /* The selection wins over a row's own state fill (the now-playing tint)
+       in transparent mode too. The -now rule above has the same specificity
+       as the plain highlight rules and comes later, so on the playing row
+       the selection's background vanished while its text colour stayed:
+       black text on a dark terminal in ansi-dark. These carry one more type
+       selector than any row-state rule, whatever their order. */
+    Screen.-transparent ListView > ListItem.-highlight {
+        background: $qobit-select-dim;
+    }
+    Screen.-transparent ListView:focus > ListItem.-highlight {
+        background: $qobit-select;
     }
     Screen.-transparent,
     Screen.-transparent * {
@@ -339,17 +387,23 @@ class QobitApp(App[None]):
         Binding("R", "start_radio", "Radio"),
         Binding("i", "track_menu", "Menu", show=False),
         Binding("g", "goto_menu", "Go to", show=False),
-        # No-op (with an explanatory flash) until software volume is turned on
-        # via the command palette — see action_toggle_software_volume.
+        # Software volume (off by default; see action_toggle_software_volume).
+        # The first pair shows in the footer only while it's on (check_action);
+        # while it's off the key falls through to the hidden second pair,
+        # which explains how to turn it on.
         Binding("minus", "volume_down", "Vol-"),
         Binding("equals_sign", "volume_up", "Vol+"),
-        # 1-7 match the tab bar's "[N]" labels (generated from _TABS); escape
+        Binding("minus,equals_sign", "volume_off_hint", show=False),
+        # 1-7 match the tab bar's "[N]" labels (generated from TABS); escape
         # brings focus to Tabs from anywhere.
         *[
             Binding(str(n), f"switch_tab('{tid}')", name, show=False)
-            for n, (tid, name) in enumerate(_TABS, 1)
+            for n, (tid, name) in enumerate(TABS, 1)
         ],
-        # priority=True so this fires even when an Input has focus
+        # priority=True so these fire even when an Input has focus. "Back"
+        # applies (and shows in the footer) only when there's somewhere to go
+        # back to; otherwise Escape falls through to focusing the tab bar.
+        Binding("escape", "back", "Back", priority=True),
         Binding("escape", "focus_tabs", "Nav", show=False, priority=True),
     ]
 
@@ -380,6 +434,12 @@ class QobitApp(App[None]):
     # Qobuz Connect: "off" | "connecting" | "ready" (visible in the apps) |
     # "active" (the apps' chosen device — server owns the queue) | "offline".
     connect_state: reactive[str] = reactive("off")
+    # Bumped whenever a navigation level changes (a detail opened or closed,
+    # a page's title known): Breadcrumbs watch it (see nav.py).
+    nav_version: reactive[int] = reactive(0)
+    # Bit-perfect verdict for the playing track (audio.verify.check_signal):
+    # None until checked (a couple of seconds in) and after a track change.
+    signal: reactive[Signal | None] = reactive(None)
 
     def __init__(self, connect: bool | None = None) -> None:
         """``connect`` overrides the saved Qobuz Connect setting for this run
@@ -451,10 +511,11 @@ class QobitApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Tabs(
-            *[Tab(_tab_label(n, name, False), id=tid) for n, (tid, name) in enumerate(_TABS, 1)],
+            *[Tab(tab_label(n, name, False), id=tid) for n, (tid, name) in enumerate(TABS, 1)],
             id="nav-tabs",
             active="queue",
         )
+        yield Wordmark()
         with ContentSwitcher(initial="view-queue"):
             yield PlaylistsView(id="view-playlists")
             yield TracksView(id="view-tracks")
@@ -468,6 +529,9 @@ class QobitApp(App[None]):
 
     async def on_mount(self) -> None:
         self._poll_player()
+        # The playing rows' bar meter (_now_playing.tick): decorative, idle
+        # (one flag check) while nothing plays.
+        self.set_interval(_BEAT_SECS, lambda: tick(self.is_playing and not self.is_paused))
         saved_theme = get_saved_theme()
         if saved_theme and saved_theme in self.available_themes:
             self.theme = saved_theme
@@ -502,6 +566,12 @@ class QobitApp(App[None]):
 
         prune_disk_cache()
 
+    def get_theme_variable_defaults(self) -> dict[str, str]:
+        """qobit's theme variables (themes.py) for themes that don't set them,
+        Textual's built-ins included, computed from the current theme on every
+        switch (selection and accent-text colours checked for contrast)."""
+        return qobit_variable_defaults(self.current_theme)
+
     def watch_theme(self, theme: str) -> None:
         if getattr(self, "_theme_ready", False):
             set_saved_theme(theme)
@@ -521,56 +591,124 @@ class QobitApp(App[None]):
         view = self.query_one(f"#view-{event.tab.id}")
         if hasattr(view, "activate"):
             self.call_after_refresh(view.activate)
+        self.nav_changed()
 
     def on_resize(self, event: events.Resize) -> None:
         self._fit_tab_labels(event.size.width)
+        for screen in self.screen_stack:
+            for mark in screen.query(Wordmark):
+                mark.fit(event.size.width)
 
     def _fit_tab_labels(self, width: int) -> None:
-        compact = width < _TABBAR_FULL_WIDTH
+        compact = width < TABBAR_FULL_WIDTH
         if compact == getattr(self, "_tabs_compact", None):
             return
         self._tabs_compact = compact
-        for n, (tid, name) in enumerate(_TABS, 1):
+        for n, (tid, name) in enumerate(TABS, 1):
             # Not composed yet on the first resize; on_mount runs this again.
             with contextlib.suppress(Exception):
-                self.query_one(f"#{tid}", Tab).label = _tab_label(n, name, compact)
+                self.query_one(f"#{tid}", Tab).label = tab_label(n, name, compact)
 
     def action_switch_tab(self, tab_id: str) -> None:
-        self.query_one("#nav-tabs", Tabs).active = tab_id
+        """``1``–``7`` or a click on a tab: close any pages, then switch. (With
+        pages open it used to switch the hidden tab underneath them.)"""
+        self._close_pages()
+        self.screen_stack[0].query_one("#nav-tabs", Tabs).active = tab_id
 
-    def action_focus_tabs(self) -> None:
+    # ── navigation trail (see nav.py) ────────────────────────────────────────
+
+    def base_tab(self) -> str:
+        """The main screen's active tab id."""
+        try:
+            tab = self.screen_stack[0].query_one("#nav-tabs", Tabs).active
+        except NoMatches:
+            tab = ""
+        return tab if tab in TAB_NAMES else "queue"
+
+    def _base_view(self) -> Widget | None:
+        try:
+            return self.screen_stack[0].query_one(f"#view-{self.base_tab()}")
+        except NoMatches:
+            return None
+
+    def nav_changed(self) -> None:
+        """A level changed: redraw the breadcrumbs (and the footer's Back)."""
+        self.nav_version += 1
+        self.refresh_bindings()
+
+    def nav_trail(self, upto: object | None = None) -> list[Crumb]:
+        """The trail from the active tab to ``upto`` (a screen; default the
+        top one): the tab, its view's levels, then each page's levels. Every
+        crumb but the last goes back to its level."""
+        levels: list[tuple[str, object, int]] = [(TAB_NAMES[self.base_tab()], None, 0)]
+        view = self._base_view()
+        for depth, label in enumerate(getattr(view, "nav_levels", list)(), 1):
+            levels.append((label, None, depth))
+        for page in page_screens(self):
+            if upto is not None and upto is self.screen_stack[0]:
+                break
+            for depth, label in enumerate(getattr(page, "nav_levels", list)()):
+                levels.append((label, page, depth))
+            if page is upto:
+                break
+        return [
+            Crumb(label, None if i == len(levels) - 1 else self._goer(page, depth))
+            for i, (label, page, depth) in enumerate(levels)
+        ]
+
+    def _goer(self, page: object | None, depth: int):
+        def go() -> None:
+            self._close_pages(above=page)
+            target = page if page is not None else self._base_view()
+            if hasattr(target, "nav_to"):
+                target.nav_to(depth)
+            self.nav_changed()
+
+        return go
+
+    def _close_pages(self, above: object | None = None) -> None:
+        """Pop pushed pages down to ``above`` (None: all of them)."""
+        while len(self.screen_stack) > 1 and self.screen is not above:
+            self.pop_screen()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action in ("volume_down", "volume_up"):
+            return self.software_volume_enabled
+        if action == "back":
+            return self._can_go_back()
+        return True
+
+    def _active_view(self) -> Widget | None:
+        return self._base_view()
+
+    def _can_go_back(self) -> bool:
+        """A page or menu on top, or the active tab has a detail view open or
+        a filter set (each view's ``can_navigate_back``)."""
+        if len(self.screen_stack) > 1:
+            return True
+        view = self._active_view()
+        return bool(view is not None and getattr(view, "can_navigate_back", lambda: False)())
+
+    def action_back(self) -> None:
+        """Escape: up one level of the trail. On a page with an inner level
+        (an artist page showing an album) that's the page's previous level;
+        else close the page (or menu). On the main screen, the tab's view."""
         if len(self.screen_stack) > 1:
             screen = self.screen
-            if hasattr(screen, "action_navigate_back"):
-                screen.action_navigate_back()
+            levels = getattr(screen, "nav_levels", list)()
+            if len(levels) > 1 and hasattr(screen, "nav_to"):
+                screen.nav_to(len(levels) - 2)
             else:
                 self.pop_screen()
-        else:
-            cs = self.query_one(ContentSwitcher)
-            if cs.current:
-                try:
-                    active = self.query_one(f"#{cs.current}")
-                    if hasattr(active, "action_navigate_back") and active.action_navigate_back():
-                        return
-                except Exception:
-                    pass
-            self.query_one("#nav-tabs", Tabs).focus()
+            self.nav_changed()
+            return
+        view = self._active_view()
+        if view is not None and hasattr(view, "action_navigate_back"):
+            view.action_navigate_back()
+        self.nav_changed()
 
-    _hl_item: object = None
-
-    @on(ListView.Highlighted)
-    def _on_list_highlighted(self, event: ListView.Highlighted) -> None:
-        # Only touch the previously highlighted row, not every row in the list —
-        # a full query(Label) over a long list on each arrow press is what made
-        # the track list feel laggy.
-        prev = self._hl_item
-        if prev is not None and prev is not event.item:
-            for label in prev.query(Label):
-                label.remove_class("-hl")
-        if event.item:
-            for label in event.item.query(Label):
-                label.add_class("-hl")
-        self._hl_item = event.item
+    def action_focus_tabs(self) -> None:
+        self.query_one("#nav-tabs", Tabs).focus()
 
     def _focus_search_input(self) -> None:
         with contextlib.suppress(Exception):
@@ -895,6 +1033,7 @@ class QobitApp(App[None]):
             else:
                 self._player._volume = None
             self._flash_status("Software volume off — bit-perfect restored")
+        self.refresh_bindings()  # Vol-/Vol+ show in the footer only while on
 
     def action_volume_down(self) -> None:
         self._adjust_volume(-self._VOLUME_STEP)
@@ -902,9 +1041,11 @@ class QobitApp(App[None]):
     def action_volume_up(self) -> None:
         self._adjust_volume(self._VOLUME_STEP)
 
+    def action_volume_off_hint(self) -> None:
+        self._flash_status("Software volume is off — turn it on from the command palette (^p)")
+
     def _adjust_volume(self, delta: int) -> None:
         if not self.software_volume_enabled:
-            self._flash_status("Software volume is off — turn it on from the command palette (^p)")
             return
         self.volume = max(0, min(100, self.volume + delta))
         set_saved_volume(self.volume)
@@ -1119,15 +1260,25 @@ class QobitApp(App[None]):
         self.now_playing = track
         self.now_playing_album = None
         self.now_playing_bio = ""
+        self._last_stream = stream  # before quality_label: its watchers read it
         self.quality_label = stream.quality_badge
-        self._last_stream = stream
         self.playback_pos = start
         self.playback_dur = 0.0
         self.is_playing = True
         self.is_paused = False
         self.status_msg = ""
         self._fetch_now_playing_album(track)
+        self.signal = None
+        self._verify_signal(gen, stream)
         return "ok"
+
+    @work(exclusive=True, group="_verify_signal")  # a newer track cancels it
+    async def _verify_signal(self, gen: int, stream: StreamUrl) -> None:
+        """A couple of seconds into the track, check that mpv, and on Linux
+        the DAC, run at the file's rate and depth (the transport's lamp)."""
+        result = await check_signal(self._player, stream.sampling_rate, stream.bit_depth or 16)
+        if gen == self._play_gen:
+            self.signal = result
 
     @work
     async def _fetch_now_playing_album(self, track: Track) -> None:
@@ -1320,7 +1471,6 @@ class QobitApp(App[None]):
         show) adds its favourite toggle; an artist (a card, or the artist page
         on show) adds follow/unfollow. Nothing to act on: no menu."""
         from .screens.context_menu import ContextMenu, album_option, artist_option, track_options
-        from .screens.queue import QueueTrackRow
 
         focused = self.focused
         if focused is None:
@@ -1332,7 +1482,9 @@ class QobitApp(App[None]):
             options = []
             if track is not None:
                 fav = str(track.id) in await self.ensure_favorite_ids()
-                options += track_options(favorite=fav, in_queue=isinstance(row, QueueTrackRow))
+                options += track_options(
+                    favorite=fav, in_queue=getattr(row, "role", None) == "next"
+                )
             if album is not None:
                 fav_albums = await self.ensure_favorite_albums()
                 options.append(album_option(any(a.id == album.id for a in fav_albums)))
@@ -1448,7 +1600,7 @@ class QobitApp(App[None]):
             tracks_count=0,
             image_url=track.image_url,
         )
-        self.push_screen(AlbumScreen(album, source=self._origin()[1]))
+        self.push_screen(AlbumScreen(album))
 
     @work
     async def _open_artist(self, track: Track) -> None:
@@ -1467,31 +1619,11 @@ class QobitApp(App[None]):
         self.open_artist(str(artist_id))
 
     def open_artist(self, artist_id: str) -> None:
-        """Open an artist page over the current one, with the breadcrumb and
-        Escape target of where it was opened from (`g`, `i`, Similar)."""
+        """Open an artist page over the current one (`g`, `i`, Similar); the
+        breadcrumb trail shows where it was opened from."""
         from .screens.artist_detail import ArtistScreen
 
-        tab_id, name = self._origin()
-        self.push_screen(ArtistScreen(artist_id, source=name, back_tab=tab_id))
-
-    def _origin(self) -> tuple[str, str]:
-        """Where a page opened from the ``i``/``g`` menu comes from: ``(tab id,
-        breadcrumb text)``. The id is the active tab of the main screen (the
-        artist page's Escape target; pushed pages have no tab bar of their own).
-        The text names the page underneath: an album or artist page, the album
-        or artist open inside a tab, or else the tab itself."""
-        names = dict(_TABS)
-        base = self.screen_stack[0]
-        try:
-            tab = base.query_one("#nav-tabs", Tabs).active
-        except NoMatches:
-            tab = ""
-        tab = tab if tab in names else "tracks"
-        title = getattr(self.screen, "page_title", None)
-        if title is None and self.screen is base:
-            with contextlib.suppress(NoMatches):
-                title = getattr(base.query_one(f"#view-{tab}"), "page_title", None)
-        return tab, title or names[tab]
+        self.push_screen(ArtistScreen(artist_id))
 
     def action_seek_back(self) -> None:
         if self._ctx is not self._local_ctx:

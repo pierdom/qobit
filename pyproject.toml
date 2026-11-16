@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qobit"
-version = "0.6.0"
+version = "0.7.0"
 description = "A bit-perfect Qobuz client with a terminal UI"
 readme = "README.md"
 requires-python = ">=3.11"

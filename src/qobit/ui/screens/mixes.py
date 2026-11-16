@@ -18,7 +18,15 @@ from textual.widgets import Label, ListItem, ListView
 from ...qobuz.models import Track
 from ...store import load as load_state
 from ...store import save as save_state
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
+from .._now_playing import (
+    GUTTER_NUM,
+    NowPlayingRowMixin,
+    NowPlayingViewMixin,
+    heart_suffix,
+    meta_indent,
+    playing_content,
+)
+from .._utils import readout, status_line
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
@@ -37,10 +45,12 @@ def _cache_key(kind: str) -> str:
 
 class MixCard(Widget, can_focus=True):
     """One of the two mix tiles. Focusable, so the keyboard reaches it (Tab,
-    ←/→ between the two); Enter or Space opens it, ↓ goes to the track list."""
+    ←/→ between the two); Enter opens it, ↓ goes to the track list. Space
+    stays the app's pause (it used to open the card too, hiding Pause from
+    the footer on this tab)."""
 
     BINDINGS = [
-        Binding("enter,space", "open", "Open mix", show=False),
+        Binding("enter", "open", "Open mix", show=False),
         Binding("left", "sibling(-1)", show=False),
         Binding("right", "sibling(1)", show=False),
         Binding("down", "to_list", show=False),
@@ -58,15 +68,18 @@ class MixCard(Widget, can_focus=True):
         padding: 1 2;
         border: round $accent 40%;
     }
-    MixCard.-selected {
-        border: round $accent;
-        background: $boost;
-    }
+    /* The open mix: accent border and name. The keyboard cursor (focus): the
+       selection fill, like a selected grid card. No other background. */
+    MixCard.-selected { border: round $accent; }
     MixCard .mix-name { text-style: bold; height: 2; }
-    MixCard.-selected .mix-name { color: $accent; }
-    MixCard:focus { border: round $accent; }
-    MixCard .mix-desc { color: $text-muted; height: 1; }
-    MixCard .mix-status { color: $text-disabled; height: 1; }
+    MixCard.-selected .mix-name { color: $qobit-accent-text; }
+    MixCard:focus { border: round $accent; background: $qobit-select; }
+    /* After .-selected .mix-name (same specificity: the later rule wins). */
+    MixCard:focus .mix-name, MixCard:focus .mix-desc, MixCard:focus .mix-status {
+        color: $qobit-select-text;
+    }
+    MixCard .mix-desc { color: $qobit-muted; height: 1; }
+    MixCard .mix-status { color: $qobit-muted; height: 1; }
     """
 
     def __init__(self, kind: MixKind) -> None:
@@ -75,10 +88,9 @@ class MixCard(Widget, can_focus=True):
 
     def compose(self) -> ComposeResult:
         name = "DailyQ" if self._kind == "daily" else "WeeklyQ"
-        desc = "Personalised daily mix" if self._kind == "daily" else "Personalised weekly mix"
-        note = "(refreshed daily)" if self._kind == "daily" else "(refreshed weekly)"
+        every = "day" if self._kind == "daily" else "week"
         yield Label(name, classes="mix-name")
-        yield Label(f"{desc}  {note}", classes="mix-desc")
+        yield Label(f"Made for you  ·  new every {every}", classes="mix-desc")
         yield Label("", classes="mix-status")
 
     def update_status(self, track_count: int) -> None:
@@ -106,7 +118,7 @@ class MixTrackRow(NowPlayingRowMixin, ListItem):
     MixTrackRow { height: 2; padding: 0 1; }
     MixTrackRow Label { width: 1fr; }
     MixTrackRow .row-title { text-style: bold; }
-    MixTrackRow .row-meta { color: $text-muted; }
+    MixTrackRow .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -118,13 +130,19 @@ class MixTrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        body = f"{self._number:>2}.  {t.artist} — {t.display_title}"
-        return playing_content(body, self._is_playing, self._is_paused, heart)
+        body = f"{t.artist} — {t.display_title}"
+        return playing_content(
+            f"{self._number}.", body, self._is_playing, self._is_paused, heart, width=GUTTER_NUM
+        )
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(
+            f"{meta_indent(GUTTER_NUM)}{t.album}  ·  {t.duration_str}",
+            classes="row-meta",
+            markup=False,
+        )
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -156,17 +174,17 @@ class MixesView(NowPlayingViewMixin, Widget):
     MixesView #mix-track-list {
         height: 1fr;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
         padding: 0 1;
         margin-bottom: 1;
     }
     MixesView #mix-track-list:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     """
 
@@ -186,7 +204,7 @@ class MixesView(NowPlayingViewMixin, Widget):
 
     def on_mount(self) -> None:
         tl = self.query_one("#mix-track-list", TrackListView)
-        tl.border_title = "Mixes"
+        tl.border_title = readout("Mixes")
         tl.border_subtitle = "d = DailyQ  ·  w = WeeklyQ"
         self._refresh_card_statuses()
         self._wire_now_playing(MixTrackRow, "#mix-track-list")
@@ -239,8 +257,8 @@ class MixesView(NowPlayingViewMixin, Widget):
             self._load_cached(tracks, kind, version)
         else:
             tl = self.query_one("#mix-track-list", TrackListView)
-            tl.border_title = "Generating…"
-            tl.border_subtitle = ""
+            tl.border_title = readout("DailyQ" if kind == "daily" else "WeeklyQ")
+            tl.border_subtitle = "generating…"
             self._generate(kind, version)
 
     @work
@@ -268,8 +286,8 @@ class MixesView(NowPlayingViewMixin, Widget):
 
         if not tracks:
             try:
-                tl.border_title = "No results"
-                tl.border_subtitle = "Play some tracks first to seed the mix"
+                tl.border_subtitle = ""
+                await tl.mount(ListItem(status_line("No mix yet: play some tracks first.")))
             except Exception:
                 pass
             return
@@ -295,7 +313,7 @@ class MixesView(NowPlayingViewMixin, Widget):
             return
         name = "DailyQ" if kind == "daily" else "WeeklyQ"
         refreshed = "today" if kind == "daily" else "this week"
-        tl.border_title = f"{name} — {len(tracks)} tracks"
+        tl.border_title = readout(f"{name}  ·  {len(tracks)} tracks")
         tl.border_subtitle = f"refreshed {refreshed}"
 
         fav_ids: set[str] = set()

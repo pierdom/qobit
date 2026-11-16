@@ -21,10 +21,22 @@ from textual_image.widget import TGPImage
 from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
-from .._now_playing import NowPlayingRowMixin, heart_suffix, playing_content
+from .._now_playing import (
+    GUTTER_ICON,
+    GUTTER_NUM,
+    NowPlayingRowMixin,
+    heart_suffix,
+    meta_indent,
+    plain_if_highlighted,
+    playing_content,
+)
+from .._utils import readout
+from ..nav import page_header
+from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
+from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -35,9 +47,24 @@ _CARD_IMG_H = 4  # album tiles inside an artist page (title + year only)
 # laid out to fit in this many rows.
 GRID_CARD_IMG_H = 5
 # Minimum tile width for the same three library grids, so they show the same
-# number of columns at a given terminal width.
-LIBRARY_TILE_MIN_W = 40
+# number of columns at a given terminal width. 32 leaves ~22 cells of text
+# beside the art: 3 columns at 120 terminal columns, 5 at 180 (at 40, tiles
+# were mostly empty space: 2 and 4).
+LIBRARY_TILE_MIN_W = 32
 _TILE_MIN_W = 22
+
+
+def select_card(card: Widget, selected: bool) -> None:
+    """Mark a grid card (un)selected; cards with span colours (a heart, HI-RES)
+    redraw them plain while selected, in the selection's text colour."""
+    card.set_class(selected, "-selected")
+    if hasattr(card, "refresh_selected"):
+        card.refresh_selected()
+
+
+def is_hires_album(album: Album) -> bool:
+    """Streamable above CD quality (more than 16 bits)."""
+    return album.hires_streamable or (album.maximum_bit_depth or 0) > 16
 
 
 def _set_art_width(image: TGPImage, height: int) -> None:
@@ -54,7 +81,7 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     DEFAULT_CSS = """
     ArtistTrackRow { height: 2; padding: 0 1; }
     ArtistTrackRow Label { width: 1fr; }
-    ArtistTrackRow .row-meta { color: $text-muted; }
+    ArtistTrackRow .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, track: Track, number: int | None, favorite: bool = False) -> None:
@@ -67,14 +94,23 @@ class ArtistTrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        prefix = f"{self._number}." if self._number else "♪"  # numbered lists: no ♪
-        text = f"{prefix}  {t.display_title}"
-        return playing_content(text, self._is_playing, self._is_paused, heart)
+        lead = f"{self._number}." if self._number else ICON_TRACK  # numbered lists: no ♪
+        return playing_content(
+            lead, t.display_title, self._is_playing, self._is_paused, heart, width=self._width
+        )
+
+    @property
+    def _width(self) -> int:
+        return GUTTER_NUM if self._number else GUTTER_ICON
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"     {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(
+            f"{meta_indent(self._width)}{t.album}  ·  {t.duration_str}",
+            classes="row-meta",
+            markup=False,
+        )
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -156,12 +192,12 @@ class ArtistTracks(_TitleSwitch, Widget):
         width: 1fr;
         height: 1fr;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
     ArtistTracks TrackListView:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     ArtistTracks.-columns #artist-favs { margin-left: 1; }
     """
@@ -266,8 +302,7 @@ class ArtistTracks(_TitleSwitch, Widget):
         top.display = columns or not n or self._showing == "top"
         favs.display = bool(n) and (columns or self._showing == "favs")
         if columns or not n:
-            top.border_title = "Top Tracks"
-            favs.border_title = f"Your favourites · {n}"
+            top.border_title, favs.border_title = self._labels
         else:  # one panel: name both lists, the hidden one dimmed
             title = switch_title(self._labels, 0 if self._showing == "top" else 1)
             (top if self._showing == "top" else favs).border_title = title
@@ -275,7 +310,7 @@ class ArtistTracks(_TitleSwitch, Widget):
 
     @property
     def _labels(self) -> list[str]:
-        return ["Top Tracks", f"Your favourites · {len(self._fav_ids)}"]
+        return [readout("Top Tracks"), readout(f"Your favourites · {len(self._fav_ids)}")]
 
     def _switch_state(self) -> tuple[Widget, list[str], int] | None:
         if not self._fav_ids or self._columns:
@@ -354,7 +389,7 @@ class AlbumCard(Widget):
         display: none;
         height: 1;
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     AlbumCard.full .card-artist {
@@ -363,7 +398,7 @@ class AlbumCard(Widget):
     AlbumCard .card-year {
         height: 1;
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     /* Selected state: shared by every grid card (.grid-card) and defined
@@ -381,14 +416,30 @@ class AlbumCard(Widget):
         return self._album
 
     def compose(self) -> ComposeResult:
-        yield TGPImage()
+        yield Art(self._album.title)
         with Vertical(classes="card-info"):
             yield Label(escape(self._album.title), classes="card-title card-primary", markup=True)
             yield Label(
                 escape(self._album.artist or ""), classes="card-artist card-secondary", markup=True
             )
-            year = str(self._album.year) if self._album.year else "—"
-            yield Label(f"[dim]{year}[/dim]", classes="card-year card-secondary", markup=True)
+            yield Label(self._year_line(), classes="card-year card-secondary")
+
+    def _year_line(self) -> Content:
+        """``1997  ·  HI-RES``. Colour comes from the CSS (muted; the
+        selection's text colour when selected), so no `dim` here: on a
+        selected card it halved the contrast."""
+        year = str(self._album.year) if self._album.year else "—"
+        hires = ("  ·  ", ("HI-RES", "bold $qobit-hires")) if is_hires_album(self._album) else ()
+        return plain_if_highlighted(self, Content.assemble(year, *hires))
+
+    @property
+    def highlighted(self) -> bool:
+        """Selected in its grid (for plain_if_highlighted)."""
+        return self.has_class("-selected")
+
+    def refresh_selected(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.query_one(".card-year", Label).update(self._year_line())
 
     def on_mount(self) -> None:
         img_h = GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H
@@ -653,9 +704,9 @@ class AlbumGrid(_GridNav, ScrollableContainer):
         if not cards or idx < 0 or idx >= len(cards):
             return
         if self._cursor >= 0 and self._cursor < len(cards):
-            cards[self._cursor].remove_class("-selected")
+            select_card(cards[self._cursor], False)
         self._cursor = idx
-        cards[idx].add_class("-selected")
+        select_card(cards[idx], True)
         if top:
             cards[idx].scroll_visible(animate=False, top=True)
         else:
@@ -713,14 +764,24 @@ class ArtistCard(Widget):
             self.query_one(".card-name", Label).update(self._label())
 
     def _label(self) -> Content:
-        return Content.assemble(self._artist.name, heart_suffix(self._followed))
+        content = Content.assemble(self._artist.name, heart_suffix(self._followed))
+        return plain_if_highlighted(self, content)
+
+    @property
+    def highlighted(self) -> bool:
+        """Selected in its grid (for plain_if_highlighted)."""
+        return self.has_class("-selected")
+
+    def refresh_selected(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.query_one(".card-name", Label).update(self._label())
 
     @property
     def artist(self) -> Artist:
         return self._artist
 
     def compose(self) -> ComposeResult:
-        yield TGPImage()
+        yield Art(self._artist.name)
         with Vertical(classes="card-info"):
             yield Label(self._label(), classes="card-name card-primary")
 
@@ -828,9 +889,9 @@ class ArtistGrid(_GridNav, ScrollableContainer):
         if not cards or idx < 0 or idx >= len(cards):
             return
         if self._cursor >= 0 and self._cursor < len(cards):
-            cards[self._cursor].remove_class("-selected")
+            select_card(cards[self._cursor], False)
         self._cursor = idx
-        cards[idx].add_class("-selected")
+        select_card(cards[idx], True)
         if top:
             cards[idx].scroll_visible(animate=False, top=True)
         else:
@@ -856,13 +917,13 @@ class ArtistReleases(_TitleSwitch, Widget):
         height: 1fr;
         grid-rows: 5;  /* GRID_CARD_IMG_H */
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
     }
     ArtistReleases #similar-artists:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     """
 
@@ -913,7 +974,7 @@ class ArtistReleases(_TitleSwitch, Widget):
         albums.display = not on_similar
         similar.display = on_similar
         if not self._has_similar:
-            albums.border_title, albums.border_subtitle = "Albums & EPs", ""
+            albums.border_title, albums.border_subtitle = readout("Albums & EPs"), ""
         elif on_similar:
             similar.border_title = switch_title(self._labels, 1)
             similar.border_subtitle = SWITCH_HINT
@@ -924,7 +985,7 @@ class ArtistReleases(_TitleSwitch, Widget):
     @property
     def _labels(self) -> list[str]:
         count = f" · {self._similar_count}" if self._similar_count is not None else ""
-        return ["Albums & EPs", f"Similar artists{count}"]
+        return [readout("Albums & EPs"), readout(f"Similar artists{count}")]
 
     def _switch_state(self) -> tuple[Widget, list[str], int] | None:
         if not self._has_similar:
@@ -983,7 +1044,6 @@ class ArtistHeader(Widget):
     ArtistHeader {
         height: 8;
         padding: 1 0 0 0;
-        background: $boost;
         layout: horizontal;
     }
     ArtistHeader .ah-image {
@@ -996,31 +1056,30 @@ class ArtistHeader(Widget):
         width: 1fr;
         height: 7;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
     ArtistHeader .ah-bio-section:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     ArtistHeader .ah-bio {
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
     }
     ArtistHeader .ah-similar {
         display: none;
         width: 32;
         height: 7;
         margin-left: 1;
-        background: transparent;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
     }
     ArtistHeader .ah-similar:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     ArtistHeader.-similar .ah-similar { display: block; }
     ArtistHeader .ah-similar ListItem { height: 1; padding: 0 1; }
@@ -1034,7 +1093,7 @@ class ArtistHeader(Widget):
         self._similar_items: list[dict] = []
 
     def compose(self) -> ComposeResult:
-        yield TGPImage(classes="ah-image")
+        yield Art(classes="ah-image")
         with VerticalScroll(classes="ah-bio-section"):
             yield Label("", classes="ah-bio")
         yield ListView(classes="ah-similar")
@@ -1049,12 +1108,16 @@ class ArtistHeader(Widget):
         self.artist = None
         self._similar_items = []
         self._layout_similar()
-        self.query_one(".ah-bio-section").border_title = name
+        self.query_one(".ah-bio-section").border_title = escape(readout(name))
+        art = self.query_one(Art)
+        art.image = None  # not the previous artist's photo under this name
+        art.placeholder = name
         self.query_one(".ah-bio", Label).update("")
 
     def populate(self, artist: Artist) -> None:
         self.artist = artist
-        self.query_one(".ah-bio-section").border_title = escape(artist.name)
+        self.query_one(".ah-bio-section").border_title = escape(readout(artist.name))
+        self.query_one(Art).placeholder = artist.name
         if artist.biography:
             self.query_one(".ah-bio", Label).update(escape(artist.biography))
         if artist.image_url:
@@ -1075,7 +1138,7 @@ class ArtistHeader(Widget):
         lv = self.query_one(".ah-similar", ListView)
         await lv.clear()
         await lv.mount(*[ListItem(Label(it["name"], markup=False)) for it in items])
-        lv.border_title = "Similar"
+        lv.border_title = readout("Similar")
         lv.border_subtitle = "more below (t)" if more else ""
         self._layout_similar()
 
@@ -1103,22 +1166,11 @@ class ArtistHeader(Widget):
 
 
 class ArtistScreen(Screen):
-    BINDINGS = [Binding("escape", "navigate_back", "Back", priority=True)]
+    """An artist page pushed over the current one (Search, `g`, `i`,
+    Similar). Two levels: the artist, and an album opened from it."""
 
     DEFAULT_CSS = """
     ArtistScreen { layout: vertical; }
-
-    ArtistScreen #breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-
-    ArtistScreen #breadcrumb:hover {
-        color: $text;
-        background: $panel;
-    }
 
     ArtistScreen #main-content {
         height: 1fr;
@@ -1137,13 +1189,13 @@ class ArtistScreen(Screen):
         height: 1fr;
         margin: 0;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
 
     ArtistScreen #albums:focus {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
 
     ArtistScreen #album-view {
@@ -1158,17 +1210,13 @@ class ArtistScreen(Screen):
     }
     """
 
-    def __init__(self, artist_id: str, source: str = "Search", back_tab: str = "search") -> None:
-        """``source`` is the breadcrumb text; ``back_tab`` the tab *id* Escape
-        returns to (never derived from the display name)."""
+    def __init__(self, artist_id: str) -> None:
         super().__init__()
         self._artist_id = artist_id
-        self._source = source
-        self._back_tab = back_tab
         self._album_view_active = False
 
     def compose(self) -> ComposeResult:
-        yield Label(f"← {self._source}", id="breadcrumb")
+        yield from page_header(self.app)  # type: ignore[arg-type]
         yield ArtistHeader(similar=True)
         with ContentSwitcher(initial="artist-view", id="main-content"):
             with Vertical(id="artist-view"):
@@ -1191,23 +1239,17 @@ class ArtistScreen(Screen):
         """The artist this page is about: what the ``i`` menu's follow acts on."""
         return self.query_one(ArtistHeader).artist
 
-    @property
-    def page_title(self) -> str | None:
-        """Breadcrumb text for a page opened from this one: the album open
-        here, else the artist."""
+    def nav_levels(self) -> list[str]:
+        artist = self.page_artist
+        levels = [artist.name if artist else "Artist"]
         if self._album_view_active:
             album = self.query_one("#album-panel", AlbumDetailPanel).album
-            return album.title if album else None
-        artist = self.page_artist
-        return artist.name if artist else None
+            levels.append(album.title if album else "Album")
+        return levels
 
-    def action_navigate_back(self) -> None:
-        if self._album_view_active:
+    def nav_to(self, depth: int) -> None:
+        if depth == 0 and self._album_view_active:
             self._show_artist_view()
-        else:
-            app: QobitApp = self.app  # type: ignore[assignment]
-            app.action_switch_tab(self._back_tab)
-            app.pop_screen()
 
     def _open_album(self, album: Album) -> None:
         panel = self.query_one("#album-panel", AlbumDetailPanel)
@@ -1215,11 +1257,13 @@ class ArtistScreen(Screen):
         self.query_one("#main-content", ContentSwitcher).current = "album-view"
         self._album_view_active = True
         panel.focus_tracklist()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     def _show_artist_view(self) -> None:
         self.query_one("#main-content", ContentSwitcher).current = "artist-view"
         self._album_view_active = False
         self.query_one("#albums", AlbumGrid).focus()
+        self.app.nav_changed()  # type: ignore[attr-defined]
 
     @work
     async def _load_detail(self) -> None:
@@ -1232,15 +1276,12 @@ class ArtistScreen(Screen):
             return
         try:
             self.query_one(ArtistHeader).populate(artist)
+            app.nav_changed()  # the trail can name the artist now
             if artist.albums:
                 grid = self.query_one("#albums", AlbumGrid)
                 await grid.set_cards([AlbumCard(album) for album in artist.albums])
         except NoMatches:
             pass
-
-    @on(events.Click, "#breadcrumb")
-    def _on_breadcrumb_click(self) -> None:
-        self.app.pop_screen()
 
     @on(AlbumCard.Selected)
     def _on_album_selected(self, event: AlbumCard.Selected) -> None:

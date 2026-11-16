@@ -104,7 +104,7 @@ def test_album_from_api_basic_fields():
     assert a.genre_id == 3
     assert a.label == "Parlophone"
     assert a.label_id == 4
-    assert a.quality_badge == "Hi-Res 24bit / 96kHz"
+    assert a.quality_badge == "HI-RES 24-BIT · 96 kHz"
 
 
 def test_album_quality_badge_empty_when_no_hires_metadata():
@@ -123,7 +123,7 @@ def test_album_quality_badge_omits_hires_prefix_when_not_hires_streamable():
             "hires_streamable": False,
         }
     )
-    assert a.quality_badge == "16bit / 44.1kHz"
+    assert a.quality_badge == "16-BIT · 44.1 kHz"
 
 
 def test_album_year_none_when_release_date_missing_or_malformed():

@@ -10,6 +10,11 @@ def _khz_str(khz: float) -> str:
     return f"{int(khz)}" if khz == int(khz) else f"{khz:.1f}"
 
 
+def quality_text(bit_depth: int, khz: float) -> str:
+    """The one way qobit writes a resolution: ``24-BIT · 96 kHz``."""
+    return f"{bit_depth}-BIT · {_khz_str(khz)} kHz"
+
+
 @dataclass
 class StreamUrl:
     url: str
@@ -36,7 +41,7 @@ class StreamUrl:
     def quality_badge(self) -> str:
         """Console-readout style for the transport bar, e.g. [ 24-BIT · 192 kHz ]."""
         bd = self.bit_depth or 16
-        return f"[ {bd}-BIT · {_khz_str(self.sampling_rate / 1000)} kHz ]"
+        return f"[ {quality_text(bd, self.sampling_rate / 1000)} ]"
 
 
 @dataclass
@@ -135,8 +140,8 @@ class Album:
     def quality_badge(self) -> str:
         if not self.maximum_bit_depth or not self.maximum_sampling_rate:
             return ""
-        badge = f"{self.maximum_bit_depth}bit / {_khz_str(self.maximum_sampling_rate)}kHz"
-        return f"Hi-Res {badge}" if self.hires_streamable else badge
+        badge = quality_text(self.maximum_bit_depth, self.maximum_sampling_rate)
+        return f"HI-RES {badge}" if self.hires_streamable else badge
 
     @classmethod
     def from_api(cls, data: dict) -> "Album":

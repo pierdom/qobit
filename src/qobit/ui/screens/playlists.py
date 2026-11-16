@@ -16,7 +16,15 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist
 from .._images import fetch_image
-from .artist_detail import GRID_CARD_IMG_H, LIBRARY_TILE_MIN_W, _GridNav, _set_art_width
+from .._utils import readout, status_line
+from ..widgets.art import Art
+from .artist_detail import (
+    GRID_CARD_IMG_H,
+    LIBRARY_TILE_MIN_W,
+    _GridNav,
+    _set_art_width,
+    select_card,
+)
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -63,19 +71,19 @@ class PlaylistCard(Widget):
     PlaylistCard .card-owner {
         height: 1;
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     PlaylistCard .card-meta {
         height: 1;
         width: 1fr;
-        color: $text-muted;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     PlaylistCard .card-date {
         height: 1;
         width: 1fr;
-        color: $text-disabled;
+        color: $qobit-muted;
         overflow: hidden hidden;
     }
     /* Selected state: shared .grid-card rules in QobitApp.CSS. */
@@ -91,25 +99,21 @@ class PlaylistCard(Widget):
         return self._playlist
 
     def compose(self) -> ComposeResult:
-        yield TGPImage()
+        yield Art(self._playlist.name)
         with Vertical(classes="card-info"):
             yield Label(escape(self._playlist.name), classes="card-name card-primary", markup=True)
+            # Plain text: the CSS gives the muted colour, or the selection's
+            # text colour when selected ([dim] markup halved it there).
             yield Label(
-                f"[dim]by[/dim] {escape(self._playlist.owner)}",
-                classes="card-owner card-secondary",
-                markup=True,
+                f"by {self._playlist.owner}", classes="card-owner card-secondary", markup=False
             )
             dur = self._playlist.duration_str
             meta = f"{self._playlist.tracks_count} tracks"
             if dur:
                 meta += f"  ·  {dur}"
-            yield Label(
-                f"[dim]{escape(meta)}[/dim]", classes="card-meta card-secondary", markup=True
-            )
+            yield Label(meta, classes="card-meta card-secondary", markup=False)
             date = self._playlist.date_str
-            yield Label(
-                f"[dim]{escape(date)}[/dim]", classes="card-date card-secondary", markup=True
-            )
+            yield Label(date, classes="card-date card-secondary", markup=False)
 
     def on_mount(self) -> None:
         _set_art_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
@@ -186,9 +190,9 @@ class PlaylistGrid(_GridNav, ScrollableContainer):
         if not cards or idx < 0 or idx >= len(cards):
             return
         if self._cursor >= 0 and self._cursor < len(cards):
-            cards[self._cursor].remove_class("-selected")
+            select_card(cards[self._cursor], False)
         self._cursor = idx
-        cards[idx].add_class("-selected")
+        select_card(cards[idx], True)
         if top:
             cards[idx].scroll_visible(animate=False, top=True)
         else:
@@ -217,16 +221,16 @@ class PlaylistsView(Widget):
         height: 1fr;
         grid-rows: 5;  /* GRID_CARD_IMG_H */
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
-        border-subtitle-color: $accent 40%;
+        border-subtitle-color: $qobit-muted;
         border-subtitle-align: right;
         padding: 0 1 0 1;
     }
     PlaylistsView PlaylistGrid:focus {
         border: round $accent;
-        border-title-color: $accent;
-        border-subtitle-color: $accent;
+        border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     """
 
@@ -249,7 +253,7 @@ class PlaylistsView(Widget):
 
     def on_mount(self) -> None:
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
-        grid.border_title = "Playlists"
+        grid.border_title = readout("Playlists")
         self._update_subtitle()
 
     def activate(self) -> None:
@@ -260,6 +264,9 @@ class PlaylistsView(Widget):
         self.call_after_refresh(self.query_one("#user-playlists-grid", PlaylistGrid).focus)
 
     # ── filter ───────────────────────────────────────────────────────────────
+
+    def can_navigate_back(self) -> bool:
+        return self._filter_active or bool(self._filter_query)
 
     def action_navigate_back(self) -> bool:
         if self._filter_active or self._filter_query:
@@ -273,6 +280,7 @@ class PlaylistsView(Widget):
     def action_start_filter(self) -> None:
         self._filter_active = True
         self._update_subtitle()
+        self.refresh_bindings()
 
     def on_key(self, event: events.Key) -> None:
         if not self._filter_active:
@@ -364,8 +372,8 @@ class PlaylistsView(Widget):
         if version != self._render_version:
             return
         if not playlists:
-            msg = "[dim]No matches.[/dim]" if self._filter_query else "[dim]No playlists yet.[/dim]"
-            await grid.mount(Label(msg, markup=True))
+            msg = "No matches." if self._filter_query else "No playlists yet."
+            await grid.mount(status_line(msg))
             return
         await grid.set_cards([PlaylistCard(p) for p in playlists])
 
@@ -373,10 +381,12 @@ class PlaylistsView(Widget):
     async def _load(self) -> None:
         app: QobitApp = self.app  # type: ignore[assignment]
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
+        grid.border_subtitle = "loading…"
         try:
             items = await app._client.get_all_user_playlists()
         except Exception as e:
-            await grid.mount(Label(f"[red]{e}[/red]", markup=True))
+            grid.border_subtitle = ""
+            await grid.mount(status_line(str(e), error=True))
             return
         self._playlists = [Playlist.from_api(raw) for raw in items]
         self._update_subtitle()

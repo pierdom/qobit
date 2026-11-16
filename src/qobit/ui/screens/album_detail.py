@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.content import Content
 from textual.css.query import NoMatches
@@ -20,14 +19,23 @@ from textual_image.widget import TGPImage
 from ...qobuz.client import QobuzError
 from ...qobuz.models import Album, Artist, Track
 from .._images import fetch_image
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
+from .._now_playing import (
+    GUTTER_NUM,
+    NowPlayingRowMixin,
+    NowPlayingViewMixin,
+    heart_suffix,
+    playing_content,
+)
 from .._utils import (
     DETAIL_HEADER_CSS,
     HIDE_ARTIST_BELOW,
     SMALL_ART_BELOW,
     TWO_COL_BELOW,
+    readout,
     strip_html,
 )
+from ..nav import page_header
+from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 
@@ -51,9 +59,11 @@ class TrackRow(NowPlayingRowMixin, ListItem):
         t = self.track
         heart = heart_suffix(self._favorite)
         # Numbered lists show the number only (no ♪), like the Up Next queue;
-        # the ▶/⏸ marker for the playing row comes from playing_content.
-        text = f"{self._number:2}.  {t.display_title}  ·  {t.duration_str}"
-        return playing_content(text, self._is_playing, self._is_paused, heart)
+        # on the playing row ▶/⏸ takes the number's place.
+        text = f"{t.display_title}  ·  {t.duration_str}"
+        return playing_content(
+            f"{self._number}.", text, self._is_playing, self._is_paused, heart, width=GUTTER_NUM
+        )
 
     def compose(self) -> ComposeResult:
         yield Label(self._primary(), classes="row-title")
@@ -83,17 +93,17 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         height: 1fr;
         layout: vertical;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
     AlbumDetailPanel:focus-within {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     /* Album-specific extras the shared .detail-* header doesn't cover. */
-    AlbumDetailPanel .ap-version { height: auto; color: $text-muted; text-style: italic; }
-    AlbumDetailPanel .ap-badges { height: auto; color: $text-muted; }
-    AlbumDetailPanel .ap-awards { height: auto; color: $accent 70%; margin-top: 1; }
+    AlbumDetailPanel .ap-version { height: auto; color: $qobit-muted; text-style: italic; }
+    AlbumDetailPanel .ap-badges { height: auto; color: $qobit-muted; }
+    AlbumDetailPanel .ap-awards { height: auto; color: $qobit-accent-text; margin-top: 1; }
     AlbumDetailPanel:focus-within .detail-tracklist {
         border-top: round $accent;
     }
@@ -116,7 +126,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="detail-header"):
-            yield TGPImage(classes="detail-art")
+            yield Art(classes="detail-art")
             with VerticalScroll(classes="detail-meta"):
                 yield Label("", classes="detail-title", markup=True)
                 yield Label("", classes="ap-version", markup=True)
@@ -146,13 +156,16 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     def load(self, album: Album) -> None:
         """Populate the panel with album data and start async loading."""
         self.album = album
-        self.border_title = escape(album.title)
+        self.query_one(Art).placeholder = album.title
+        self.border_title = readout("Album")  # the title is in bold right below
         year = str(album.year) if album.year else "—"
         parts: list[str] = [escape(album.artist), year]
         if album.genre:
             parts.append(escape(album.genre))
         self.query_one(".detail-title", Label).update(escape(album.title))
-        self.query_one(".detail-sub", Label).update(f"[dim]{' · '.join(parts)}[/dim]")
+        # Plain: the CSS gives these lines the muted colour ([dim] on top
+        # halved it, 1.5:1 on light themes).
+        self.query_one(".detail-sub", Label).update("  ·  ".join(parts))
         for cls in (".ap-version", ".ap-badges", ".ap-awards", ".detail-desc"):
             self._set_optional(cls, "")
         self.query_one(".detail-tracklist", ListView).clear()
@@ -185,7 +198,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         except Exception:
             if self.is_attached:
                 with contextlib.suppress(NoMatches):
-                    self._set_optional(".detail-desc", "[dim]Failed to load album details.[/dim]")
+                    self._set_optional(".detail-desc", "Couldn't load album details.")
             return
 
         if not self.is_attached or self.album is None or self.album.id != full.id:
@@ -195,7 +208,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         try:
             self._set_optional(
                 ".ap-version",
-                f"[dim italic]{escape(full.version)}[/dim italic]" if full.version else "",
+                f"[italic]{escape(full.version)}[/italic]" if full.version else "",
             )
             year = str(full.year) if full.year else "—"
             sub_parts: list[str] = [escape(full.artist), year]
@@ -203,18 +216,17 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
                 sub_parts.append(escape(full.genre))
             if dur := full.total_duration_str:
                 sub_parts.append(dur)
-            self.query_one(".detail-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+            self.query_one(".detail-sub", Label).update("  ·  ".join(sub_parts))
 
             badge_parts: list[str] = []
             if full.label:
                 badge_parts.append(escape(full.label))
             if q := full.quality_badge:
-                badge_parts.append(q)
+                # HI-RES in the theme's hi-res colour, like the transport.
+                badge_parts.append(q.replace("HI-RES ", "[b $qobit-hires]HI-RES[/] ", 1))
             if full.popularity is not None:
                 badge_parts.append(f"★ {full.popularity}")
-            self._set_optional(
-                ".ap-badges", f"[dim]{' · '.join(badge_parts)}[/dim]" if badge_parts else ""
-            )
+            self._set_optional(".ap-badges", "  ·  ".join(badge_parts))
 
             self._set_optional(
                 ".ap-awards", "  ".join(escape(a) for a in full.awards) if full.awards else ""
@@ -261,41 +273,33 @@ class AlbumScreen(Screen):
 
     Wraps AlbumDetailPanel so Search → Album looks identical to the inline
     album view opened from the Albums and Artists tabs: big art, rich metadata
-    header, formatted tracklist with favourites.  Escape returns to Search."""
-
-    BINDINGS = [Binding("escape", "app.pop_screen", "Back")]
+    header, formatted tracklist with favourites. Escape (the app's ``back``)
+    closes it."""
 
     DEFAULT_CSS = """
     AlbumScreen { layout: vertical; }
-    AlbumScreen #breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-    AlbumScreen #breadcrumb:hover { color: $text; background: $panel; }
     /* Bottom margin only: the app's horizontal inset is the Screen's padding
        (see QobitApp.CSS). A left/right margin here put the panel one column
        inside the header and transport bar above and below it. */
     AlbumScreen AlbumDetailPanel { height: 1fr; margin: 0 0 1 0; }
     """
 
-    def __init__(self, album: Album, source: str = "Search results") -> None:
+    def __init__(self, album: Album) -> None:
         super().__init__()
         self._album = album
-        self._source = source
 
-    @property
-    def page_title(self) -> str:
-        """Breadcrumb text for a page opened from this one."""
-        return self._album.title
+    def nav_levels(self) -> list[str]:
+        return [self._album.title]
+
+    def nav_to(self, depth: int) -> None:
+        pass  # one level
 
     def compose(self) -> ComposeResult:
         # Lazy import avoids a circular dependency: artist_detail imports
         # AlbumDetailPanel from this module at the top level.
         from .artist_detail import ArtistHeader
 
-        yield Label(f"← {self._source}", id="breadcrumb")
+        yield from page_header(self.app)  # type: ignore[arg-type]
         yield ArtistHeader()
         yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
@@ -342,10 +346,6 @@ class AlbumScreen(Screen):
         if self.is_attached:
             with contextlib.suppress(NoMatches):
                 self.query_one(ArtistHeader).populate(artist)
-
-    @on(events.Click, "#breadcrumb")
-    def _on_breadcrumb_click(self) -> None:
-        self.app.pop_screen()
 
     @on(AlbumDetailPanel.TrackSelected)
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:

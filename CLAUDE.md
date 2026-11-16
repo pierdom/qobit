@@ -24,7 +24,7 @@ src/qobit/
 ├── audio/device.py      mpv devices + synthesized alsa/hw:CARD=…,DEV=… entries,
 │                        bit-perfect ones flagged and sorted first
 ├── audio/player.py      mpv subprocess + IPC, bit-perfect flags, _stop_gen
-├── audio/verify.py      post-play rate/format check via mpv IPC
+├── audio/verify.py      bit-perfect check: mpv IPC + (Linux) ALSA hw_params
 ├── audio/media_keys.py  macOS Now Playing / Linux MPRIS2 (pydbus); degrades
 │                        silently without the optional deps
 ├── connect/             Qobuz Connect renderer, UI-agnostic (no Textual):
@@ -33,9 +33,10 @@ src/qobit/
 │                        over a PlayerPort; proto/ is generated (ruff-excluded)
 └── ui/
     ├── app.py           QobitApp: reactive state, transport, tabs, restore
+    ├── nav.py           TABS, breadcrumb trail (Breadcrumb), a page's tab bar
     ├── play_context.py  LocalPlayContext / ConnectPlayContext: the only
     │                    writers of _timeline/_cursor
-    ├── themes.py        cyberdeck + ayu-dark/-mirage/-light; colours only
+    ├── themes.py        cyberdeck + ayu-dark/-mirage/-light; qobit-* variables
     ├── _images.py       image fetch: 6 concurrent, memory + disk cache
     ├── _now_playing.py  row/view mixins for the ▶/⏸ marker, heart_suffix()
     ├── widgets/lists.py PagedListView (page keys move the cursor; lazy rows)
@@ -68,7 +69,12 @@ the end); `action_previous` and selecting any Playback row call
 `jump_to(index)`, which only moves the cursor, so skipping never drops tracks.
 `play_track(t, queue=…)` keeps the past, splices in `[t]+queue` and drops the
 old Up Next (a new selection, not a skip). `_trim_history()` bounds the past.
-Queue rows carry `timeline_index`. `jump_to`/`play_track` are `@work`.
+Queue rows are `TimelineRow`s carrying `role` (history/now/next) and
+`timeline_index`; `QueueView._reconcile` updates the list in place (rows
+matched by track id, reconfigured, moved; only new tracks mounted, leftovers
+removed last; one reconcile at a time under a lock). Never clear and remount
+it: that flickered and lost the scroll position. `tests/test_queue_reconcile.py`
+checks it against the timeline. `jump_to`/`play_track` are `@work`.
 
 **`queue_version`** is bumped on every timeline/cursor change; widgets watch it.
 Any new timeline mutator must bump it and exist in **both** play contexts.
@@ -152,15 +158,21 @@ cards; `selected_card()` returns the current one. Filtering hides/shows cards
 (`filter_cards`) instead of remounting, so Kitty images aren't re-sent; it
 mounts the lazy backlog first. Albums/Artists/Playlists share
 `GRID_CARD_IMG_H` (5 rows, CSS marked `/* GRID_CARD_IMG_H */`),
-`LIBRARY_TILE_MIN_W` (40) and `grid-gutter: 1 2`; each card's text must fit in
+`LIBRARY_TILE_MIN_W` (32) and `grid-gutter: 1 2`; each card's text must fit in
 5 rows. Playlist art uses `images300` (`images` are 50 px).
 
-**Tabs.** `_TABS` in app.py is the single source of truth `(id, name)`; labels
+**Tabs.** `nav.TABS` is the single source of truth `(id, name)`; labels
 (`[N] Name`, compact `N Name` below 90 cols) and the `1`–`7` keys derive from
 it. The Playback tab's id is `queue`. On activation the app calls the view's
 `activate()` (first load + focus); don't rely on `on_show` (Textual stopped
 sending Show after End on a long list). Views implement `action_navigate_back()
--> bool` for Escape (True = consumed).
+-> bool` for Escape (True = consumed) and `can_navigate_back()`: Escape has two
+app bindings, a footer-visible `back` that `App.check_action` enables only when
+something can go back, then the hidden `focus_tabs` it falls through to (a
+disabled action passes the key to the next binding; `-`/`=` use the same trick
+for the software-volume hint). Views hide keys that don't apply with
+`check_action` returning False (Sort/Filter while a detail view is open) and
+call `refresh_bindings()` when that state changes without a focus change.
 
 **The `i` menu** is one app binding (`action_track_menu`, a worker). From the
 focused widget it collects a track (a list row's `.track`), an album (a grid's
@@ -199,10 +211,20 @@ other at normal weight (`dim` made it unreadable on an unfocused panel).
 internals: an `ArtistCard._name()` helper shadowed `Widget._name` and crashed
 every tile.
 
-**Breadcrumbs.** Pages opened from `g`/`i` get `_origin()`: the main screen's
-active tab id (`screen_stack[0]`, the artist page's Escape target) and the text
-from the page underneath's `page_title` (album/artist page or inline detail),
-else the tab name. Never derive a tab id from a display name.
+**Navigation: pages + trail** (`nav.py`). Tabs open details inline (Albums,
+Artists); Search, `g`, `i` and Similar push pages (AlbumScreen, ArtistScreen,
+PlaylistScreen). Every level reports `nav_levels()` (its own labels, outermost
+first; a tab view only those below the tab) and `nav_to(depth)`;
+`QobitApp.nav_trail()` joins tab name + view levels + each page's levels, and
+`Breadcrumb` renders it (clickable crumbs; hidden at a tab's top level). Call
+`app.nav_changed()` whenever a level opens, closes or learns its title. Pages
+compose `page_header(app)` (a `PageTabs` bar with the origin tab lit, then the
+trail); its tab ids are prefixed `page-tab-` (a page's own `#albums` grid took
+the Albums tab's style). `1`–`7` and tab clicks call `action_switch_tab`, which
+closes pages first; Escape (`action_back`) goes up one level. The app's own
+`screen`-relative queries can hit a page: read the main screen through
+`screen_stack[0]` (`base_tab()`, `_base_view()`). Never derive a tab id from a
+display name.
 
 **Favourites.** `ensure_favorite_tracks/albums/artists()` fetch once each (one
 lock per list, loaded in parallel at startup); a failed load isn't cached.
@@ -213,12 +235,51 @@ the caches and patch the Tracks/Albums/Artists tabs, so nothing re-fetches.
 reactives on mount, so any instance anywhere is live. Now-playing art shows
 whenever a track is loaded (`-has-track`), not only while playing.
 
+**Identity.**
+- Colour roles: `$accent` = chrome (borders, focus, now playing);
+  `qobit-select` = selected row/card background; `qobit-hires` and
+  `qobit-heart` = signal; `qobit-readout` = the transport's status tag and
+  time (LED readout); `qobit-bar-start`/`-end` = the progress gradient. They
+  live in `Theme.variables`; other themes get
+  `QobitApp.get_theme_variable_defaults()` (accent everywhere, selection
+  accent 35%, HI-RES = `$warning`: built-ins' `$secondary` can be unreadable).
+  So `$qobit-*` is safe in CSS and Content styles; Rich Text and border titles
+  need `theme_color()`. A test app that borrows `QobitApp.CSS` must also
+  borrow `get_theme_variable_defaults`, or the stylesheet won't parse.
+- Textual ignores a theme's `boost=` when it also sets `panel` (`$boost` came
+  out transparent): set it in `variables={"boost": …}`. Cyberdeck also sets
+  `text-muted` (cyan-tinted, 10.7:1) and `footer-key-foreground` (amber).
+  Check a palette change with contrast numbers on the pairs actually drawn
+  (text on the selection tint too), not by eye alone.
+- The lamp: `_play_stream` starts `_verify_signal` → `audio.verify.check_signal`
+  → `app.signal`; `widgets.transport.signal_parts/signal_readout` render it for
+  the transport and the Now Playing panel. Software volume below 100% overrides
+  it (mpv can't see DSP).
+- The playing row's bar meter: `_now_playing.playing_icon()`; rows that show it
+  register with `track_live()`, and the app's beat timer calls `tick()`.
+- Cover art is `widgets.art.Art` (a TGPImage with an initials placeholder): use
+  it for any new image and set `.placeholder` when the subject changes.
+- Panel titles go through `_utils.readout()` (uppercase, same length).
+- `nav.Wordmark` sits on the Screen's `overlay` layer, docked right with height
+  1, so it shares the tab bar's row; it hides below `Wordmark.MIN_WIDTH`.
+
 **Status line.** `status_msg` is the transport's `artist — title` line; use
 `_flash_status()` for transient notices (auto-clears after ~3 s).
 
 **Labels.** Track rows build text with `Content.assemble(...)`, not markup
-(titles with `[`/`]` break markup); `heart_suffix()` is the only place the ♥
-part is built.
+(titles with `[`/`]` break markup); any Label fed API text (album, artist,
+breadcrumb, bio) is `markup=False`. `heart_suffix()` is the only place the ♥
+part is built. Row titles go through `playing_content(lead, text, …, width=)`:
+a fixed gutter (`GUTTER_ICON`/`GUTTER_NUM`/`GUTTER_NUM_LONG`) where ▶/⏸
+replaces the lead, and `meta_indent(width)` for the second line, one width per
+list (the Playback timeline uses `GUTTER_NUM` for all its rows). `.row-title`
+and `.row-meta` never wrap (ellipsis, in `QobitApp.CSS`). Empty and failed
+lists/grids use `_utils.status_line()`; a loading tab sets its border subtitle
+to `loading…`. Resolution is `models.quality_text()` (`24-BIT · 96 kHz`).
+
+**Cursor follows playback** only if it was on the playing row (or nowhere):
+`NowPlayingViewMixin` and the Playback list's rebuild keep a cursor the user
+moved.
 
 **Visual rules** (check every UI change on a rendered screenshot, never on
 computed styles: they misled three times):
@@ -228,12 +289,50 @@ computed styles: they misled three times):
 - Never tint behind a modal (`ModalScreen { background: transparent }`): Kitty
   images are placeholder cells whose text colour encodes the image id, and a
   tint changes it, so every image behind the menu vanished.
-- qobit's chrome uses `$accent`. Rich `Text` doesn't resolve `$variables`: read
-  `app.theme_variables["accent"]`.
+- qobit's chrome uses `$accent` for lines (borders, rules); text in the accent
+  colour uses `$qobit-accent-text` (the accent where it reads, darker or
+  lighter where it doesn't: light themes). Unfocused titles and subtitles are
+  `$text-muted`, never a faded accent (`$accent 40%` was 2.6:1); no text
+  colour with an alpha (`$x 60%`): use a variable that is readable as is.
+  Rich `Text` doesn't resolve `$variables`: read `app.theme_variables[...]`.
+- Backgrounds: page sections paint none (no bands, no panel fills, no
+  footer bar, no Input fill, no scrollbar track): panels are set apart by
+  their round borders, so the theme background (or the terminal's, with it
+  off) shows through and both modes look alike. The only fills: state (the
+  selection `$qobit-select`, the now-playing row, a focused mix card) and
+  floating layers (the `i`/`g` menu, the command palette). A new fill needs a
+  matching `Screen.-transparent` rule in `QobitApp.CSS` (and its Labels
+  `transparent`), or it shows in one mode only. Check with a background audit
+  of rendered strips in both modes, not by reading CSS.
 - Lists are `background: transparent` (Textual's `$surface` boxes them).
-- List highlight targets Textual 8's `-highlight` class: `$accent 35%` focused,
-  `12%` unfocused, labels transparent. Grid cards share `.grid-card` in
-  `QobitApp.CSS`; never add per-card `.-selected` rules.
+- Selection colours are measured per theme, never assumed:
+  `themes.qobit_variable_defaults` computes `qobit-select` / `-select-text`
+  (first of accent, foreground, black/white at 4.5:1 on the selection),
+  `-select-dim` (unfocused, 10%), `-now` (the playing row's tint) and
+  `-accent-text` (accent moved just enough to read on the page and the
+  tint). ANSI themes can't blend: they get Textual's block-cursor pair and
+  no tints. All text on a selection takes `$qobit-select-text`: a
+  highlighted row's title drops its span colours (`plain_if_highlighted`,
+  rows' `watch_highlighted`), selected cards too (`select_card()` →
+  `refresh_selected()`); no `dim` style on card text (CSS gives the muted
+  colour). Secondary text is `$qobit-muted` (computed, readable on the page,
+  the tints and the menu surface), never Textual's `$text-muted`: that is
+  "auto 60%", picked against the widget's background, which with the theme
+  background off is the terminal's, assumed dark (white-on-white muted text
+  in light themes). The defaults use the theme's generated colour system
+  (`theme.to_color_system().generate()`), not its raw fields. Any rule that
+  fills a row in transparent mode must not out-rank the selection: the
+  `Screen.-transparent ListView… -highlight` rules carry an extra type
+  selector for that (the playing row once lost its highlight and kept black
+  text). Widgets that resolve theme colours to values in Python (transport
+  readout, Now Playing lamp) redraw on a theme change with
+  `call_after_refresh`: the `theme` reactive fires before `theme_variables`
+  is recomputed. Footer text sits on the page (no bar): keys
+  `$qobit-readout`, descriptions `$foreground`, whatever the theme sets for
+  its own bar. The list highlight targets Textual 8's `-highlight` class. Grid
+  cards share `.grid-card` in `QobitApp.CSS`; never add per-card
+  `.-selected` rules. `tests/test_themes.py` holds every theme, Textual's
+  included, to 4.5:1.
 - Never give a Label the classes `primary`, `secondary`, `accent`, `success`,
   `warning` or `error` (Textual 8 Label variants). Rows use `row-title` /
   `row-meta`.

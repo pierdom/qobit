@@ -4,9 +4,8 @@ import contextlib
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
-from textual import events, on, work
+from textual import on, work
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.content import Content
 from textual.css.query import NoMatches
@@ -16,12 +15,20 @@ from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist, Track
 from .._images import fetch_image
-from .._now_playing import NowPlayingRowMixin, NowPlayingViewMixin, heart_suffix, playing_content
-from .._utils import DETAIL_HEADER_CSS, strip_html
+from .._now_playing import (
+    GUTTER_NUM_LONG,
+    NowPlayingRowMixin,
+    NowPlayingViewMixin,
+    heart_suffix,
+    meta_indent,
+    playing_content,
+)
+from .._utils import DETAIL_HEADER_CSS, readout, strip_html
+from ..nav import page_header
+from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .artist_detail import _set_art_width
-from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -32,7 +39,7 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
     PlaylistTrackRow { height: 2; padding: 0 1; }
     PlaylistTrackRow Label { width: 1fr; }
     PlaylistTrackRow .row-title { text-style: bold; }
-    PlaylistTrackRow .row-meta { color: $text-muted; }
+    PlaylistTrackRow .row-meta { color: $qobit-muted; }
     """
 
     def __init__(self, track: Track, number: int, favorite: bool = False) -> None:
@@ -44,16 +51,25 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
     def _primary(self) -> Content:
         t = self.track
         heart = heart_suffix(self._favorite)
-        if self._is_playing:
-            text = f"{self._number:3}.  {t.artist} — {t.display_title}"
-        else:
-            text = f"{self._number:3}. {ICON_TRACK}  {t.artist} — {t.display_title}"
-        return playing_content(text, self._is_playing, self._is_paused, heart)
+        # Numbered list: the number only, no ♪ (like the album tracklist).
+        text = f"{t.artist} — {t.display_title}"
+        return playing_content(
+            f"{self._number}.",
+            text,
+            self._is_playing,
+            self._is_paused,
+            heart,
+            width=GUTTER_NUM_LONG,
+        )
 
     def compose(self) -> ComposeResult:
         t = self.track
         yield Label(self._primary(), classes="row-title")
-        yield Label(f"        {t.album}  ·  {t.duration_str}", classes="row-meta")
+        yield Label(
+            f"{meta_indent(GUTTER_NUM_LONG)}{t.album}  ·  {t.duration_str}",
+            classes="row-meta",
+            markup=False,
+        )
 
     def set_favorite(self, favorite: bool) -> None:
         self._favorite = favorite
@@ -61,33 +77,25 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
 
 
 class PlaylistScreen(NowPlayingViewMixin, Screen):
-    BINDINGS = [Binding("escape", "app.pop_screen", "Back")]
+    """A playlist page pushed from the Playlists tab or Search."""
 
     DEFAULT_CSS = (
         DETAIL_HEADER_CSS
         + """
     PlaylistScreen { layout: vertical; }
-    PlaylistScreen #breadcrumb {
-        height: 1;
-        padding: 0 2;
-        color: $text-muted;
-        background: $boost;
-    }
-    PlaylistScreen #breadcrumb:hover {
-        color: $text;
-        background: $panel;
-    }
     PlaylistScreen #playlist-panel {
         height: 1fr;
-        margin: 0 1 1 1;
+        /* Bottom only: the app's inset is the Screen's padding; side margins
+           put the panel a column inside the transport bar below it. */
+        margin: 0 0 1 0;
         layout: vertical;
         border: round $accent 40%;
-        border-title-color: $accent 40%;
+        border-title-color: $qobit-muted;
         border-title-style: bold;
     }
     PlaylistScreen #playlist-panel:focus-within {
         border: round $accent;
-        border-title-color: $accent;
+        border-title-color: $qobit-accent-text;
     }
     PlaylistScreen #playlist-panel:focus-within .detail-tracklist {
         border-top: round $accent;
@@ -98,12 +106,19 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
     def __init__(self, playlist_id: str) -> None:
         super().__init__()
         self._playlist_id = playlist_id
+        self._name = "Playlist"
+
+    def nav_levels(self) -> list[str]:
+        return [self._name]
+
+    def nav_to(self, depth: int) -> None:
+        pass  # one level
 
     def compose(self) -> ComposeResult:
-        yield Label("← Playlists", id="breadcrumb")
+        yield from page_header(self.app)  # type: ignore[arg-type]
         with Vertical(id="playlist-panel"):
             with Horizontal(classes="detail-header"):
-                yield TGPImage(classes="detail-art")
+                yield Art(classes="detail-art")
                 with VerticalScroll(classes="detail-meta"):
                     yield Label("", classes="detail-title", markup=True)
                     yield Label("", classes="detail-sub", markup=True)
@@ -115,7 +130,8 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
         _set_art_width(self.query_one(".detail-art", TGPImage), 14)
-        self.query_one("#playlist-panel").border_title = "Loading…"
+        self.query_one("#playlist-panel").border_title = readout("Playlist")
+        self.query_one("#playlist-panel").border_subtitle = "loading…"
         self._wire_now_playing(PlaylistTrackRow, ".detail-tracklist")
         self._load()
 
@@ -127,8 +143,8 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         except Exception as e:
             if self.is_attached:
                 try:
-                    self.query_one("#playlist-panel").border_title = "Error"
-                    self.query_one(".detail-title", Label).update(f"[red]{escape(str(e))}[/red]")
+                    self.query_one("#playlist-panel").border_title = readout("Playlist")
+                    self.query_one(".detail-title", Label).update(f"[$error]{escape(str(e))}[/]")
                 except NoMatches:
                     pass
             return
@@ -138,7 +154,11 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
 
         try:
             panel = self.query_one("#playlist-panel")
-            panel.border_title = escape(playlist.name)
+            self._name = playlist.name
+            self.query_one(Art).placeholder = playlist.name
+            app.nav_changed()
+            panel.border_subtitle = ""
+            panel.border_title = readout("Playlist")  # the name is in bold right below
 
             self.query_one(".detail-title", Label).update(escape(playlist.name))
 
@@ -147,11 +167,11 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
                 sub_parts.append(playlist.duration_str)
             if playlist.date_str:
                 sub_parts.append(playlist.date_str)
-            self.query_one(".detail-sub", Label).update(f"[dim]{' · '.join(sub_parts)}[/dim]")
+            self.query_one(".detail-sub", Label).update("  ·  ".join(sub_parts))
 
             if playlist.description:
                 cleaned = escape(strip_html(playlist.description))
-                self.query_one(".detail-desc", Label).update(f"[dim]{cleaned}[/dim]")
+                self.query_one(".detail-desc", Label).update(cleaned)
         except NoMatches:
             return
 
@@ -197,7 +217,3 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)
             self.call_after_refresh(lv.focus)
-
-    @on(events.Click, "#breadcrumb")
-    def _on_breadcrumb_click(self) -> None:
-        self.app.pop_screen()

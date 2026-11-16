@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import contextlib
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.content import Content
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Label, ListItem, ListView
 
 from ...qobuz.models import Track
+from .._now_playing import plain_if_highlighted
 from .search import ICON_ALBUM, ICON_ARTIST
 
 # (action id, icon, label). Icons are all single-width, monochrome BMP glyphs of
@@ -79,14 +83,21 @@ class MenuOption(ListItem):
         self._number = number
         self._label_w = label_w
 
-    def compose(self) -> ComposeResult:
-        yield Label(
-            Content.assemble(
-                (f"{self._icon}   ", "$accent"),
-                f"{self._label:<{self._label_w}}",
-                (str(self._number), "$text-muted"),
-            )
+    def _content(self) -> Content:
+        content = Content.assemble(
+            (f"{self._icon}   ", "$qobit-accent-text"),
+            f"{self._label:<{self._label_w}}",
+            (str(self._number), "$qobit-muted"),
         )
+        return plain_if_highlighted(self, content)
+
+    def compose(self) -> ComposeResult:
+        yield Label(self._content())
+
+    def watch_highlighted(self, value: bool) -> None:
+        super().watch_highlighted(value)
+        with contextlib.suppress(NoMatches):
+            self.query_one(Label).update(self._content())
 
 
 class ContextMenu(ModalScreen[str | None]):
@@ -113,19 +124,20 @@ class ContextMenu(ModalScreen[str | None]):
         background: $surface;
         padding: 0;
     }
+    /* One fill for the whole menu (a floating layer needs one to stay
+       readable over the page); a rule under the header, not a second band. */
     ContextMenu #menu-header {
         width: 1fr;
         height: auto;
         padding: 1 2 0 2;  /* title and artist on consecutive lines */
-        background: $boost;
-        color: $accent;
+        color: $qobit-accent-text;
         text-style: bold;
     }
     ContextMenu #menu-sub {
         width: 1fr;
-        padding: 0 2 1 2;
-        background: $boost;
-        color: $text-muted;
+        padding: 0 2 0 2;
+        border-bottom: round $accent 40%;
+        color: $qobit-muted;
     }
     ContextMenu ListView {
         height: auto;

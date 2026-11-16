@@ -10,10 +10,14 @@ from textual.app import App
 from textual.widgets import Label
 
 from qobit.qobuz.models import Artist
+from qobit.ui.app import QobitApp
 from qobit.ui.screens.artist_detail import ArtistCard
 
 
 class _App(App):
+    # qobit's widgets use qobit's theme variables ($qobit-*).
+    get_theme_variable_defaults = QobitApp.get_theme_variable_defaults
+
     def __init__(self, card: ArtistCard) -> None:
         super().__init__()
         self._card = card

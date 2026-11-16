@@ -7,6 +7,102 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
+## [0.7.0] - 2026-11-16
+
+### Added
+
+- A **bit-perfect lamp** on the transport bar and the Now Playing panel: a
+  couple of seconds into each track qobit checks mpv's output and, on Linux,
+  the rate and format the DAC actually runs at (catching a sound server that
+  resamples behind mpv). `◉ BIT-PERFECT`, or what differs:
+  `◌ RESAMPLED 96 → 48 kHz`, `◌ REDUCED 24 → 16-BIT`, `◌ SOFTWARE VOLUME 80%`.
+- `HI-RES` tag for streams and albums above CD quality, in its own theme
+  colour (magenta in cyberdeck, blue in Ayu), on the transport bar, the Now
+  Playing panel, album cards and the album page.
+- The playing track's `▶` becomes a small animated bar meter while it plays.
+- Covers show a tile with the artist's or album's initials while they load,
+  or when there's no image.
+- A `◢◤ qobit` wordmark at the right of the tab bar (from 102 columns).
+
+### Changed
+
+- Pages (an album, artist or playlist opened from Search, `g`, `i` or Similar)
+  keep the tab bar, with the tab they came from lit, and show the whole trail
+  (`Search › Mogwai › Mr. Beast`) instead of one `← back` label. Click any
+  part to go back there; Escape goes up one level. The Albums and Artists
+  tabs' inline details use the same trail.
+- The progress bar moves smoothly (an eighth of a cell at a time); in
+  cyberdeck it's a cyan-to-magenta gradient.
+- Panel titles are uppercase readouts (`FAVOURITE ALBUMS`), like the queue's
+  section dividers.
+- Library grids fit more tiles: 3 columns at 120 terminal columns (was 2).
+- The cyberdeck theme has three colour roles: cyan chrome, neon pink for
+  signal (HI-RES, hearts) and amber LED readouts (the transport's status and
+  time, the footer keys). Muted text is tinted cyan and easier to read
+  (10.7:1), the selection tint is lighter so pink and muted text stay
+  readable on it, and the violet secondary is brighter.
+- The Now Playing panel's genre/label line, the playing row's album line, the
+  playlist card date and the mix track count are easier to read in every theme.
+- Track rows line up: the title and the album line start in the same column
+  in every list, and the playing row's ▶/⏸ takes the place of its number or
+  `♪` instead of pushing the row to the right.
+- Long album names end in `…` instead of wrapping onto the next row.
+- The footer shows only the keys that apply: `esc Back` when there's somewhere
+  to go back to, no Sort/Filter while an album or artist is open, and `-`/`=`
+  only once software volume is turned on.
+- When a track ends, a list's cursor follows playback only if it was on the
+  playing track, so browsing a list (or Up Next) no longer loses your place.
+- The Now Playing panel shows the stream's resolution, and its lines no longer
+  wrap.
+- Resolution is written the same way everywhere (`24-BIT · 96 kHz`), and
+  separators are `  ·  ` throughout.
+- Album and playlist panels are titled "Album" / "Playlist" instead of repeating
+  the name shown right below.
+- The Playback list updates in place when a track ends or the queue changes,
+  instead of being cleared and rebuilt: no flicker, and the scroll position
+  stays.
+- Empty, loading and error states look the same in every tab; tabs show
+  "loading…" while they fetch.
+
+### Fixed
+
+- With the theme background off, the cursor on the playing track lost its
+  highlight and its text turned the selection's text colour on the bare
+  terminal (black on black in `ansi-dark`). The playing row now highlights
+  like any other.
+- Readability across all 25 themes (checked automatically in both background
+  modes): unfocused panel titles, inactive tabs, secondary text, the album
+  page's details, the transport's album line, the bit-perfect lamp and the
+  footer were too faint in many themes (down to 1.0:1: Solarized Light's
+  footer, and light themes' muted text with the background off). Secondary
+  text now uses a colour qobit checks per theme, and everything reads at
+  4.5:1 or better except a few of the themes' own colours.
+- On the Mixes tab, Space opened the focused mix instead of pausing (and
+  `space Pause` was missing from the footer there). `Enter` opens a mix.
+- On short terminals the Now Playing panel's cover pushed the resolution and
+  the bit-perfect lamp out of view: the cover now shrinks to fit, and hides
+  when there's no room for it.
+- After switching theme, the bit-perfect lamp and the transport readout kept
+  the previous theme's colours until the next track.
+- A selected row, card or menu option is readable in every theme. Its text
+  was the accent on an accent tint, unreadable in most of Textual's themes
+  and every light one, and in ANSI themes (`ansi-dark`) the same colour as
+  its background. qobit now picks the selection's text colour per theme by
+  measuring contrast (ANSI themes use their own cursor colours), and
+  everything on a selection, hearts and HI-RES included, takes it. The
+  playing row, hearts and HI-RES also stay readable on light themes.
+- Backgrounds are consistent: no page section paints one (the album and
+  artist headers, the footer, the search box, scrollbar tracks and cover
+  placeholders did, some only with the theme background on, some even with
+  it off). Panels are set apart by their borders; the only fills left are the
+  selection, the now-playing row and the `i`/`g` menu, the same in both modes.
+- `1`–`7` on an album, artist or playlist page switched the hidden tab under
+  it, so Escape then landed somewhere unexpected. They now close the page and
+  switch tab.
+- The playlist page's panel sat one column inside the transport bar.
+- Album names, artist names and titles containing `[…]` lost that part (it was
+  read as markup) in list rows, breadcrumbs and the Now Playing panel.
+
 ## [0.6.0] - 2026-11-15
 
 ### Added

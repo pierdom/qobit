@@ -17,13 +17,34 @@ All keys, and how each tab works. The README has a short version.
 | `↑` `↓` `←` `→` | Move in lists and grids |
 | `PageUp` / `PageDown` | Move the selection a page at a time |
 | `Home` / `End` | First / last item |
-| `Escape` | Back / close filter / focus the tab bar |
+| `Escape` | Back one level: close an album inside an artist page, then the page; close a detail view; or clear the filter (the footer shows `esc Back` when there's somewhere to go back to). Otherwise focus the tab bar |
+| `-` / `=` | Software volume down / up, only once it's turned on from `Ctrl+P` (they appear in the footer then) |
 | `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Qobuz Connect, software volume |
+| `q` | Quit |
+
+Albums, artists and playlists you open from Search, `g`, `i` or Similar
+artists open as a page on top of the tab. The tab bar stays visible (the tab
+you came from is lit) and a trail under it shows where you are, e.g.
+`Search › Mogwai › Mr. Beast`: click a name to go back there. `1`–`7`, or a
+click on a tab, closes the pages and switches tab.
+
+The footer lists only the keys that apply where you are: Sort and Filter
+disappear while an album or artist is open, for example.
 
 Themes: qobit's own `qobit-cyberdeck`, `ayu-dark`, `ayu-mirage` and `ayu-light`
 (colours from the official [ayu palette](https://github.com/ayu-theme/ayu-colors)),
 plus Textual's built-in themes. `Ctrl+P` → *Theme*; the choice is saved.
-| `q` | Quit |
+`qobit-cyberdeck` fills the progress bar with a cyan-to-magenta gradient; the
+others use a flat accent.
+
+The transport bar's bottom-right readout shows the stream's resolution,
+`HI-RES` (in a colour of its own) when it's above CD quality, and a
+**bit-perfect lamp** once the output has been checked, a couple of seconds into
+each track: `◉ BIT-PERFECT`, or what differs (`◌ RESAMPLED 96 → 48 kHz`). See
+[audio.md](audio.md#verifying). Album cards and the album page mark hi-res
+albums the same way. The playing track's `▶` is a small animated bar meter
+while it plays (decoration: qobit doesn't analyse the audio). Covers that are
+still loading, or missing, show a tile with initials.
 
 ## Playback (`1`)
 
@@ -35,12 +56,15 @@ The **left** side is one list: **Recently Played** (`↺`), then the
 there without removing anything. Tracks you skip stay under Recently Played; if
 you jump back, the tracks in between return to Up Next.
 Playing an album or playlist from the library replaces Up Next and keeps your
-history.
+history. When a track ends, the cursor moves with playback only if it was on
+the playing track; if you've moved it, it stays where you put it. The same goes
+for every other list.
 
 The **right** side is the **Now Playing** panel: cover art, title and artist,
-`album · year`, `genre · label`, the stream's resolution, and the artist's
+`album · year`, `genre · label`, the stream's resolution (`[ 24-BIT · 96 kHz ]`), and the artist's
 biography (scroll with the mouse wheel). Below ~100 columns the panel is hidden
-and the timeline takes the full width.
+and the timeline takes the full width; on a short terminal the cover shrinks,
+and hides when there's no room, so the text always shows.
 
 | Key | Action |
 |-----|--------|
