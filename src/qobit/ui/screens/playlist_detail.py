@@ -25,6 +25,7 @@ from .._now_playing import (
 )
 from .._utils import DETAIL_HEADER_CSS, strip_html
 from ..nav import page_header
+from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .artist_detail import _set_art_width
@@ -117,7 +118,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         yield from page_header(self.app)  # type: ignore[arg-type]
         with Vertical(id="playlist-panel"):
             with Horizontal(classes="detail-header"):
-                yield TGPImage(classes="detail-art")
+                yield Art(classes="detail-art")
                 with VerticalScroll(classes="detail-meta"):
                     yield Label("", classes="detail-title", markup=True)
                     yield Label("", classes="detail-sub", markup=True)
@@ -154,6 +155,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         try:
             panel = self.query_one("#playlist-panel")
             self._name = playlist.name
+            self.query_one(Art).placeholder = playlist.name
             app.nav_changed()
             panel.border_subtitle = ""
             panel.border_title = "Playlist"  # the name is in bold right below

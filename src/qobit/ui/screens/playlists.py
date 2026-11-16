@@ -17,6 +17,7 @@ from textual_image.widget import TGPImage
 from ...qobuz.models import Playlist
 from .._images import fetch_image
 from .._utils import status_line
+from ..widgets.art import Art
 from .artist_detail import GRID_CARD_IMG_H, LIBRARY_TILE_MIN_W, _GridNav, _set_art_width
 
 if TYPE_CHECKING:
@@ -92,7 +93,7 @@ class PlaylistCard(Widget):
         return self._playlist
 
     def compose(self) -> ComposeResult:
-        yield TGPImage()
+        yield Art(self._playlist.name)
         with Vertical(classes="card-info"):
             yield Label(escape(self._playlist.name), classes="card-name card-primary", markup=True)
             yield Label(

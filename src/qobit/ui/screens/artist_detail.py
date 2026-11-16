@@ -30,6 +30,7 @@ from .._now_playing import (
     playing_content,
 )
 from ..nav import page_header
+from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
@@ -44,8 +45,10 @@ _CARD_IMG_H = 4  # album tiles inside an artist page (title + year only)
 # laid out to fit in this many rows.
 GRID_CARD_IMG_H = 5
 # Minimum tile width for the same three library grids, so they show the same
-# number of columns at a given terminal width.
-LIBRARY_TILE_MIN_W = 40
+# number of columns at a given terminal width. 32 leaves ~22 cells of text
+# beside the art: 3 columns at 120 terminal columns, 5 at 180 (at 40, tiles
+# were mostly empty space: 2 and 4).
+LIBRARY_TILE_MIN_W = 32
 _TILE_MIN_W = 22
 
 
@@ -404,7 +407,7 @@ class AlbumCard(Widget):
         return self._album
 
     def compose(self) -> ComposeResult:
-        yield TGPImage()
+        yield Art(self._album.title)
         with Vertical(classes="card-info"):
             yield Label(escape(self._album.title), classes="card-title card-primary", markup=True)
             yield Label(
@@ -746,7 +749,7 @@ class ArtistCard(Widget):
         return self._artist
 
     def compose(self) -> ComposeResult:
-        yield TGPImage()
+        yield Art(self._artist.name)
         with Vertical(classes="card-info"):
             yield Label(self._label(), classes="card-name card-primary")
 
@@ -1060,7 +1063,7 @@ class ArtistHeader(Widget):
         self._similar_items: list[dict] = []
 
     def compose(self) -> ComposeResult:
-        yield TGPImage(classes="ah-image")
+        yield Art(classes="ah-image")
         with VerticalScroll(classes="ah-bio-section"):
             yield Label("", classes="ah-bio")
         yield ListView(classes="ah-similar")
@@ -1076,11 +1079,15 @@ class ArtistHeader(Widget):
         self._similar_items = []
         self._layout_similar()
         self.query_one(".ah-bio-section").border_title = name
+        art = self.query_one(Art)
+        art.image = None  # not the previous artist's photo under this name
+        art.placeholder = name
         self.query_one(".ah-bio", Label).update("")
 
     def populate(self, artist: Artist) -> None:
         self.artist = artist
         self.query_one(".ah-bio-section").border_title = escape(artist.name)
+        self.query_one(Art).placeholder = artist.name
         if artist.biography:
             self.query_one(".ah-bio", Label).update(escape(artist.biography))
         if artist.image_url:

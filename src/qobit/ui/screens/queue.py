@@ -29,6 +29,7 @@ from .._now_playing import (
     track_live,
 )
 from .._utils import status_line, strip_html
+from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import signal_parts
 
@@ -266,7 +267,7 @@ class NowPlayingHero(Widget):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="hero-art-row"):
-            yield TGPImage(id="hero-art")
+            yield Art(id="hero-art")
         yield Label("", classes="hero-title")
         yield Label("", classes="hero-artist", markup=False)
         yield Label("", classes="hero-album", markup=False)
@@ -297,6 +298,8 @@ class NowPlayingHero(Widget):
 
     def _on_now_playing(self, track: object) -> None:
         self.set_class(bool(track), "-has-track")
+        if track:
+            self.query_one(Art).placeholder = getattr(track, "album", "") or ""
         if track and getattr(track, "image_url", None):
             self._fetch_art(track.image_url)  # type: ignore[union-attr]
         self._refresh_favorite()

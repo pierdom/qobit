@@ -20,6 +20,7 @@ from textual_image.widget import TGPImage
 from ...qobuz.models import quality_text
 from .._images import fetch_image
 from ..themes import BAR_END, BAR_START, HIRES, theme_color
+from .art import Art
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -229,7 +230,7 @@ class TransportBar(Widget):
     """
 
     def compose(self) -> ComposeResult:
-        yield TGPImage(id="tb-art")
+        yield Art(id="tb-art")
         yield _TransportContent()
 
     def on_mount(self) -> None:
@@ -280,6 +281,7 @@ class TransportBar(Widget):
         content = self.query_one(_TransportContent)
         self.set_class(bool(track), "-has-track")
         if track:
+            self.query_one(Art).placeholder = track.album or track.artist  # type: ignore[union-attr]
             content.label = f"{track.artist} — {track.display_title}"  # type: ignore[union-attr]
             content.album = track.album  # type: ignore[union-attr]
             if track.image_url:  # type: ignore[union-attr]

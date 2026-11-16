@@ -34,6 +34,7 @@ from .._utils import (
     strip_html,
 )
 from ..nav import page_header
+from ..widgets.art import Art
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 
@@ -124,7 +125,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="detail-header"):
-            yield TGPImage(classes="detail-art")
+            yield Art(classes="detail-art")
             with VerticalScroll(classes="detail-meta"):
                 yield Label("", classes="detail-title", markup=True)
                 yield Label("", classes="ap-version", markup=True)
@@ -154,6 +155,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     def load(self, album: Album) -> None:
         """Populate the panel with album data and start async loading."""
         self.album = album
+        self.query_one(Art).placeholder = album.title
         self.border_title = "Album"  # the title is in bold right below
         year = str(album.year) if album.year else "—"
         parts: list[str] = [escape(album.artist), year]

@@ -158,7 +158,7 @@ cards; `selected_card()` returns the current one. Filtering hides/shows cards
 (`filter_cards`) instead of remounting, so Kitty images aren't re-sent; it
 mounts the lazy backlog first. Albums/Artists/Playlists share
 `GRID_CARD_IMG_H` (5 rows, CSS marked `/* GRID_CARD_IMG_H */`),
-`LIBRARY_TILE_MIN_W` (40) and `grid-gutter: 1 2`; each card's text must fit in
+`LIBRARY_TILE_MIN_W` (32) and `grid-gutter: 1 2`; each card's text must fit in
 5 rows. Playlist art uses `images300` (`images` are 50 px).
 
 **Tabs.** `nav.TABS` is the single source of truth `(id, name)`; labels

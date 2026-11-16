@@ -38,3 +38,13 @@ def test_playing_marker_replaces_the_lead_without_shifting():
 def test_suffix_is_appended():
     content = playing_content("♪", "Song", False, False, ("  ♥", "$accent"))
     assert content.plain == "♪  Song  ♥"
+
+
+def test_art_placeholder_initials():
+    from qobit.ui.widgets.art import initials
+
+    assert initials("PJ Harvey") == "PH"
+    assert initials("Mogwai") == "MO"
+    assert initials("The Velvet Underground") == "VU"
+    assert initials("The") == "TH"
+    assert initials("") == ""
