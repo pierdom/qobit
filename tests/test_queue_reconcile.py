@@ -82,7 +82,8 @@ POOL = [
 
 def _expected(app):
     out = []
-    history, queue, now = app._history, app._play_queue, app.now_playing
+    history, queue = app._history, app._play_queue
+    now = app._timeline[app._cursor] if app._cursor >= 0 else None
     if history:
         out.append(("H", "Recently Played", len(history)))
         out += [("history", t.id, i, 0) for i, t in enumerate(history)]
@@ -142,11 +143,24 @@ def test_reconcile_tracks_the_timeline(app):
             assert {id(c) for c in lv.children} == before
             assert lv.highlighted_child.track is app.now_playing
 
+            # advance() moves the cursor first and sets now_playing only once
+            # the stream resolves: the list goes straight to its final rows
+            # (no in-between frame with the old track twice).
+            before = {id(c) for c in lv.children}
+            app._cursor = 6
+            await settle()
+            in_between = _actual(lv)
+            assert in_between == _expected(app)
+            assert {id(c) for c in lv.children} == before
+            app.now_playing = app._timeline[6]
+            await settle()
+            assert _actual(lv) == in_between
+
             # A row the user moved to in Up Next keeps the cursor.
             await pilot.press("down", "down", "down")
             held = lv.highlighted_child
-            app._cursor = 6
-            app.now_playing = app._timeline[6]
+            app._cursor = 7
+            app.now_playing = app._timeline[7]
             await settle()
             assert lv.highlighted_child is held
             assert sum(1 for c in lv.children if c.highlighted) == 1

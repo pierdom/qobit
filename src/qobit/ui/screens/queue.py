@@ -462,7 +462,13 @@ class QueueView(Widget):
         instead of the whole list being remounted (which flickered and reset
         the scroll position)."""
         lv = self.query_one("#queue-list", ListView)
-        now_playing = app.now_playing
+        # The "now" row comes from the cursor, like history and Up Next, not
+        # from app.now_playing: advance/jump move the cursor at once, but
+        # now_playing changes only once the stream URL resolves. Reading it
+        # in between showed the old track twice and the next one missing, then
+        # moved the rows back a moment later.
+        timeline, cursor = app._timeline, app._cursor
+        now_playing = timeline[cursor] if 0 <= cursor < len(timeline) else app.now_playing
         history = list(app._history)
         queue = list(app._play_queue)
 
