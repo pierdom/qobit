@@ -7,7 +7,7 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
 release from this entry.
 
-## [Unreleased]
+## [0.7.0] - 2026-11-16
 
 ### Added
 
@@ -26,6 +26,11 @@ release from this entry.
 
 ### Changed
 
+- Pages (an album, artist or playlist opened from Search, `g`, `i` or Similar)
+  keep the tab bar, with the tab they came from lit, and show the whole trail
+  (`Search › Mogwai › Mr. Beast`) instead of one `← back` label. Click any
+  part to go back there; Escape goes up one level. The Albums and Artists
+  tabs' inline details use the same trail.
 - The progress bar moves smoothly (an eighth of a cell at a time); in
   cyberdeck it's a cyan-to-magenta gradient.
 - Panel titles are uppercase readouts (`FAVOURITE ALBUMS`), like the queue's
@@ -38,7 +43,6 @@ release from this entry.
   readable on it, and the violet secondary is brighter.
 - The Now Playing panel's genre/label line, the playing row's album line, the
   playlist card date and the mix track count are easier to read in every theme.
-
 - Track rows line up: the title and the album line start in the same column
   in every list, and the playing row's ▶/⏸ takes the place of its number or
   `♪` instead of pushing the row to the right.
@@ -59,12 +63,6 @@ release from this entry.
   stays.
 - Empty, loading and error states look the same in every tab; tabs show
   "loading…" while they fetch.
-
-- Pages (an album, artist or playlist opened from Search, `g`, `i` or Similar)
-  keep the tab bar, with the tab they came from lit, and show the whole trail
-  (`Search › Mogwai › Mr. Beast`) instead of one `← back` label. Click any
-  part to go back there; Escape goes up one level. The Albums and Artists
-  tabs' inline details use the same trail.
 
 ### Fixed
 
