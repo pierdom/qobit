@@ -4,8 +4,16 @@ All notable changes to qobit. Versions follow [semver](https://semver.org/);
 while in 0.x, a minor bump means new features and a patch bump means fixes.
 
 Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
-an entry here, `uv lock`, commit, then tag `vX.Y.Z` and create the GitHub
-release from this entry.
+an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
+workflow publishes to PyPI and creates the GitHub release from this entry.
+
+## [Unreleased]
+
+### Added
+
+- qobit is published on PyPI: `uv tool install qobit` (or `pipx install
+  qobit`). The README has macOS install steps.
+- CI runs the tests on Python 3.11 and 3.13, on Linux and macOS.
 
 ## [0.8.0] - 2026-11-16
 

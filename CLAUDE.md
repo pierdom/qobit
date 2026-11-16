@@ -472,8 +472,13 @@ uv run pytest
 - Verify UI headless: `app.save_screenshot()` → `rsvg-convert` → PNG (Kitty
   images show as garbage there; real captures need a Kitty-protocol terminal).
 - Releasing: version only in `pyproject.toml`. Bump, CHANGELOG entry, `uv lock`,
-  commit `chore(release): X.Y.Z`, merge to main, annotated tag `vX.Y.Z`, push,
-  `gh release create` with the entry. Features → minor, fixes only → patch.
+  commit `chore(release): X.Y.Z`, merge to main, annotated tag `vX.Y.Z`, push
+  the tag. `.github/workflows/release.yml` then runs CI, checks the tag matches
+  the version, publishes to PyPI (trusted publishing, `pypi` environment) and
+  creates the GitHub release from the CHANGELOG entry: don't run
+  `gh release create` by hand. Features → minor, fixes only → patch.
+- The sdist is an explicit include list in `pyproject.toml`; a new top-level
+  file it needs goes there. README links are absolute (it's PyPI's page too).
 
 ## Roadmap
 
