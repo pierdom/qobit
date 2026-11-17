@@ -596,6 +596,13 @@ uv run pytest
 - Harnesses that build `QobitApp()` read the real config: pass `connect=False`
   (or they evict the user's running qobit), use a scratch `store.DATA_DIR`,
   never start mpv (the socket path is shared), stub `set_saved_theme`.
+- README screenshots (`screenshots/`, all six): `uv run --with matplotlib python
+  scripts/screenshots.py` (log in first: `qobit auth`). It runs the real app
+  headless on your session (paths in a temp dir), draws the screen cell by
+  cell with DejaVu Sans Mono (block and box characters drawn, not typeset)
+  and pastes the covers over their cells: cyberdeck, Mogwai "playing" past
+  75% (play state set by hand, no audio), Ty Segall's page and album. Not a
+  terminal capture. Re-run it after a UI change.
 - Verify UI headless: `app.save_screenshot()` → `rsvg-convert` → PNG (Kitty
   images show as garbage there; real captures need a Kitty-protocol terminal).
   The PNG collapses or widens spaces between differently styled runs
