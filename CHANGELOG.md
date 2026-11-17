@@ -29,6 +29,11 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
   it doesn't fit beside it.
 - "Similar artists" spaces its count like every other panel title.
 
+### Changed
+
+- The README and the PyPI description say plainly what qobit is (a Qobuz
+  client for the Linux and macOS terminal), so searches find it.
+
 ### Dependencies
 
 - Security updates in the locked dependencies: anyio 4.16 (through httpx;

@@ -13,7 +13,7 @@
 [![Textual](https://img.shields.io/badge/TUI-Textual-5A4FCF)](https://textual.textualize.io)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-555)](#install)
 
-A bit-perfect Qobuz client with a terminal UI, for Linux and macOS.
+A bit-perfect Qobuz client for the terminal, on Linux and macOS.
 
 </div>
 
@@ -21,14 +21,15 @@ A bit-perfect Qobuz client with a terminal UI, for Linux and macOS.
 > qobit is an unofficial project. It is not affiliated with, endorsed by or
 > sponsored by Qobuz. See [Disclaimer](#disclaimer).
 
-qobit plays hi-res FLAC from Qobuz through mpv with no resampling and no DSP.
-The output device runs at each track's own sample rate and bit depth, and the
-DAC receives exactly the bits from the file. You browse your library and
-control playback from a keyboard-driven terminal UI with cover art.
+qobit is a Qobuz player for the Linux and macOS terminal: a keyboard-driven
+TUI that streams hi-res FLAC from Qobuz through mpv with no resampling and no
+DSP. The output device runs at each track's own sample rate and bit depth, and
+the DAC receives exactly the bits from the file. You browse your Qobuz library,
+playlists and mixes and control playback from the terminal, with cover art.
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/queue_page.png" width="49%" alt="Playback tab with the queue and the now-playing panel"> <img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/artist_view.png" width="49%" alt="Artist page with bio, top tracks and albums">
+<img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/queue_page.png" width="49%" alt="qobit, a Qobuz terminal client: the Playback tab with the queue and the now-playing panel"> <img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/artist_view.png" width="49%" alt="qobit, a Qobuz terminal client: an artist page with bio, top tracks and albums">
 
 </div>
 
