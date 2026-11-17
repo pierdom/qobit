@@ -16,6 +16,29 @@ def within(widget: object, css_class: str) -> bool:
     )
 
 
+def focus_later(view: object, focus: object) -> None:
+    """Call ``focus`` after the next refresh if ``view`` (a tab's view) is
+    still the one shown. A busy view's deferred focus could run after the
+    user had switched tabs and pull the focus back to a hidden list: the
+    Playback tab's startup focus did, behind a quick ``4``."""
+
+    def run() -> None:
+        if view.is_attached and view.display:  # type: ignore[attr-defined]
+            focus()  # type: ignore[operator]
+
+    view.call_after_refresh(run)  # type: ignore[attr-defined]
+
+
+def set_own_class(widget: object, add: bool, css_class: str) -> None:
+    """Toggle a class that only ``widget``'s own rules use (a container's
+    border), restyling just the widget. ``set_class`` restyles everything
+    inside it: a whole track list on each focus change."""
+    if widget.has_class(css_class) == add:  # type: ignore[attr-defined]
+        return
+    widget.set_class(add, css_class, update=False)  # type: ignore[attr-defined]
+    widget.app.stylesheet.update_nodes([widget], animate=True)  # type: ignore[attr-defined]
+
+
 def strip_html(text: str) -> str:
     """Strip HTML tags and decode HTML entities to plain text. Block and
     break tags (p, br, div, li) separate words with a space; inline ones

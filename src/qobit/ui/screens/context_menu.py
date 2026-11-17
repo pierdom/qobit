@@ -103,7 +103,7 @@ class MenuOption(ListItem):
     def watch_highlighted(self, value: bool) -> None:
         super().watch_highlighted(value)
         with contextlib.suppress(NoMatches):
-            self.query_one(Label).update(self._content())
+            self.query_one(Label).update(self._content(), layout=False)  # same text
 
 
 class ContextMenu(ModalScreen[str | None]):

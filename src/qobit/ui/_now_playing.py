@@ -135,7 +135,10 @@ class NowPlayingRowMixin:
     def _refresh_primary(self) -> None:
         with contextlib.suppress(NoMatches):
             title = plain_if_highlighted(self, self._primary())  # type: ignore[attr-defined]
-            self.query_one(".row-title", Label).update(title)
+            # No layout pass: the title is one line (nowrap) at any text, and
+            # a layout reflows the whole screen (every row of a long list):
+            # ~70 ms at 400 rows, on each beat and each cursor move.
+            self.query_one(".row-title", Label).update(title, layout=False)
 
     def watch_highlighted(self, value: bool) -> None:
         super().watch_highlighted(value)  # type: ignore[misc]  # ListItem: -highlight class

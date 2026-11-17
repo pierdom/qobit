@@ -160,9 +160,13 @@ from the device: PipeWire rate-following (needs the
   it changed.
 
 **Lazy mounting, no caps.** Mounting slows as a container grows (rows ~4.5 s
-per 2000, cards ~6 s per 1000). `PagedListView.set_rows` (200 rows) and
+per 2000, cards ~6 s per 1000). `PagedListView.set_rows` (100 rows) and
 `_GridNav.set_cards` (60 cards) mount a first page and the rest as the cursor
-or scroll nears the end; End mounts everything. Whole-list code reads
+or scroll nears the end; End mounts everything. The Playback list mounts
+through the playing row plus `_UP_NEXT_PAGE` (its reconcile puts the rest
+in the `PagedListView` backlog), and draws before the favourites load
+(hearts come with a second reconcile). Every mounted widget costs on each
+cursor move and repaint, not just at mount: Textual maps them all. Whole-list code reads
 `PagedListView.rows` (mounted + backlog). A hard 200 cap once hid most of a
 library: don't add one back.
 
@@ -192,7 +196,10 @@ mounts the lazy backlog first. Albums/Artists/Playlists share
 (`[N] Name`, compact `N Name` below 90 cols) and the `1`–`7` keys derive from
 it. The Playback tab's id is `queue`. On activation the app calls the view's
 `activate()` (first load + focus); don't rely on `on_show` (Textual stopped
-sending Show after End on a long list). Views implement `action_navigate_back()
+sending Show after End on a long list). A view focuses through
+`_utils.focus_later(self, widget.focus)`, never a bare
+`call_after_refresh(focus)`: a busy view's deferred focus ran after the
+user had switched tabs and pulled the focus to its hidden list. Views implement `action_navigate_back()
 -> bool` for Escape (True = consumed) and `can_navigate_back()`: Escape has two
 app bindings, a footer-visible `back` that `App.check_action` enables only when
 something can go back, then the hidden `focus_tabs` it falls through to (a
@@ -314,8 +321,31 @@ whenever a track is loaded (`-has-track`), not only while playing.
   with the theme background off (the terminal's colour is unknown) or on
   ANSI themes. A `─` track was tried and rejected for its look.
 
+**Slow machines** (a Raspberry Pi 4 is a target). The theme is set in
+`QobitApp.__init__`, before anything mounts (in `on_mount` it restyled every
+widget: 30% of startup). `app.animations` (config `animations`, palette,
+off with `TEXTUAL_ANIMATIONS=none`) gates the Wordmark's frame timer and the
+beat meter: the Wordmark at 12 fps was most of the idle CPU while playing.
+
 **Status line.** `status_msg` is the transport's `artist — title` line; use
 `_flash_status()` for transient notices (auto-clears after ~3 s).
+
+**Layout passes.** `Label.update()` relays out the whole screen unless
+passed `layout=False` (~70 ms with 400 queue rows). Redraws that keep the
+size (a row title: one line, nowrap; a card's colours on selection; the
+beat's meter) pass `layout=False`; `tests/test_queue_speed.py` checks the
+beat and the cursor. Grids list their cards from `self.children`, not a
+`query()` (it walked every widget in every card on each move).
+
+**Restyles.** Textual restyles a widget *and everything inside it* when its
+focus or classes change. `PagedListView` and the grids override
+`watch_has_focus` to restyle themselves (and a list's highlighted row)
+only; a class that styles only its own widget (a container's border) goes
+through `_utils.set_own_class`. Every screen uses `nav.QobitFooter`
+(rebuilds its keys once per refresh, only if they changed; Textual's did 4–5
+times per tab switch). `_YearLine` rebuilds only on a real width change:
+Textual sends every widget a Resize each time its tab is shown.
+`tests/test_tab_switch_speed.py`.
 
 **Labels.** Track rows build text with `Content.assemble(...)`, not markup
 (titles with `[`/`]` break markup); any Label fed API text (album, artist,
@@ -492,9 +522,22 @@ must not annotate `-> None` (read as the string "None": TypeError at import).
   artist_id, label_id, genre_id}]`). `generate_mix()` reuses it for
   DailyQ/WeeklyQ, cached per day / ISO week in `mixes_cache.json`.
 
-Images: Kitty graphics protocol only (`textual_image` `TGPImage`). All fetches
-go through `ui/_images.fetch_image(url)`: 6 concurrent, normalised to 600 px
-JPEG, cached in memory and in `~/.cache/qobit/images/`.
+Images: `widgets.art.Art` draws per `_images.image_mode()`: "kitty"
+(textual-image's TGP renderable), "blocks" (`art.Blocks`, coloured half
+blocks) or "off" (the initials tile). The setting (`IMAGE_MODES`: config
+`images`, `qobit --images`, palette "Images: …") resolves "auto" from
+textual-image's terminal query at import (Kitty if it chose TGP, else
+blocks). `Art` keeps its renderable until the image, size or mode changes:
+textual-image rebuilt it on every render, so each repaint re-encoded and
+re-sent the whole image (20 sends for 10 grid cursor moves;
+`tests/test_art_modes.py`). It frees its Kitty image on unmount. Grid cards pass
+`Art(rows=…)`: the image is kept at that height in pixels (`fit_image`;
+`Art.show(img)` shrinks it in a thread), not the 600 px cover (cards held
+two full copies each: 1.1 GB after scrolling 300 albums). The memory cache
+holds 48 covers (~1.1 MB each decoded); misses come from the disk cache. All
+fetches go through `ui/_images.fetch_image(url)`: none with images off
+(`terminal=False` for the OS media widget's art), 6 concurrent, normalised
+to 600 px JPEG, cached in memory and in `~/.cache/qobit/images/`.
 
 ## Files
 
@@ -541,7 +584,10 @@ uv run pytest
 
 - `i` menu on playlists; Search, AlbumScreen, PlaylistScreen and PlaylistsView
   redesign (art, richer headers, quality badges); TrackScreen detail overlay.
-- Queue reorder; gapless playback, ReplayGain, CMAF fallback.
+- Next: library cache on disk (favourite tracks/albums/artists shown at
+  once, refreshed from Qobuz in the background; files in ACCOUNT_FILES);
+  gapless playback.
+- Queue reorder; ReplayGain, CMAF fallback.
 - Qobuz Connect phase 3 (autoplay ↔ radio, shuffle/repeat UI, play reporting),
   phase 4 (qobit as controller, LAN discovery).
 

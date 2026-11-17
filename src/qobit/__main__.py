@@ -356,6 +356,15 @@ def main() -> None:
         help="Enable Qobuz Connect for this run (qobit appears in the Qobuz apps' "
         "device picker). Not saved — toggle it from the command palette to persist.",
     )
+    parser.add_argument(
+        "--images",
+        choices=["auto", "kitty", "blocks", "off"],
+        metavar="MODE",
+        help="Cover art for this run: auto (default: Kitty graphics if the terminal "
+        "supports them, else colour blocks), kitty, blocks, or off (initials only, "
+        "nothing downloaded: lightest on slow machines). Not saved: choose it from "
+        "the command palette to persist.",
+    )
     sub = parser.add_subparsers(dest="command")
 
     p_play = sub.add_parser("play", help="Search and play a track")
@@ -415,7 +424,7 @@ def main() -> None:
     else:
         from .ui.app import QobitApp
 
-        QobitApp(connect=True if args.connect_on else None).run()
+        QobitApp(connect=True if args.connect_on else None, images=args.images).run()
         sys.exit(0)
 
 

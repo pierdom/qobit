@@ -20,7 +20,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import readout, status_line
+from .._utils import focus_later, readout, set_own_class, status_line
 from ..widgets.lists import TrackListView
 from .search import ICON_TRACK
 
@@ -122,13 +122,13 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
         if not self._loaded:
             self._loaded = True
             self._load()
-        self.call_after_refresh(self.query_one("#fav-tracks", ListView).focus)
+        focus_later(self, self.query_one("#fav-tracks", ListView).focus)
 
     def on_descendant_focus(self, _: events.DescendantFocus) -> None:
-        self.query_one("#tracks-container", Vertical).add_class("-focused")
+        set_own_class(self.query_one("#tracks-container", Vertical), True, "-focused")
 
     def on_descendant_blur(self, _: events.DescendantBlur) -> None:
-        self.query_one("#tracks-container", Vertical).remove_class("-focused")
+        set_own_class(self.query_one("#tracks-container", Vertical), False, "-focused")
 
     # ── filter ───────────────────────────────────────────────────────────────
 
@@ -239,7 +239,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
         await lv.set_rows(rows)  # type: ignore[attr-defined]
         self._place_initial_cursor(lv)
         if keep_focus:
-            self.call_after_refresh(lv.focus)
+            focus_later(self, lv.focus)
 
     @work
     async def _load(self) -> None:
@@ -285,4 +285,4 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)
-            self.call_after_refresh(lv.focus)
+            focus_later(self, lv.focus)

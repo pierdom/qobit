@@ -14,7 +14,7 @@ from textual.message import Message
 from textual.screen import Screen
 from textual.timer import Timer
 from textual.widget import AwaitMount, Widget
-from textual.widgets import ContentSwitcher, Footer, Label, ListItem, ListView
+from textual.widgets import ContentSwitcher, Label, ListItem, ListView
 from textual_image.widget import TGPImage
 
 from ...qobuz.client import QobuzError
@@ -30,7 +30,7 @@ from .._now_playing import (
     playing_content,
 )
 from .._utils import readout, strip_html
-from ..nav import page_header
+from ..nav import QobitFooter, page_header
 from ..themes import HEART, theme_color
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
@@ -343,12 +343,19 @@ class ArtistTracks(_TitleSwitch, Widget):
 class _YearLine(Label):
     """An album card's year line. Whether HI-RES fits beside the year
     depends on the label's width, known for sure only once it's laid out:
-    rebuild on its own resize (the card's came first and saw width 0)."""
+    rebuild on its own resize (the card's came first and saw width 0).
+    Only when the width changed: Textual sends a Resize to every widget of
+    a tab each time it's shown, and each rebuild cost a layout pass."""
 
-    def on_resize(self, _: events.Resize) -> None:
+    _width = 0
+
+    def on_resize(self, event: events.Resize) -> None:
+        if event.size.width in (0, self._width):
+            return
+        self._width = event.size.width
         card = next((a for a in self.ancestors if isinstance(a, AlbumCard)), None)
         if card is not None:
-            card.refresh_selected()
+            card.refresh_selected(layout=True)
 
 
 class AlbumCard(Widget):
@@ -420,7 +427,7 @@ class AlbumCard(Widget):
         return self._album
 
     def compose(self) -> ComposeResult:
-        yield Art(self._album.title)
+        yield Art(self._album.title, rows=GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H)
         with Vertical(classes="card-info"):
             yield Label(escape(self._album.title), classes="card-title card-primary", markup=True)
             yield Label(
@@ -452,9 +459,12 @@ class AlbumCard(Widget):
         """Selected in its grid (for plain_if_highlighted)."""
         return self.has_class("-selected")
 
-    def refresh_selected(self) -> None:
+    def refresh_selected(self, layout: bool = False) -> None:
+        """Redraw the year line in the card's colours. Selecting changes no
+        text, so no layout pass (it reflows the whole screen); a resize can
+        move HI-RES to a second row and asks for one."""
         with contextlib.suppress(NoMatches):
-            self.query_one(".card-year", Label).update(self._year_line())
+            self.query_one(".card-year", Label).update(self._year_line(), layout=layout)
 
     def on_mount(self) -> None:
         img_h = GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H
@@ -476,7 +486,7 @@ class AlbumCard(Widget):
         img = await fetch_image(url)
         if img is not None and self.is_attached:
             with contextlib.suppress(NoMatches):
-                self.query_one(TGPImage).image = img
+                await self.query_one(Art).show(img)
 
     def on_click(self) -> None:
         self.post_message(AlbumCard.Selected(self._album))
@@ -507,6 +517,12 @@ class _GridNav:
 
     _art_sync_timer: Timer | None = None
     _backlog: list[Widget] | None = None
+
+    def watch_has_focus(self, _has_focus: bool) -> None:
+        """Restyle the grid alone on focus (its border): no card's look
+        depends on it (``.grid-card.-selected`` in QobitApp.CSS). Textual
+        restyled every widget of every card, on each tab switch."""
+        self.app.stylesheet.update_nodes([self], animate=True)  # type: ignore[attr-defined]
 
     # ── lazy mounting ────────────────────────────────────────────────────────
     # Mounting cards gets slower the more a grid already holds (~0.6 s for 200,
@@ -712,7 +728,9 @@ class AlbumGrid(_GridNav, ScrollableContainer):
         self._schedule_sync_art()
 
     def _visible_cards(self) -> list[AlbumCard]:
-        return [c for c in self.query(AlbumCard) if c.display]
+        # The cards are the grid's children: a query walked every widget
+        # inside every card, twice per cursor move.
+        return [c for c in self.children if isinstance(c, AlbumCard) and c.display]
 
     def filter_cards(self, visible_ids: set[str] | None) -> bool:
         """Hide/show cards by album id without remounting (so the
@@ -721,7 +739,7 @@ class AlbumGrid(_GridNav, ScrollableContainer):
         any_visible = False
         # Cards not mounted yet may match: mount them all while filtering (a
         # card listed twice below is harmless).
-        cards = [*self.query(AlbumCard), *(self._backlog or [])]
+        cards = [*(c for c in self.children if isinstance(c, AlbumCard)), *(self._backlog or [])]
         if visible_ids is not None:
             self._mount_more(everything=True)
         for card in cards:
@@ -796,14 +814,15 @@ class ArtistCard(Widget):
 
     def refresh_selected(self) -> None:
         with contextlib.suppress(NoMatches):
-            self.query_one(".card-name", Label).update(self._label())
+            # Same text, new colours: no layout pass (see AlbumCard's).
+            self.query_one(".card-name", Label).update(self._label(), layout=False)
 
     @property
     def artist(self) -> Artist:
         return self._artist
 
     def compose(self) -> ComposeResult:
-        yield Art(self._artist.name)
+        yield Art(self._artist.name, rows=GRID_CARD_IMG_H)
         with Vertical(classes="card-info"):
             yield Label(self._label(), classes="card-name card-primary")
 
@@ -834,7 +853,7 @@ class ArtistCard(Widget):
         img = await fetch_image(url)
         if img is not None and self.is_attached:
             with contextlib.suppress(NoMatches):
-                self.query_one(TGPImage).image = img
+                await self.query_one(Art).show(img)
 
     def on_click(self) -> None:
         self.post_message(ArtistCard.Selected(self._artist))
@@ -881,7 +900,9 @@ class ArtistGrid(_GridNav, ScrollableContainer):
         self._schedule_sync_art()
 
     def _visible_cards(self) -> list[ArtistCard]:
-        return [c for c in self.query(ArtistCard) if c.display]
+        # The cards are the grid's children: a query walked every widget
+        # inside every card, twice per cursor move.
+        return [c for c in self.children if isinstance(c, ArtistCard) and c.display]
 
     def filter_cards(self, visible_ids: set[str] | None) -> bool:
         """Hide/show mounted cards by artist id without remounting (so the
@@ -890,7 +911,7 @@ class ArtistGrid(_GridNav, ScrollableContainer):
         any_visible = False
         # Cards not mounted yet may match: mount them all while filtering (a
         # card listed twice below is harmless).
-        cards = [*self.query(ArtistCard), *(self._backlog or [])]
+        cards = [*(c for c in self.children if isinstance(c, ArtistCard)), *(self._backlog or [])]
         if visible_ids is not None:
             self._mount_more(everything=True)
         for card in cards:
@@ -1267,7 +1288,7 @@ class ArtistScreen(Screen):
             with Vertical(id="album-view"):
                 yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
-        yield Footer()
+        yield QobitFooter()
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")

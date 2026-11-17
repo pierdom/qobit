@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import dataclasses
 import time
-from functools import lru_cache
+from functools import lru_cache, partial
 
 from rich.color import Color as _RichColor
 from rich.color import ColorType as _ColorType
@@ -18,7 +18,7 @@ from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import ContentSwitcher, Footer, ListView, Tab, Tabs
+from textual.widgets import ContentSwitcher, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
 from ..audio.media_keys import MediaKeys
@@ -26,8 +26,10 @@ from ..audio.player import MpvPlayer
 from ..audio.verify import Signal, check_signal
 from ..config import (
     get_account,
+    get_animations,
     get_audio_device,
     get_connect_enabled,
+    get_image_mode,
     get_oauth_session,
     get_radio_mode,
     get_saved_theme,
@@ -35,6 +37,7 @@ from ..config import (
     get_software_volume_enabled,
     get_transparent_background,
     save_oauth_session,
+    set_animations,
     set_connect_enabled,
     set_radio_mode,
     set_saved_theme,
@@ -43,12 +46,23 @@ from ..config import (
     set_transparent_background,
     token_location,
 )
+from ..config import set_image_mode as save_image_mode
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, NoStreamError, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
+from ._images import IMAGE_MODES, image_mode, set_image_mode
 from ._now_playing import tick
-from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, Wordmark, page_screens, tab_label
+from .nav import (
+    TAB_NAMES,
+    TABBAR_FULL_WIDTH,
+    TABS,
+    Crumb,
+    QobitFooter,
+    Wordmark,
+    page_screens,
+    tab_label,
+)
 from .play_context import UNPLAYABLE, ConnectPlayContext, LocalPlayContext, unplayable_notice
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
@@ -58,6 +72,7 @@ from .screens.queue import QueueView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
 from .themes import CYBERDECK_THEME, QOBIT_THEMES, qobit_variable_defaults
+from .widgets.art import Art
 from .widgets.transport import TransportBar
 
 
@@ -100,7 +115,8 @@ class _TransparentANSIToTruecolor(_ANSIToTruecolor):
 
 
 class QobitCommands(Provider):
-    def _commands(self) -> list[tuple[str, object, str]]:
+    def _commands(self) -> list[tuple[str, ...] | tuple[str, object, str]]:
+        """(label, callback, help[, other names to search by])."""
         app: QobitApp = self.app  # type: ignore[assignment]
         if app._client.user_auth_token:
             name = get_account().get("name")
@@ -131,6 +147,14 @@ class QobitCommands(Provider):
                 "Show qobit in the Qobuz apps' device picker and play what they send "
                 "(bit-perfect, through mpv). While active, the queue is controlled from the app.",
             ),
+            *app.image_mode_commands(),
+            (
+                f"Animations: turn {'off' if app.animations else 'on'}",
+                app.action_toggle_animations,
+                "The wordmark's colour cycle and the playing track's bar meter. "
+                "Off saves CPU on slow machines",
+                "motion meter wordmark low power cpu",
+            ),
             (
                 f"Software volume: turn {'off' if app.software_volume_enabled else 'on'}",
                 app.action_toggle_software_volume,
@@ -141,13 +165,19 @@ class QobitCommands(Provider):
 
     async def search(self, query: str) -> Hits:
         matcher = self.matcher(query)
-        for label, callback, help_text in self._commands():
+        words = query.lower().split()
+        for label, callback, help_text, *aliases in self._commands():
             score = matcher.match(label)
             if score > 0:
                 yield Hit(score, matcher.highlight(label), callback, help=help_text)
+            elif words and all(any(w in a for a in aliases) for w in words):
+                # Found by another name ("cover" finds "Images: …"), below the
+                # label matches. Plain words, not fuzzy: fuzzy matching on the
+                # descriptions found half the palette.
+                yield Hit(0.5, label, callback, help=help_text)
 
     async def discover(self) -> Hits:
-        for label, callback, help_text in self._commands():
+        for label, callback, help_text, *_aliases in self._commands():
             yield Hit(0, label, callback, help=help_text)
 
 
@@ -442,6 +472,10 @@ class QobitApp(App[None]):
     # Endless radio: when on, _advance_queue refills an empty queue with Qobuz
     # song-radio suggestions. Reactive so the transport indicator stays live.
     radio_mode: reactive[bool] = reactive(False)
+    # The wordmark's colour cycle and the bar meter: config `animations`
+    # (palette), off as well with TEXTUAL_ANIMATIONS=none. Each frame redraws,
+    # which costs on a slow CPU (a Raspberry Pi) for decoration only.
+    animations: reactive[bool] = reactive(True)
     # Software volume (see action_toggle_software_volume): off by default,
     # since this is the one control that can take the signal path out of
     # bit-perfect. `volume` is meaningless while disabled; TransportBar only
@@ -458,12 +492,26 @@ class QobitApp(App[None]):
     # None until checked (a couple of seconds in) and after a track change.
     signal: reactive[Signal | None] = reactive(None)
 
-    def __init__(self, connect: bool | None = None) -> None:
+    def __init__(self, connect: bool | None = None, images: str | None = None) -> None:
         """``connect`` overrides the saved Qobuz Connect setting for this run
-        (``qobit --connect-on``); None = use the saved setting."""
+        (``qobit --connect-on``), ``images`` the cover art mode (``qobit
+        --images``); None = use the saved setting."""
         super().__init__()
+        self._image_setting = images or get_image_mode()
+        set_image_mode(self._image_setting)  # before anything draws
         for theme in QOBIT_THEMES:
             self.register_theme(theme)
+        # The theme before anything is mounted: set in on_mount, it restyled
+        # every widget of every tab (a quarter of the startup's CPU time).
+        saved_theme = get_saved_theme()
+        if saved_theme and saved_theme in self.available_themes:
+            self.theme = saved_theme
+        else:
+            # No saved preference (first launch, or an invalid/removed theme
+            # name) — default to qobit's own look rather than a generic
+            # Textual built-in. Still just an ordinary theme choice: `^p` →
+            # Theme switches away from it like any other.
+            self.theme = CYBERDECK_THEME.name
         self._connect_wanted = get_connect_enabled() if connect is None else connect
         self._connect: ConnectPlayContext | None = None
         self._connect_lock: object | None = None  # flock'd file while Connect is on
@@ -549,22 +597,16 @@ class QobitApp(App[None]):
             yield SearchView(id="view-search")
             yield QueueView(id="view-queue")
         yield TransportBar()
-        yield Footer()
+        yield QobitFooter()
 
     async def on_mount(self) -> None:
         self._poll_player()
         # The playing rows' bar meter (_now_playing.tick): decorative, idle
         # (one flag check) while nothing plays.
-        self.set_interval(_BEAT_SECS, lambda: tick(self.is_playing and not self.is_paused))
-        saved_theme = get_saved_theme()
-        if saved_theme and saved_theme in self.available_themes:
-            self.theme = saved_theme
-        else:
-            # No saved preference (first launch, or an invalid/removed theme
-            # name) — default to qobit's own look rather than a generic
-            # Textual built-in. Still just an ordinary theme choice: `^p` →
-            # Theme switches away from it like any other.
-            self.theme = CYBERDECK_THEME.name
+        self.animations = get_animations() and self.animation_level != "none"
+        self.set_interval(
+            _BEAT_SECS, lambda: tick(self.animations and self.is_playing and not self.is_paused)
+        )
         # Persist any subsequent theme changes (skip the initial/default ones).
         self._theme_ready = True
         if get_transparent_background():
@@ -1164,6 +1206,59 @@ class QobitApp(App[None]):
         if self._ctx.replace_upcoming(suggestions):
             self._flash_status(f"Radio: {len(suggestions)} tracks queued")
 
+    # ── cover art mode (_images.IMAGE_MODES; widgets.art.Art draws it) ─────────
+
+    _IMAGE_MODE_HELP = {
+        "auto": "Kitty graphics where the terminal supports them, colour blocks elsewhere",
+        "kitty": "Sharp cover art with the Kitty graphics protocol (kitty, Ghostty)",
+        "blocks": "Cover art as coloured half blocks: any terminal with true colour",
+        "off": "Initials instead of cover art, and no covers downloaded: lightest on slow machines",
+    }
+    _IMAGE_MODE_NAMES = {
+        "auto": "auto",
+        "kitty": "Kitty graphics",
+        "blocks": "colour blocks",
+        "off": "off",
+    }
+
+    def image_mode_commands(self) -> list[tuple[str, object, str, str]]:
+        """Palette entries for the cover art modes other than the current one
+        ("Images", as `qobit --images`; "cover" and "art" find them too)."""
+        current = self._IMAGE_MODE_NAMES[self._image_setting]
+        if self._image_setting == "auto":
+            current += f" ({self._IMAGE_MODE_NAMES[image_mode()]})"
+        return [
+            (
+                f"Images: {self._IMAGE_MODE_NAMES[mode]}",
+                partial(self.set_image_setting, mode),
+                f"{self._IMAGE_MODE_HELP[mode]}. Cover art now: {current}",
+                "cover art pictures artwork",
+            )
+            for mode in IMAGE_MODES
+            if mode != self._image_setting
+        ]
+
+    def set_image_setting(self, setting: str) -> None:
+        """Switch the cover art mode now and save it."""
+        was = image_mode()
+        self._image_setting = setting
+        now = set_image_mode(setting)
+        save_image_mode(setting)
+        for screen in self.screen_stack:
+            for art in screen.query(Art):
+                art.refresh(layout=True)
+        name = self._IMAGE_MODE_NAMES[setting]
+        if setting == "auto":
+            name += f" ({self._IMAGE_MODE_NAMES[now]})"
+        # Covers skipped while off load as pages open (and with the next track).
+        later = was == "off" and now != "off"
+        self._flash_status(f"Images: {name}" + ("; covers load as you browse" if later else ""))
+
+    def action_toggle_animations(self) -> None:
+        self.animations = not self.animations
+        set_animations(self.animations)
+        self._flash_status(f"Animations {'on' if self.animations else 'off'}")
+
     def action_toggle_radio_mode(self) -> None:
         self.radio_mode = not self.radio_mode
         set_radio_mode(self.radio_mode)
@@ -1591,7 +1686,7 @@ class QobitApp(App[None]):
     async def _fetch_media_key_art(self, url: str) -> None:
         from ._images import fetch_image
 
-        image = await fetch_image(url)
+        image = await fetch_image(url, terminal=False)  # the OS widget's, even with images off
         if image is not None:
             self._media_keys.set_artwork(image)
 

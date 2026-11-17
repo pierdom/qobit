@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from textual import work
 from textual.binding import Binding
-from textual.widget import AwaitMount
+from textual.widget import AwaitMount, Widget
 from textual.widgets import ListItem, ListView
 
 # Long lists mount in pages: mounting gets slower the more rows a list already
 # holds (~0.3 s per 200 rows, ~4.5 s for 2000), so ``set_rows`` mounts the
 # first page and keeps the rest as a backlog, mounted a page at a time once the
 # cursor (or the scroll position) is within ``_LOOKAHEAD`` rows of the end.
-_PAGE_ROWS = 200
+_PAGE_ROWS = 100
 _LOOKAHEAD = 50
 
 
@@ -35,6 +35,18 @@ class PagedListView(ListView):
     ]
 
     _backlog: list[ListItem] | None = None
+
+    def watch_has_focus(self, _has_focus: bool) -> None:
+        """Restyle what focus changes: the list and its highlighted row.
+        Textual restyles every row and label in the list (600 widgets for
+        200 rows), twice per tab switch (the list left and the one
+        entered): most of a tab switch's time. Only the highlighted row's
+        look depends on the list's focus (QobitApp.CSS, ``ListView:focus >
+        ListItem.-highlight``)."""
+        nodes: list[Widget] = [self]
+        if (row := self.highlighted_child) is not None:
+            nodes.extend(row.walk_children(with_self=True))
+        self.app.stylesheet.update_nodes(nodes, animate=True)
 
     async def set_rows(self, rows: list[ListItem]) -> None:
         """Replace the list's rows: mount the first page now, the rest as the

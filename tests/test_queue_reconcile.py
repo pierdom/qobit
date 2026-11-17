@@ -38,7 +38,7 @@ def _expected(app):
 
 def _actual(lv):
     out = []
-    for c in lv.children:
+    for c in lv.rows:  # mounted, then the lazy backlog
         if isinstance(c, SectionHeader):
             out.append(("H", c.section, c._count))
         elif isinstance(c, TimelineRow):

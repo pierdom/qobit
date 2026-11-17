@@ -12,14 +12,50 @@ from PIL import Image as PILImage
 
 from .._fs import private_dir
 
+# ── How images are drawn ─────────────────────────────────────────────────────
+# The setting (config "images", `qobit --images`, the command palette) is one
+# of IMAGE_MODES; "auto" resolves once to what the terminal supports. Kitty:
+# the Kitty graphics protocol (sharp art; kitty, Ghostty). Blocks: coloured
+# half-block characters, two pixels per cell (any truecolor terminal). Off:
+# the initials tile only, and no cover is downloaded for the terminal at all
+# (slow machines). widgets.art.Art draws accordingly.
+IMAGE_MODES = ("auto", "kitty", "blocks", "off")
+_image_mode: str | None = None  # resolved: "kitty" | "blocks" | "off"
+
+
+def detected_image_mode() -> str:
+    """What "auto" means here: Kitty when the terminal answered textual-image's
+    graphics-protocol query (at import, before Textual took the terminal),
+    else blocks. Terminals that answer the Sixel query first (WezTerm,
+    Konsole) get blocks: textual-image's Kitty placeholders don't work there."""
+    from textual_image.renderable import Image as Detected
+    from textual_image.renderable.tgp import Image as TGP
+
+    return "kitty" if Detected is TGP else "blocks"
+
+
+def set_image_mode(setting: str) -> str:
+    """Apply a setting from IMAGE_MODES (anything else counts as "auto");
+    returns the resolved mode."""
+    global _image_mode
+    _image_mode = setting if setting in IMAGE_MODES[1:] else detected_image_mode()
+    return _image_mode
+
+
+def image_mode() -> str:
+    """The resolved mode: "kitty", "blocks" or "off"."""
+    return _image_mode if _image_mode is not None else set_image_mode("auto")
+
+
 # Cap concurrent HTTP fetches so a full library grid doesn't flood the
 # network or thrash PIL/Kitty rendering all at once.
 _FETCH_SEM = asyncio.Semaphore(6)
 
-# URL → decoded PIL Image, bounded LRU.  Evicts the least-recently-used entry
-# once the limit is hit so long browsing sessions don't accumulate hundreds of
-# MB of PIL objects.  200 entries at ~600×600 JPEG-decoded ≈ 40–80 MB ceiling.
-_IMAGE_CACHE_MAX = 200
+# URL → decoded PIL Image, bounded LRU. A 600×600 cover decodes to ~1.1 MB,
+# so 48 entries hold ~50 MB (200 held over 200 MB: too much for a 2 GB
+# Raspberry Pi). A miss is cheap: the disk cache below, decoded in a thread.
+# Grid cards keep their own copy at card size (Art(rows=…)).
+_IMAGE_CACHE_MAX = 48
 _IMAGE_CACHE: OrderedDict[str, PILImage.Image] = OrderedDict()
 
 
@@ -189,7 +225,12 @@ def _decode_bytes(data: bytes) -> PILImage.Image | None:
         return None
 
 
-async def fetch_image(url: str) -> PILImage.Image | None:
+async def fetch_image(url: str, *, terminal: bool = True) -> PILImage.Image | None:
+    """The cover at ``url``, normalised; None if it can't be had. ``terminal``:
+    for drawing in the TUI, so nothing at all with images off (the OS media
+    widget's artwork passes False)."""
+    if terminal and image_mode() == "off":
+        return None
     cached = _cache_get(url)
     if cached is not None:
         return cached

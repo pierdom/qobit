@@ -13,7 +13,7 @@ from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
 from .._filter import TypeToFilter, filter_prompt
-from .._utils import readout, status_line
+from .._utils import focus_later, readout, status_line
 from ..nav import Breadcrumb
 from .album_detail import AlbumDetailPanel, fit_artist_header
 from .artist_detail import LIBRARY_TILE_MIN_W, AlbumCard, AlbumGrid, ArtistHeader
@@ -105,11 +105,9 @@ class AlbumsView(TypeToFilter, Widget):
             self._loaded = True
             self._load()
         if self._album_view_active:
-            self.call_after_refresh(
-                self.query_one("#album-panel", AlbumDetailPanel).focus_tracklist
-            )
+            focus_later(self, self.query_one("#album-panel", AlbumDetailPanel).focus_tracklist)
         else:
-            self.call_after_refresh(self.query_one("#fav-albums-grid", AlbumGrid).focus)
+            focus_later(self, self.query_one("#fav-albums-grid", AlbumGrid).focus)
 
     # ── vertical responsiveness ────────────────────────────────────────────────
 
@@ -299,7 +297,7 @@ class AlbumsView(TypeToFilter, Widget):
         # After the switch is laid out: focused at once, the call could be
         # ignored (not displayed yet) with the grid hidden, leaving nothing
         # focused on a busy machine.
-        self.call_after_refresh(panel.focus_tracklist)
+        focus_later(self, panel.focus_tracklist)
         self.app.nav_changed()  # type: ignore[attr-defined]
 
     def _show_grid(self) -> None:

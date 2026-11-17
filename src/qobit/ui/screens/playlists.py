@@ -17,7 +17,7 @@ from textual_image.widget import TGPImage
 from ...qobuz.models import Playlist
 from .._filter import TypeToFilter, filter_prompt
 from .._images import fetch_image
-from .._utils import readout, status_line
+from .._utils import focus_later, readout, status_line
 from ..widgets.art import Art, square_width
 from .artist_detail import (
     GRID_CARD_IMG_H,
@@ -98,7 +98,7 @@ class PlaylistCard(Widget):
         return self._playlist
 
     def compose(self) -> ComposeResult:
-        yield Art(self._playlist.name)
+        yield Art(self._playlist.name, rows=GRID_CARD_IMG_H)
         with Vertical(classes="card-info"):
             yield Label(escape(self._playlist.name), classes="card-name card-primary", markup=True)
             # Plain text: the CSS gives the muted colour, or the selection's
@@ -130,7 +130,7 @@ class PlaylistCard(Widget):
         img = await fetch_image(url)
         if img is not None and self.is_attached:
             with contextlib.suppress(NoMatches):
-                self.query_one(TGPImage).image = img
+                await self.query_one(Art).show(img)
 
     def on_click(self) -> None:
         self.post_message(PlaylistCard.Selected(self._playlist))
@@ -179,7 +179,7 @@ class PlaylistGrid(_GridNav, ScrollableContainer):
     def _visible_cards(self) -> list[PlaylistCard]:
         # PlaylistGrid has no hide/show filter (filtering remounts instead),
         # so every mounted card is "visible" in the _GridNav sense.
-        return list(self.query(PlaylistCard))
+        return [c for c in self.children if isinstance(c, PlaylistCard)]  # no query: see AlbumGrid
 
     def action_open_selected(self) -> None:
         cards = self._visible_cards()
@@ -242,7 +242,7 @@ class PlaylistsView(TypeToFilter, Widget):
         if not self._loaded:
             self._loaded = True
             self._load()
-        self.call_after_refresh(self.query_one("#user-playlists-grid", PlaylistGrid).focus)
+        focus_later(self, self.query_one("#user-playlists-grid", PlaylistGrid).focus)
 
     # ── filter ───────────────────────────────────────────────────────────────
 

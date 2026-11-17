@@ -7,6 +7,56 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [0.11.0] - 2026-11-17
+
+### Added
+
+- **Cover art in any terminal.** Terminals without the Kitty graphics
+  protocol used to show every image as garbled characters. qobit now draws
+  cover art there with coloured half blocks. Choose the mode with
+  `qobit --images auto|kitty|blocks|off` or from the command palette
+  ("Images", saved). `off` shows initials and downloads no covers, for
+  slow machines.
+- **Animations setting.** "Animations: turn off" in the command palette
+  stops the wordmark's colour cycle and the bar meter, which cost CPU on
+  slow machines such as a Raspberry Pi. `TEXTUAL_ANIMATIONS=none` turns
+  them off too. See "Slow machines" in the usage guide.
+
+### Fixed
+
+- **Covers sent once.** Every time a cover was redrawn (moving the
+  cursor in a grid redraws two cards), qobit re-encoded the image and sent it
+  to the terminal again. Each image is now sent once and kept until it
+  changes, and freed in the terminal when its page closes.
+- **Playback list appears at once.** At startup it waited for your whole
+  favourites library to download before showing a single track. It now
+  shows the queue straight away and adds the hearts when the favourites
+  arrive.
+- **Less work while playing and moving around.** The playing track's bar
+  meter, and every cursor move in a list, made qobit lay out the whole
+  screen again; with a long queue that was most of its CPU time while
+  playing (12% on a test machine, now 2%). A long Up Next now loads its rows as you
+  scroll, as the other lists do, so moving the cursor costs half as much.
+  Moving around the album and artist grids is faster too.
+- **Faster tab switching.** Switching tabs restyled every row of the list
+  being left and of the one being shown, and rebuilt the key bar at the
+  bottom four or five times. Now only what changes is restyled, and the key
+  bar is rebuilt once, when its keys change: a switch takes about half the
+  time it did.
+- **Much less memory.** Each grid card kept its full-size cover twice: after
+  scrolling 300 albums qobit used 1.1 GB. Cards now keep a copy at their own
+  size, shrunk off the UI thread, and fewer full covers stay in memory: about
+  300 MB for the same scroll.
+- **Faster startup.** The saved theme is now applied before the screen is
+  built, instead of restyling every widget afterwards: about 30% less CPU
+  time at startup.
+- **Focus right after startup.** Switching tab in the first moment after
+  launch could leave the keys going to the Playback list, hidden behind the
+  new tab.
+- **No traceback at startup** in terminals that don't report their cell
+  size (the Linux console, for one): a warning from the image library was
+  printed just before the interface appeared.
+
 ## [0.10.2] - 2026-11-17
 
 ### Fixed

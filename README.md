@@ -46,8 +46,8 @@ and mixes with the keyboard, and see cover art in the terminal.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
 - Artist pages with top tracks, your favourites by that artist, albums and
   similar artists.
-- Cover art and artist bios, drawn with the Kitty graphics protocol (see
-  [Terminal](#terminal)).
+- Cover art and artist bios. Art is sharp in terminals with the Kitty graphics
+  protocol and drawn with coloured blocks elsewhere (see [Terminal](#terminal)).
 - Themes, including Ayu Dark, Mirage and Light.
 - OS media keys and now-playing widgets (MPRIS on Linux, Now Playing on macOS).
 - Qobuz Connect (off by default): qobit shows up as a device in the Qobuz apps,
@@ -56,8 +56,9 @@ and mixes with the keyboard, and see cover art in the terminal.
 ## Install
 
 Requirements: a Qobuz subscription (Hi-Res for 24-bit), Python 3.11+,
-[uv](https://docs.astral.sh/uv/), [mpv](https://mpv.io/), and a terminal that
-supports the Kitty graphics protocol (see [Terminal](#terminal)).
+[uv](https://docs.astral.sh/uv/), [mpv](https://mpv.io/), and a terminal with
+true colour. For sharp cover art, use one with the Kitty graphics protocol (see
+[Terminal](#terminal)).
 
 Install mpv and uv first:
 
@@ -92,22 +93,25 @@ For bit-perfect output, choose the device as described in
 
 ## Terminal
 
-qobit draws all images (cover art, artist photos) with the
-[Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
-There is no fallback for other terminals.
+qobit picks how to draw cover art and artist photos from what your terminal
+supports:
 
-| Terminal | Images |
+| Terminal | Cover art |
 |---|---|
-| [kitty](https://sw.kovidgoyal.net/kitty/) | works |
-| [Ghostty](https://ghostty.org) | works |
-| [WezTerm](https://wezterm.org), Konsole | implement the protocol; not tested with qobit |
-| Inside tmux | needs `set -g allow-passthrough on`; not tested with qobit |
+| [kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org) | sharp images ([Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/)) |
+| Any other terminal with true colour (GNOME Terminal, iTerm2, Alacritty, WezTerm, Konsole, …) | coloured blocks: low resolution, but recognisable |
 
-> [!WARNING]
-> In other terminals (GNOME Terminal, iTerm2, macOS Terminal, Alacritty,
-> Windows Terminal, VS Code, …) every image shows up as blocks of garbled
-> characters, so qobit looks very bad. Playback still works, but use one of the
-> terminals above.
+Inside tmux, sharp images need `set -g allow-passthrough on` in kitty or
+Ghostty; without it, qobit uses blocks.
+
+You can choose yourself with `qobit --images MODE` (for one run) or from the
+command palette (`Ctrl+P`, then "Images", saved):
+
+- `auto`: the default, as in the table above.
+- `kitty`: always use the Kitty graphics protocol.
+- `blocks`: always use coloured blocks.
+- `off`: show initials instead of cover art and download no covers. Use it if
+  qobit feels slow on an older machine.
 
 ## Usage
 

@@ -10,7 +10,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.screen import Screen
-from textual.widgets import Footer, Label, ListItem, ListView
+from textual.widgets import Label, ListItem, ListView
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import Playlist, Track
@@ -24,7 +24,7 @@ from .._now_playing import (
     playing_content,
 )
 from .._utils import DETAIL_HEADER_CSS, readout, strip_html, within
-from ..nav import page_header
+from ..nav import QobitFooter, page_header
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
@@ -143,7 +143,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
                     yield Label("", classes="detail-desc", markup=True)
             yield TrackListView(classes="detail-tracklist")
         yield TransportBar()
-        yield Footer()
+        yield QobitFooter()
 
     def on_click(self, event: events.Click) -> None:
         if within(event.widget, "detail-header"):
