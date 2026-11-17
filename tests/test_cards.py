@@ -85,16 +85,22 @@ def test_narrow_album_card_keeps_hires(ui_app, width):
 
     ui_app._client.get_artist_detail = artist
 
-    async def run() -> list[str]:
+    def card_lines() -> list[str]:
+        card = ui_app.screen.query(AlbumCard).first()
+        r = card.region
+        strips = ui_app.screen._compositor.render_strips()[r.y : r.y + r.height]
+        return [s.text[r.x : r.right].rstrip() for s in strips]
+
+    def settled() -> bool:
+        lines = card_lines()
+        return "HI-RES" in "\n".join(lines) and not any(ln.endswith("·") for ln in lines)
+
+    async def run() -> None:
         async with ui_app.run_test(size=(width, 50)) as pilot:
             await ui_app.push_screen(ArtistScreen("r1"))
             await wait_until(pilot, lambda: len(ui_app.screen.query(AlbumCard)) == 4)
-            await pilot.pause(0.2)
-            card = ui_app.screen.query(AlbumCard).first()
-            r = card.region
-            strips = ui_app.screen._compositor.render_strips()[r.y : r.y + r.height]
-            return [s.text[r.x : r.right].rstrip() for s in strips]
+            await wait_until(pilot, settled)
+            await pilot.pause(0.2)  # and it stays that way
+            assert settled(), card_lines()
 
-    lines = asyncio.run(run())
-    assert "HI-RES" in "\n".join(lines), lines
-    assert not any(line.endswith("·") for line in lines), lines
+    asyncio.run(run())

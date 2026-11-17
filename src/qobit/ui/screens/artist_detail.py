@@ -340,6 +340,17 @@ class ArtistTracks(_TitleSwitch, Widget):
         self.call_after_refresh(event.list_view.focus)
 
 
+class _YearLine(Label):
+    """An album card's year line. Whether HI-RES fits beside the year
+    depends on the label's width, known for sure only once it's laid out:
+    rebuild on its own resize (the card's came first and saw width 0)."""
+
+    def on_resize(self, _: events.Resize) -> None:
+        card = next((a for a in self.ancestors if isinstance(a, AlbumCard)), None)
+        if card is not None:
+            card.refresh_selected()
+
+
 class AlbumCard(Widget):
     class Selected(Message):
         def __init__(self, album: Album) -> None:
@@ -415,7 +426,7 @@ class AlbumCard(Widget):
             yield Label(
                 escape(self._album.artist or ""), classes="card-artist card-secondary", markup=True
             )
-            yield Label(self._year_line(), classes="card-year card-secondary")
+            yield _YearLine(self._year_line(), classes="card-year card-secondary")
 
     def _year_line(self) -> Content:
         """``1997  ·  HI-RES``, or HI-RES on the row below when the card is
@@ -429,17 +440,12 @@ class AlbumCard(Widget):
         hires = ("HI-RES", "bold $qobit-hires")
         sep = "  ·  "
         try:
-            width = self.query_one(".card-year").size.width
+            width = self.query_one(_YearLine).size.width
         except NoMatches:
             width = 0
         if width and len(year) + len(sep) + len(hires[0]) > width:
             sep = "\n"
         return plain_if_highlighted(self, Content.assemble(year, sep, hires))
-
-    def on_resize(self, _: events.Resize) -> None:
-        # The year line's layout depends on the card's width: rebuild it once
-        # the label has its new size.
-        self.call_after_refresh(self.refresh_selected)
 
     @property
     def highlighted(self) -> bool:
