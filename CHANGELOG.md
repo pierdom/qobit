@@ -7,6 +7,34 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [0.10.2] - 2026-11-17
+
+### Fixed
+
+- **Playlist page on short terminals.** At 28 rows the header left no room
+  for a single track. It now shrinks its art like the album page does (and
+  drops it when there's no room), so at least four tracks always show.
+- A playlist's initials placeholder could land on the player bar's art
+  instead of the playlist's own.
+- **Readable panel hints.** The artist panels' "t or click the title to
+  switch" hint was drawn in the faded border colour. It now uses the muted
+  text colour, and the accent colour when the panel has focus, like the
+  other tabs' sort and count hints. Every bordered panel now sets this
+  colour.
+- With the tab bar focused, the active tab is drawn like a selected row.
+  In cyberdeck it was cyan text on pink, at 2.7:1 contrast; it now reads
+  at 7:1.
+- On an artist page's narrow album tiles, a HI-RES album showed
+  "1959  ·" with the label cut off; HI-RES now moves below the year when
+  it doesn't fit beside it.
+- "Similar artists" spaces its count like every other panel title.
+
+### Dependencies
+
+- textual 8.2.8 (Kitty extended-key parsing, a crash on clicks in the
+  screen's padding), pillow 13.0, pyobjc 13.0 (macOS), aiohttp 3.14.5,
+  msgpack 1.2.4, certifi 2026.10.23; ruff 0.17.5 for development.
+
 ## [0.10.1] - 2026-11-16
 
 ### Changed
