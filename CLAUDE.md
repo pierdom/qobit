@@ -162,7 +162,11 @@ from the device: PipeWire rate-following (needs the
 **Lazy mounting, no caps.** Mounting slows as a container grows (rows ~4.5 s
 per 2000, cards ~6 s per 1000). `PagedListView.set_rows` (200 rows) and
 `_GridNav.set_cards` (60 cards) mount a first page and the rest as the cursor
-or scroll nears the end; End mounts everything. Whole-list code reads
+or scroll nears the end; End mounts everything. The Playback list mounts
+through the playing row plus `_UP_NEXT_PAGE` (its reconcile puts the rest
+in the `PagedListView` backlog), and draws before the favourites load
+(hearts come with a second reconcile). Every mounted widget costs on each
+cursor move and repaint, not just at mount: Textual maps them all. Whole-list code reads
 `PagedListView.rows` (mounted + backlog). A hard 200 cap once hid most of a
 library: don't add one back.
 
@@ -316,6 +320,13 @@ whenever a track is loaded (`-has-track`), not only while playing.
 
 **Status line.** `status_msg` is the transport's `artist — title` line; use
 `_flash_status()` for transient notices (auto-clears after ~3 s).
+
+**Layout passes.** `Label.update()` relays out the whole screen unless
+passed `layout=False` (~70 ms with 400 queue rows). Redraws that keep the
+size (a row title: one line, nowrap; a card's colours on selection; the
+beat's meter) pass `layout=False`; `tests/test_queue_speed.py` checks the
+beat and the cursor. Grids list their cards from `self.children`, not a
+`query()` (it walked every widget in every card on each move).
 
 **Labels.** Track rows build text with `Content.assemble(...)`, not markup
 (titles with `[`/`]` break markup); any Label fed API text (album, artist,

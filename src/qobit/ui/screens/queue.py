@@ -41,6 +41,10 @@ if TYPE_CHECKING:
 # every row's text starts in the same column.
 _GUTTER = GUTTER_NUM
 
+# Up Next rows mounted past the playing one; the rest mount as the cursor or
+# the scroll nears them (see QueueView._reconcile).
+_UP_NEXT_PAGE = 60
+
 
 def _meta(t: Track) -> str:
     return f"{meta_indent(_GUTTER)}{t.album}  ·  {t.duration_str}"
@@ -181,7 +185,9 @@ class TimelineRow(ListItem):
 
     def _refresh_title(self) -> None:
         with contextlib.suppress(NoMatches):
-            self.query_one(".row-title", Label).update(plain_if_highlighted(self, self._primary()))
+            # One line (nowrap): no layout pass (see NowPlayingRowMixin).
+            title = plain_if_highlighted(self, self._primary())
+            self.query_one(".row-title", Label).update(title, layout=False)
 
     def watch_highlighted(self, value: bool) -> None:
         super().watch_highlighted(value)  # ListItem: the -highlight class
@@ -507,10 +513,21 @@ class QueueView(Widget):
             if version != self._render_version:
                 return
             app: QobitApp = self.app  # type: ignore[assignment]
-            fav_ids = await app.ensure_favorite_ids()
-            if version != self._render_version:
-                return
-            await self._reconcile(app, fav_ids)
+            # The list doesn't wait for the favourites: fetching a whole
+            # library kept the queue blank for seconds at startup. Rows show
+            # no hearts until they arrive, then one more reconcile adds them.
+            fav_ids = app._fav_ids
+            if fav_ids is None:
+                self._hearts_when_loaded()
+            await self._reconcile(app, fav_ids or set())
+
+    @work(exclusive=True, group="_hearts_when_loaded")
+    async def _hearts_when_loaded(self) -> None:
+        app: QobitApp = self.app  # type: ignore[assignment]
+        await app.ensure_favorite_ids()
+        # Not loaded (the fetch failed): no retry loop; the next change retries.
+        if app._fav_ids is not None and self.is_attached:
+            self._on_queue_changed(app.queue_version)
 
     async def _reconcile(self, app: QobitApp, fav_ids: set[str]) -> None:
         """Bring the list in line with the timeline without clearing it.
@@ -591,7 +608,19 @@ class QueueView(Widget):
                 )
             desired.append(self._empty_item)
 
-        await self._apply(lv, desired)
+        # Mount through the playing row and a page of Up Next; the rest waits
+        # in the list's backlog (PagedListView) until the cursor or the
+        # scroll gets near it. Every mounted row costs on each cursor move
+        # and repaint (Textual maps them all), and a long playlist put
+        # hundreds in Up Next. Never fewer than are mounted already (rows the
+        # user scrolled to stay), and always through the row the cursor holds.
+        limit = max(
+            _UP_NEXT_PAGE + (desired.index(now_row) if now_row else 0),
+            len(lv.children),
+            desired.index(held) + 1 if held in desired else 0,
+        )
+        lv._backlog = desired[limit:]  # type: ignore[attr-defined]
+        await self._apply(lv, desired[:limit])
 
         parts: list[str] = []
         if history:

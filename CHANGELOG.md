@@ -24,6 +24,16 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
   cursor in a grid redraws two cards), qobit re-encoded the image and sent it
   to the terminal again. Each image is now sent once and kept until it
   changes, and freed in the terminal when its page closes.
+- **Playback list appears at once.** At startup it waited for your whole
+  favourites library to download before showing a single track. It now
+  shows the queue straight away and adds the hearts when the favourites
+  arrive.
+- **Less work while playing and moving around.** The playing track's bar
+  meter, and every cursor move in a list, made qobit lay out the whole
+  screen again; with a long queue that was most of its CPU time while
+  playing (12% here, now 2%). A long Up Next now loads its rows as you
+  scroll, as the other lists do, so moving the cursor costs half as much.
+  Moving around the album and artist grids is faster too.
 
 ## [0.10.2] - 2026-11-17
 

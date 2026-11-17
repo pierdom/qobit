@@ -179,7 +179,7 @@ class PlaylistGrid(_GridNav, ScrollableContainer):
     def _visible_cards(self) -> list[PlaylistCard]:
         # PlaylistGrid has no hide/show filter (filtering remounts instead),
         # so every mounted card is "visible" in the _GridNav sense.
-        return list(self.query(PlaylistCard))
+        return [c for c in self.children if isinstance(c, PlaylistCard)]  # no query: see AlbumGrid
 
     def action_open_selected(self) -> None:
         cards = self._visible_cards()

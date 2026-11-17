@@ -348,7 +348,7 @@ class _YearLine(Label):
     def on_resize(self, _: events.Resize) -> None:
         card = next((a for a in self.ancestors if isinstance(a, AlbumCard)), None)
         if card is not None:
-            card.refresh_selected()
+            card.refresh_selected(layout=True)
 
 
 class AlbumCard(Widget):
@@ -452,9 +452,12 @@ class AlbumCard(Widget):
         """Selected in its grid (for plain_if_highlighted)."""
         return self.has_class("-selected")
 
-    def refresh_selected(self) -> None:
+    def refresh_selected(self, layout: bool = False) -> None:
+        """Redraw the year line in the card's colours. Selecting changes no
+        text, so no layout pass (it reflows the whole screen); a resize can
+        move HI-RES to a second row and asks for one."""
         with contextlib.suppress(NoMatches):
-            self.query_one(".card-year", Label).update(self._year_line())
+            self.query_one(".card-year", Label).update(self._year_line(), layout=layout)
 
     def on_mount(self) -> None:
         img_h = GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H
@@ -712,7 +715,9 @@ class AlbumGrid(_GridNav, ScrollableContainer):
         self._schedule_sync_art()
 
     def _visible_cards(self) -> list[AlbumCard]:
-        return [c for c in self.query(AlbumCard) if c.display]
+        # The cards are the grid's children: a query walked every widget
+        # inside every card, twice per cursor move.
+        return [c for c in self.children if isinstance(c, AlbumCard) and c.display]
 
     def filter_cards(self, visible_ids: set[str] | None) -> bool:
         """Hide/show cards by album id without remounting (so the
@@ -721,7 +726,7 @@ class AlbumGrid(_GridNav, ScrollableContainer):
         any_visible = False
         # Cards not mounted yet may match: mount them all while filtering (a
         # card listed twice below is harmless).
-        cards = [*self.query(AlbumCard), *(self._backlog or [])]
+        cards = [*(c for c in self.children if isinstance(c, AlbumCard)), *(self._backlog or [])]
         if visible_ids is not None:
             self._mount_more(everything=True)
         for card in cards:
@@ -796,7 +801,8 @@ class ArtistCard(Widget):
 
     def refresh_selected(self) -> None:
         with contextlib.suppress(NoMatches):
-            self.query_one(".card-name", Label).update(self._label())
+            # Same text, new colours: no layout pass (see AlbumCard's).
+            self.query_one(".card-name", Label).update(self._label(), layout=False)
 
     @property
     def artist(self) -> Artist:
@@ -881,7 +887,9 @@ class ArtistGrid(_GridNav, ScrollableContainer):
         self._schedule_sync_art()
 
     def _visible_cards(self) -> list[ArtistCard]:
-        return [c for c in self.query(ArtistCard) if c.display]
+        # The cards are the grid's children: a query walked every widget
+        # inside every card, twice per cursor move.
+        return [c for c in self.children if isinstance(c, ArtistCard) and c.display]
 
     def filter_cards(self, visible_ids: set[str] | None) -> bool:
         """Hide/show mounted cards by artist id without remounting (so the
@@ -890,7 +898,7 @@ class ArtistGrid(_GridNav, ScrollableContainer):
         any_visible = False
         # Cards not mounted yet may match: mount them all while filtering (a
         # card listed twice below is harmless).
-        cards = [*self.query(ArtistCard), *(self._backlog or [])]
+        cards = [*(c for c in self.children if isinstance(c, ArtistCard)), *(self._backlog or [])]
         if visible_ids is not None:
             self._mount_more(everything=True)
         for card in cards:
