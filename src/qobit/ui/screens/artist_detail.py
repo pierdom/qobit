@@ -14,7 +14,7 @@ from textual.message import Message
 from textual.screen import Screen
 from textual.timer import Timer
 from textual.widget import AwaitMount, Widget
-from textual.widgets import ContentSwitcher, Footer, Label, ListItem, ListView
+from textual.widgets import ContentSwitcher, Label, ListItem, ListView
 from textual_image.widget import TGPImage
 
 from ...qobuz.client import QobuzError
@@ -30,7 +30,7 @@ from .._now_playing import (
     playing_content,
 )
 from .._utils import readout, strip_html
-from ..nav import page_header
+from ..nav import QobitFooter, page_header
 from ..themes import HEART, theme_color
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
@@ -343,9 +343,16 @@ class ArtistTracks(_TitleSwitch, Widget):
 class _YearLine(Label):
     """An album card's year line. Whether HI-RES fits beside the year
     depends on the label's width, known for sure only once it's laid out:
-    rebuild on its own resize (the card's came first and saw width 0)."""
+    rebuild on its own resize (the card's came first and saw width 0).
+    Only when the width changed: Textual sends a Resize to every widget of
+    a tab each time it's shown, and each rebuild cost a layout pass."""
 
-    def on_resize(self, _: events.Resize) -> None:
+    _width = 0
+
+    def on_resize(self, event: events.Resize) -> None:
+        if event.size.width in (0, self._width):
+            return
+        self._width = event.size.width
         card = next((a for a in self.ancestors if isinstance(a, AlbumCard)), None)
         if card is not None:
             card.refresh_selected(layout=True)
@@ -510,6 +517,12 @@ class _GridNav:
 
     _art_sync_timer: Timer | None = None
     _backlog: list[Widget] | None = None
+
+    def watch_has_focus(self, _has_focus: bool) -> None:
+        """Restyle the grid alone on focus (its border): no card's look
+        depends on it (``.grid-card.-selected`` in QobitApp.CSS). Textual
+        restyled every widget of every card, on each tab switch."""
+        self.app.stylesheet.update_nodes([self], animate=True)  # type: ignore[attr-defined]
 
     # ── lazy mounting ────────────────────────────────────────────────────────
     # Mounting cards gets slower the more a grid already holds (~0.6 s for 200,
@@ -1275,7 +1288,7 @@ class ArtistScreen(Screen):
             with Vertical(id="album-view"):
                 yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
-        yield Footer()
+        yield QobitFooter()
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")

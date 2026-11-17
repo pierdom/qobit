@@ -21,9 +21,9 @@ from typing import TYPE_CHECKING, NamedTuple
 from textual import events
 from textual.color import Color
 from textual.content import Content
-from textual.screen import ModalScreen
+from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
-from textual.widgets import Tab, Tabs
+from textual.widgets import Footer, Tab, Tabs
 
 from .themes import ACCENT_TEXT, BAR_END, BAR_START, HIRES, text_color
 
@@ -268,3 +268,39 @@ def page_header(app: QobitApp) -> list[Widget]:
     the wordmark and the trail."""
     compact = app.size.width < TABBAR_FULL_WIDTH
     return [PageTabs(app.base_tab(), compact), Wordmark(), Breadcrumb()]
+
+
+class QobitFooter(Footer):
+    """Textual's Footer, rebuilt only when the keys it shows change.
+
+    Footer rebuilds all its keys on every bindings update, and a tab switch
+    sends four or five (focus leaves, focus enters, the tab bar, the view's
+    own ``refresh_bindings``): each rebuild mounted every key again and
+    relaid it out. Here the updates of one refresh become one check, and the
+    keys are rebuilt only if what they'd show differs."""
+
+    _shown: tuple | None = None
+    _pending = False
+
+    def bindings_changed(self, screen: Screen) -> None:
+        self._bindings_ready = True
+        if not screen.app.app_focus:
+            return
+        if self.is_attached and screen is self.screen and not self._pending:
+            self._pending = True
+            self.call_after_refresh(self._rebuild_if_changed)
+
+    def _keys(self) -> tuple:
+        return tuple(
+            (binding.key, binding.description, binding.action, binding.show, enabled, tooltip)
+            for _node, binding, enabled, tooltip in self.screen.active_bindings.values()
+        )
+
+    async def _rebuild_if_changed(self) -> None:
+        self._pending = False
+        if not self.is_attached:
+            return
+        keys = self._keys()
+        if keys != self._shown:
+            self._shown = keys
+            await self.recompose()

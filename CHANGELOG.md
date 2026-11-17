@@ -34,6 +34,14 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
   playing (12% here, now 2%). A long Up Next now loads its rows as you
   scroll, as the other lists do, so moving the cursor costs half as much.
   Moving around the album and artist grids is faster too.
+- **Faster tab switching.** Switching tabs restyled every row of the list
+  being left and of the one being shown, and rebuilt the key bar at the
+  bottom four or five times. Now only what changes is restyled, and the key
+  bar is rebuilt once, when its keys change: a switch takes about half the
+  time it did.
+- **Focus right after startup.** Switching tab in the first moment after
+  launch could leave the keys going to the Playback list, hidden behind the
+  new tab.
 
 ## [0.10.2] - 2026-11-17
 

@@ -160,7 +160,7 @@ from the device: PipeWire rate-following (needs the
   it changed.
 
 **Lazy mounting, no caps.** Mounting slows as a container grows (rows ~4.5 s
-per 2000, cards ~6 s per 1000). `PagedListView.set_rows` (200 rows) and
+per 2000, cards ~6 s per 1000). `PagedListView.set_rows` (100 rows) and
 `_GridNav.set_cards` (60 cards) mount a first page and the rest as the cursor
 or scroll nears the end; End mounts everything. The Playback list mounts
 through the playing row plus `_UP_NEXT_PAGE` (its reconcile puts the rest
@@ -196,7 +196,10 @@ mounts the lazy backlog first. Albums/Artists/Playlists share
 (`[N] Name`, compact `N Name` below 90 cols) and the `1`–`7` keys derive from
 it. The Playback tab's id is `queue`. On activation the app calls the view's
 `activate()` (first load + focus); don't rely on `on_show` (Textual stopped
-sending Show after End on a long list). Views implement `action_navigate_back()
+sending Show after End on a long list). A view focuses through
+`_utils.focus_later(self, widget.focus)`, never a bare
+`call_after_refresh(focus)`: a busy view's deferred focus ran after the
+user had switched tabs and pulled the focus to its hidden list. Views implement `action_navigate_back()
 -> bool` for Escape (True = consumed) and `can_navigate_back()`: Escape has two
 app bindings, a footer-visible `back` that `App.check_action` enables only when
 something can go back, then the hidden `focus_tabs` it falls through to (a
@@ -327,6 +330,16 @@ size (a row title: one line, nowrap; a card's colours on selection; the
 beat's meter) pass `layout=False`; `tests/test_queue_speed.py` checks the
 beat and the cursor. Grids list their cards from `self.children`, not a
 `query()` (it walked every widget in every card on each move).
+
+**Restyles.** Textual restyles a widget *and everything inside it* when its
+focus or classes change. `PagedListView` and the grids override
+`watch_has_focus` to restyle themselves (and a list's highlighted row)
+only; a class that styles only its own widget (a container's border) goes
+through `_utils.set_own_class`. Every screen uses `nav.QobitFooter`
+(rebuilds its keys once per refresh, only if they changed; Textual's did 4–5
+times per tab switch). `_YearLine` rebuilds only on a real width change:
+Textual sends every widget a Resize each time its tab is shown.
+`tests/test_tab_switch_speed.py`.
 
 **Labels.** Track rows build text with `Content.assemble(...)`, not markup
 (titles with `[`/`]` break markup); any Label fed API text (album, artist,

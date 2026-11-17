@@ -17,7 +17,7 @@ from textual_image.widget import TGPImage
 from ...qobuz.models import Playlist
 from .._filter import TypeToFilter, filter_prompt
 from .._images import fetch_image
-from .._utils import readout, status_line
+from .._utils import focus_later, readout, status_line
 from ..widgets.art import Art, square_width
 from .artist_detail import (
     GRID_CARD_IMG_H,
@@ -242,7 +242,7 @@ class PlaylistsView(TypeToFilter, Widget):
         if not self._loaded:
             self._loaded = True
             self._load()
-        self.call_after_refresh(self.query_one("#user-playlists-grid", PlaylistGrid).focus)
+        focus_later(self, self.query_one("#user-playlists-grid", PlaylistGrid).focus)
 
     # ── filter ───────────────────────────────────────────────────────────────
 

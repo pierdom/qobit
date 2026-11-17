@@ -26,7 +26,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import readout, status_line
+from .._utils import focus_later, readout, status_line
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
@@ -212,9 +212,9 @@ class MixesView(NowPlayingViewMixin, Widget):
     def activate(self) -> None:
         """Called by QobitApp when this tab becomes active: first load, focus."""
         if self._tracks:
-            self.call_after_refresh(self.query_one("#mix-track-list", TrackListView).focus)
+            focus_later(self, self.query_one("#mix-track-list", TrackListView).focus)
         else:  # nothing open yet: start on the DailyQ card
-            self.call_after_refresh(self.query(MixCard).first().focus)
+            focus_later(self, self.query(MixCard).first().focus)
 
     def _refresh_card_statuses(self) -> None:
         cache = load_state("mixes_cache.json")
@@ -331,7 +331,7 @@ class MixesView(NowPlayingViewMixin, Widget):
             return
 
         if self.is_attached:
-            self.call_after_refresh(tl.focus)
+            focus_later(self, tl.focus)
 
     # ── track play ───────────────────────────────────────────────────────────
 
@@ -345,4 +345,4 @@ class MixesView(NowPlayingViewMixin, Widget):
         idx = rows.index(event.item)
         queue = [r.track for r in rows[idx + 1 :]]
         app.play_track(event.item.track, queue=queue)
-        self.call_after_refresh(lv.focus)
+        focus_later(self, lv.focus)

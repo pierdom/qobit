@@ -12,7 +12,7 @@ from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Footer, Label, ListItem, ListView
+from textual.widgets import Label, ListItem, ListView
 from textual_image.widget import TGPImage
 
 from ...qobuz.client import QobuzError
@@ -31,7 +31,7 @@ from .._utils import (
     strip_html,
     within,
 )
-from ..nav import page_header
+from ..nav import QobitFooter, page_header
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
@@ -393,7 +393,7 @@ class AlbumScreen(Screen):
         yield ArtistHeader()
         yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
-        yield Footer()
+        yield QobitFooter()
 
     def on_mount(self) -> None:
         from .artist_detail import ArtistHeader

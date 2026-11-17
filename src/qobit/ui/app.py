@@ -18,7 +18,7 @@ from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import ContentSwitcher, Footer, ListView, Tab, Tabs
+from textual.widgets import ContentSwitcher, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
 from ..audio.media_keys import MediaKeys
@@ -51,7 +51,16 @@ from ..store import load as load_state
 from ..store import save as save_state
 from ._images import IMAGE_MODES, image_mode, set_image_mode
 from ._now_playing import tick
-from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, Wordmark, page_screens, tab_label
+from .nav import (
+    TAB_NAMES,
+    TABBAR_FULL_WIDTH,
+    TABS,
+    Crumb,
+    QobitFooter,
+    Wordmark,
+    page_screens,
+    tab_label,
+)
 from .play_context import UNPLAYABLE, ConnectPlayContext, LocalPlayContext, unplayable_notice
 from .screens.albums import AlbumsView
 from .screens.artists import ArtistsView
@@ -564,7 +573,7 @@ class QobitApp(App[None]):
             yield SearchView(id="view-search")
             yield QueueView(id="view-queue")
         yield TransportBar()
-        yield Footer()
+        yield QobitFooter()
 
     async def on_mount(self) -> None:
         self._poll_player()

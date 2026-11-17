@@ -12,7 +12,7 @@ from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
 from .._filter import TypeToFilter, filter_prompt
-from .._utils import readout, status_line
+from .._utils import focus_later, readout, status_line
 from ..nav import Breadcrumb
 from .album_detail import AlbumDetailPanel, fit_artist_header
 from .artist_detail import (
@@ -144,13 +144,11 @@ class ArtistsView(TypeToFilter, Widget):
             self._loaded = True
             self._load()
         if self._view == "album":
-            self.call_after_refresh(
-                self.query_one("#album-panel", AlbumDetailPanel).focus_tracklist
-            )
+            focus_later(self, self.query_one("#album-panel", AlbumDetailPanel).focus_tracklist)
         elif self._view == "artist":
-            self.call_after_refresh(self.query_one("#artist-albums-grid", AlbumGrid).focus)
+            focus_later(self, self.query_one("#artist-albums-grid", AlbumGrid).focus)
         else:
-            self.call_after_refresh(self.query_one("#fav-artists-grid", ArtistGrid).focus)
+            focus_later(self, self.query_one("#fav-artists-grid", ArtistGrid).focus)
 
     # ── filter ───────────────────────────────────────────────────────────────
 
@@ -312,7 +310,7 @@ class ArtistsView(TypeToFilter, Widget):
         inner_cs.current = "artist-tracks-albums-view"
         self.query_one("#artists-switcher", ContentSwitcher).current = "artist-detail-view"
         self._view = "artist"
-        self.call_after_refresh(grid.focus)
+        focus_later(self, grid.focus)
         self.app.nav_changed()  # type: ignore[attr-defined]
 
         self._load_artist_detail(artist.id)
@@ -327,7 +325,7 @@ class ArtistsView(TypeToFilter, Widget):
         # After the switch is laid out: focused at once, the call could be
         # ignored (not displayed yet) with the grid hidden, leaving nothing
         # focused on a busy machine.
-        self.call_after_refresh(panel.focus_tracklist)
+        focus_later(self, panel.focus_tracklist)
         self.app.nav_changed()  # type: ignore[attr-defined]
 
     def on_album_detail_panel_resized(self, _: AlbumDetailPanel.Resized) -> None:

@@ -28,7 +28,7 @@ from .._now_playing import (
     playing_icon,
     track_live,
 )
-from .._utils import readout, status_line, strip_html
+from .._utils import focus_later, readout, status_line, strip_html
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
 from ..widgets.transport import signal_parts
@@ -478,7 +478,7 @@ class QueueView(Widget):
 
     def activate(self) -> None:
         """Called by QobitApp when this tab becomes active: first load, focus."""
-        self.call_after_refresh(self.query_one("#queue-list", ListView).focus)
+        focus_later(self, self.query_one("#queue-list", ListView).focus)
 
     def _on_queue_changed(self, _: int) -> None:
         self._render_version += 1
@@ -693,4 +693,4 @@ class QueueView(Widget):
         index = getattr(event.item, "timeline_index", None)
         if index is not None:
             app.jump_to(index)
-        self.call_after_refresh(event.list_view.focus)
+        focus_later(self, event.list_view.focus)
