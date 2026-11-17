@@ -24,7 +24,7 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Fixed
 
-- **Faster on slow machines.** Every time a cover was redrawn (moving the
+- **Covers sent once.** Every time a cover was redrawn (moving the
   cursor in a grid redraws two cards), qobit re-encoded the image and sent it
   to the terminal again. Each image is now sent once and kept until it
   changes, and freed in the terminal when its page closes.
@@ -35,7 +35,7 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 - **Less work while playing and moving around.** The playing track's bar
   meter, and every cursor move in a list, made qobit lay out the whole
   screen again; with a long queue that was most of its CPU time while
-  playing (12% here, now 2%). A long Up Next now loads its rows as you
+  playing (12% on a test machine, now 2%). A long Up Next now loads its rows as you
   scroll, as the other lists do, so moving the cursor costs half as much.
   Moving around the album and artist grids is faster too.
 - **Faster tab switching.** Switching tabs restyled every row of the list
@@ -53,6 +53,9 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 - **Focus right after startup.** Switching tab in the first moment after
   launch could leave the keys going to the Playback list, hidden behind the
   new tab.
+- **No traceback at startup** in terminals that don't report their cell
+  size (the Linux console, for one): a warning from the image library was
+  printed just before the interface appeared.
 
 ## [0.10.2] - 2026-11-17
 
