@@ -31,9 +31,11 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Dependencies
 
+- Security updates in the locked dependencies: anyio 4.16 (through httpx;
+  a TLS host name encoding flaw), pillow 13.0, certifi 2026.10.23, msgpack
+  1.2.4, and aiohttp 3.14.5 and multidict 7.2 (development tools only).
 - textual 8.2.8 (Kitty extended-key parsing, a crash on clicks in the
-  screen's padding), pillow 13.0, pyobjc 13.0 (macOS), aiohttp 3.14.5,
-  msgpack 1.2.4, certifi 2026.10.23; ruff 0.17.5 for development.
+  screen's padding), pyobjc 13.0 (macOS); ruff 0.17.5 for development.
 
 ## [0.10.1] - 2026-11-16
 
