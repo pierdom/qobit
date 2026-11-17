@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import dataclasses
 import time
-from functools import lru_cache
+from functools import lru_cache, partial
 
 from rich.color import Color as _RichColor
 from rich.color import ColorType as _ColorType
@@ -28,6 +28,7 @@ from ..config import (
     get_account,
     get_audio_device,
     get_connect_enabled,
+    get_image_mode,
     get_oauth_session,
     get_radio_mode,
     get_saved_theme,
@@ -43,10 +44,12 @@ from ..config import (
     set_transparent_background,
     token_location,
 )
+from ..config import set_image_mode as save_image_mode
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, NoStreamError, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
+from ._images import IMAGE_MODES, image_mode, set_image_mode
 from ._now_playing import tick
 from .nav import TAB_NAMES, TABBAR_FULL_WIDTH, TABS, Crumb, Wordmark, page_screens, tab_label
 from .play_context import UNPLAYABLE, ConnectPlayContext, LocalPlayContext, unplayable_notice
@@ -58,6 +61,7 @@ from .screens.queue import QueueView
 from .screens.search import SearchView
 from .screens.tracks import TracksView
 from .themes import CYBERDECK_THEME, QOBIT_THEMES, qobit_variable_defaults
+from .widgets.art import Art
 from .widgets.transport import TransportBar
 
 
@@ -131,6 +135,7 @@ class QobitCommands(Provider):
                 "Show qobit in the Qobuz apps' device picker and play what they send "
                 "(bit-perfect, through mpv). While active, the queue is controlled from the app.",
             ),
+            *app.image_mode_commands(),
             (
                 f"Software volume: turn {'off' if app.software_volume_enabled else 'on'}",
                 app.action_toggle_software_volume,
@@ -458,10 +463,13 @@ class QobitApp(App[None]):
     # None until checked (a couple of seconds in) and after a track change.
     signal: reactive[Signal | None] = reactive(None)
 
-    def __init__(self, connect: bool | None = None) -> None:
+    def __init__(self, connect: bool | None = None, images: str | None = None) -> None:
         """``connect`` overrides the saved Qobuz Connect setting for this run
-        (``qobit --connect-on``); None = use the saved setting."""
+        (``qobit --connect-on``), ``images`` the cover art mode (``qobit
+        --images``); None = use the saved setting."""
         super().__init__()
+        self._image_setting = images or get_image_mode()
+        set_image_mode(self._image_setting)  # before anything draws
         for theme in QOBIT_THEMES:
             self.register_theme(theme)
         self._connect_wanted = get_connect_enabled() if connect is None else connect
@@ -1164,6 +1172,49 @@ class QobitApp(App[None]):
         if self._ctx.replace_upcoming(suggestions):
             self._flash_status(f"Radio: {len(suggestions)} tracks queued")
 
+    # ── cover art mode (_images.IMAGE_MODES; widgets.art.Art draws it) ─────────
+
+    _IMAGE_MODE_HELP = {
+        "auto": "Kitty graphics where the terminal supports them, colour blocks elsewhere",
+        "kitty": "Sharp cover art with the Kitty graphics protocol (kitty, Ghostty)",
+        "blocks": "Cover art as coloured half blocks: any terminal with true colour",
+        "off": "Initials instead of cover art, and no covers downloaded: lightest on slow machines",
+    }
+    _IMAGE_MODE_NAMES = {
+        "auto": "auto",
+        "kitty": "Kitty graphics",
+        "blocks": "colour blocks",
+        "off": "off",
+    }
+
+    def image_mode_commands(self) -> list[tuple[str, object, str]]:
+        """Palette entries for the cover art modes other than the current one."""
+        return [
+            (
+                f"Cover art: {self._IMAGE_MODE_NAMES[mode]}",
+                partial(self.set_image_setting, mode),
+                self._IMAGE_MODE_HELP[mode],
+            )
+            for mode in IMAGE_MODES
+            if mode != self._image_setting
+        ]
+
+    def set_image_setting(self, setting: str) -> None:
+        """Switch the cover art mode now and save it."""
+        was = image_mode()
+        self._image_setting = setting
+        now = set_image_mode(setting)
+        save_image_mode(setting)
+        for screen in self.screen_stack:
+            for art in screen.query(Art):
+                art.refresh(layout=True)
+        name = self._IMAGE_MODE_NAMES[setting]
+        if setting == "auto":
+            name += f" ({self._IMAGE_MODE_NAMES[now]})"
+        # Covers skipped while off load as pages open (and with the next track).
+        later = was == "off" and now != "off"
+        self._flash_status(f"Cover art: {name}" + ("; covers load as you browse" if later else ""))
+
     def action_toggle_radio_mode(self) -> None:
         self.radio_mode = not self.radio_mode
         set_radio_mode(self.radio_mode)
@@ -1591,7 +1642,7 @@ class QobitApp(App[None]):
     async def _fetch_media_key_art(self, url: str) -> None:
         from ._images import fetch_image
 
-        image = await fetch_image(url)
+        image = await fetch_image(url, terminal=False)  # the OS widget's, even with images off
         if image is not None:
             self._media_keys.set_artwork(image)
 

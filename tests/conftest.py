@@ -65,6 +65,7 @@ def isolated_filesystem_state(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "config" / "config.json")
     monkeypatch.setattr(store, "DATA_DIR", tmp_path / "data")
     monkeypatch.setattr(_images, "_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(_images, "_image_mode", None)  # a test that set it leaks to the next
     # A developer's real shell may export these for CLI convenience (the
     # README documents QOBUZ_AUDIO_DEVICE as a valid override); without
     # clearing them, "nothing configured" tests would pass or fail depending

@@ -177,6 +177,22 @@ How it works: [qobuz-connect.md](qobuz-connect.md) (protocol) and
 [qobuz-connect-design.md](qobuz-connect-design.md) (how qobit shares the queue
 with the server).
 
+## Cover art
+
+qobit draws cover art with the Kitty graphics protocol where the terminal
+supports it (kitty, Ghostty) and with coloured half blocks elsewhere. To
+choose, run `qobit --images MODE` for one run, or pick "Cover art: …" in the
+command palette (`Ctrl+P`) to save it:
+
+| Mode | What you get |
+|---|---|
+| `auto` | the default: Kitty graphics if supported, else blocks |
+| `kitty` | Kitty graphics, even if the terminal didn't say it supports them (WezTerm, Konsole: may not work) |
+| `blocks` | coloured half blocks, two pixels per character cell |
+| `off` | initials instead of cover art; no covers downloaded (the OS media widget still gets one per track) |
+
+On a slow machine, `off` is the lightest, then `blocks`.
+
 ## Media keys and now-playing widgets
 
 On macOS qobit appears in Now Playing / Control Center; on Linux it publishes

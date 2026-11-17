@@ -152,6 +152,18 @@ def set_transparent_background(value: bool) -> None:
     save(cfg)
 
 
+def get_image_mode() -> str:
+    """How cover art is drawn: "auto" (default), "kitty", "blocks" or "off"
+    (see ui._images.IMAGE_MODES)."""
+    return str(load().get("images", "auto"))
+
+
+def set_image_mode(value: str) -> None:
+    cfg = load()
+    cfg["images"] = value
+    save(cfg)
+
+
 def get_radio_mode() -> bool:
     return bool(load().get("radio_mode", False))
 

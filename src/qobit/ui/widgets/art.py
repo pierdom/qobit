@@ -1,18 +1,30 @@
 """Cover art with a placeholder.
 
-``Art`` is a Kitty-protocol image (``TGPImage``) that, until its image
-arrives, or when there's none (about 1 in 10 artists has no photo), draws a
-dithered tile with the subject's initials instead of an empty gap. It's still
-a ``TGPImage`` for queries and CSS (``query_one(TGPImage)``, ``Card TGPImage``).
+``Art`` draws its image the way ``_images.image_mode()`` says: with the Kitty
+graphics protocol, as coloured half-block characters, or not at all. Until
+the image arrives, or when there's none (about 1 in 10 artists has no photo,
+and every image with images off), it draws a dithered tile with the
+subject's initials instead of an empty gap. It's still a ``TGPImage`` for
+queries and CSS (``query_one(TGPImage)``, ``Card TGPImage``).
 """
 
 from __future__ import annotations
 
+from typing import IO
+
+from PIL import Image as PILImage
+from rich.console import Console, ConsoleOptions
+from rich.console import RenderResult as RichRenderResult
+from rich.measure import Measurement
+from rich.segment import Segment
 from textual.app import RenderResult
 from textual.content import Content
 from textual_image._terminal import get_cell_size
+from textual_image.renderable.halfcell import Image as HalfcellRenderable
 from textual_image.renderable.tgp import Image as TGPRenderable
 from textual_image.widget import TGPImage
+
+from .._images import image_mode
 
 
 def initials(text: str) -> str:
@@ -37,6 +49,32 @@ def square_width(image: TGPImage, height: int) -> None:
         image.styles.width = round(height * cell.height / cell.width)
 
 
+class Blocks:
+    """An image as coloured half blocks (``▀``: two pixels per cell), worked
+    out once per size: textual-image's own scales the image again on every
+    render."""
+
+    def __init__(
+        self, image: PILImage.Image | IO[bytes], width: int | str | None, height: int | str | None
+    ) -> None:
+        self._image = HalfcellRenderable(image, width, height)
+        self._size: tuple[int, int | None] | None = None
+        self._segments: list[Segment] = []
+
+    def cleanup(self) -> None:
+        pass
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RichRenderResult:
+        size = (options.max_width, options.max_height)
+        if size != self._size:
+            self._segments = list(self._image.__rich_console__(console, options))
+            self._size = size
+        yield from self._segments
+
+    def __rich_measure__(self, console: Console, options: ConsoleOptions) -> Measurement:
+        return self._image.__rich_measure__(console, options)
+
+
 class Art(TGPImage, Renderable=TGPRenderable):
     """Cover art; a ░ tile with ``placeholder``'s initials until it loads.
     The initials take the widget's CSS colour (the accent; the selection's
@@ -49,6 +87,7 @@ class Art(TGPImage, Renderable=TGPRenderable):
     def __init__(self, placeholder: str = "", **kwargs: object) -> None:
         super().__init__(**kwargs)  # type: ignore[arg-type]
         self._placeholder = placeholder
+        self._drawn: tuple[object, ...] | None = None  # (mode, size) of _renderable
 
     @property
     def placeholder(self) -> str:
@@ -61,8 +100,9 @@ class Art(TGPImage, Renderable=TGPRenderable):
             self.refresh()
 
     def render(self) -> RenderResult:
-        if self.image:
-            return super().render()
+        mode = image_mode()
+        if self.image and mode != "off":
+            return self._image_renderable(mode)
         width, height = self.content_size
         if width <= 0 or height <= 0:
             return ""
@@ -86,3 +126,26 @@ class Art(TGPImage, Renderable=TGPRenderable):
             else:
                 lines.append(Content.styled("░" * width, texture))
         return Content("\n").join(lines)
+
+    def _image_renderable(self, mode: str) -> TGPRenderable | Blocks:
+        """The image's renderable, kept while the image, its size and the mode
+        stay the same. textual-image builds a new one on every render: each
+        repaint (a grid card selected or deselected, a theme change) scaled,
+        PNG-encoded and re-sent the whole image to the terminal. A new image
+        resets ``_renderable`` (the ``image`` setter)."""
+        size = self._get_styled_size()
+        if self._renderable is None or self._drawn != (mode, size):
+            if self._renderable is not None:
+                self._renderable.cleanup()  # frees a Kitty image in the terminal
+            if mode == "kitty":
+                self._renderable = TGPRenderable(self.image, *size)  # type: ignore[arg-type]
+            else:
+                self._renderable = Blocks(self.image, *size)  # type: ignore[arg-type]
+            self._drawn = (mode, size)
+        return self._renderable  # type: ignore[return-value]
+
+    def on_unmount(self) -> None:
+        # The terminal keeps a Kitty image until told to drop it.
+        if self._renderable is not None:
+            self._renderable.cleanup()
+            self._renderable = None

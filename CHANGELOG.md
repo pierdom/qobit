@@ -7,6 +7,24 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Added
+
+- **Cover art in any terminal.** Terminals without the Kitty graphics
+  protocol used to show every image as garbled characters. qobit now draws
+  cover art there with coloured half blocks. Choose the mode with
+  `qobit --images auto|kitty|blocks|off` or from the command palette
+  ("Cover art", saved). `off` shows initials and downloads no covers, for
+  slow machines.
+
+### Fixed
+
+- **Faster on slow machines.** Every time a cover was redrawn (moving the
+  cursor in a grid redraws two cards), qobit re-encoded the image and sent it
+  to the terminal again. Each image is now sent once and kept until it
+  changes, and freed in the terminal when its page closes.
+
 ## [0.10.2] - 2026-11-17
 
 ### Fixed

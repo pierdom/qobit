@@ -492,9 +492,18 @@ must not annotate `-> None` (read as the string "None": TypeError at import).
   artist_id, label_id, genre_id}]`). `generate_mix()` reuses it for
   DailyQ/WeeklyQ, cached per day / ISO week in `mixes_cache.json`.
 
-Images: Kitty graphics protocol only (`textual_image` `TGPImage`). All fetches
-go through `ui/_images.fetch_image(url)`: 6 concurrent, normalised to 600 px
-JPEG, cached in memory and in `~/.cache/qobit/images/`.
+Images: `widgets.art.Art` draws per `_images.image_mode()`: "kitty"
+(textual-image's TGP renderable), "blocks" (`art.Blocks`, coloured half
+blocks) or "off" (the initials tile). The setting (`IMAGE_MODES`: config
+`images`, `qobit --images`, palette "Cover art") resolves "auto" from
+textual-image's terminal query at import (Kitty if it chose TGP, else
+blocks). `Art` keeps its renderable until the image, size or mode changes:
+textual-image rebuilt it on every render, so each repaint re-encoded and
+re-sent the whole image (20 sends for 10 grid cursor moves;
+`tests/test_art_modes.py`). It frees its Kitty image on unmount. All
+fetches go through `ui/_images.fetch_image(url)`: none with images off
+(`terminal=False` for the OS media widget's art), 6 concurrent, normalised
+to 600 px JPEG, cached in memory and in `~/.cache/qobit/images/`.
 
 ## Files
 
