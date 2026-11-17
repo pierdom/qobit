@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
 from textual.app import App
 from textual.widgets import Label
 
@@ -53,7 +54,7 @@ def test_clicked_label_maps_title_clicks_to_views():
 
     from qobit.ui.screens.artist_detail import clicked_label, switch_title
 
-    labels = ["Albums & EPs", "Similar artists · 79"]
+    labels = ["Albums & EPs", "Similar artists  ·  79"]
     panel = SimpleNamespace(region=Region(10, 5, 80, 20))
 
     def click(col: int, row: int = 5):
@@ -64,5 +65,36 @@ def test_clicked_label_maps_title_clicks_to_views():
     assert click(3 + len(labels[0]) + 1) is None  # on the separator
     assert click(3, row=6) is None  # not the title row
     assert switch_title(labels, 1) == (
-        "[not bold]Albums & EPs[/not bold]  │  [underline]Similar artists · 79[/underline]"
+        "[not bold]Albums & EPs[/not bold]  │  [underline]Similar artists  ·  79[/underline]"
     )
+
+
+@pytest.mark.parametrize("width", [80, 130])  # one line; HI-RES below the year
+def test_narrow_album_card_keeps_hires(ui_app, width):
+    """An artist page's small tiles had room for "1959  ·" but not HI-RES:
+    the line wrapped after the dot and the one-row label cut the rest."""
+    from album_pages import ALBUM, ARTIST, stub_album_client, wait_until
+
+    from qobit.ui.screens.artist_detail import AlbumCard, ArtistScreen
+
+    stub_album_client(ui_app)
+    albums = [{**ALBUM, "id": f"a{i}", "hires_streamable": True} for i in range(4)]
+
+    async def artist(*_a, **_k):
+        return {**ARTIST, "albums": {"items": albums}}
+
+    ui_app._client.get_artist_detail = artist
+
+    async def run() -> list[str]:
+        async with ui_app.run_test(size=(width, 50)) as pilot:
+            await ui_app.push_screen(ArtistScreen("r1"))
+            await wait_until(pilot, lambda: len(ui_app.screen.query(AlbumCard)) == 4)
+            await pilot.pause(0.2)
+            card = ui_app.screen.query(AlbumCard).first()
+            r = card.region
+            strips = ui_app.screen._compositor.render_strips()[r.y : r.y + r.height]
+            return [s.text[r.x : r.right].rstrip() for s in strips]
+
+    lines = asyncio.run(run())
+    assert "HI-RES" in "\n".join(lines), lines
+    assert not any(line.endswith("·") for line in lines), lines

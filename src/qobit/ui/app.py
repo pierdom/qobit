@@ -259,13 +259,15 @@ class QobitApp(App[None]):
     /* Tab labels: Textual fades the inactive ones to $foreground 50% (dim
        too in ANSI themes), 1.6:1 in some themes. Inactive: qobit's readable
        muted colour; active: the foreground, bold. With the bar focused,
-       Textual's block-cursor pair still draws the active tab. */
+       the active tab takes the selection pair, like a focused list's row
+       (Textual's block-cursor pair was pink on cyan text, 2.7:1, in
+       cyberdeck; the selection pair is measured per theme). */
     Tabs Tab { color: $qobit-muted; text-style: none; }
     Tabs Tab:hover, Tabs Tab.-active { color: $foreground; }
     Tabs Tab.-active { text-style: bold; }
     Tabs:focus Tab.-active {
-        color: $block-cursor-foreground;
-        background: $block-cursor-background;
+        color: $qobit-select-text;
+        background: $qobit-select;
     }
 
     /* List highlight. Textual 8 marks the row with `-highlight` (it was

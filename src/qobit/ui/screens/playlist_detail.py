@@ -25,10 +25,10 @@ from .._now_playing import (
 )
 from .._utils import DETAIL_HEADER_CSS, readout, strip_html, within
 from ..nav import page_header
-from ..widgets.art import Art
+from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
-from .artist_detail import _set_art_width
+from .album_detail import ART_MAX, fit_detail_panel
 
 if TYPE_CHECKING:
     from ..app import QobitApp
@@ -76,6 +76,20 @@ class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
         self._refresh_primary()
 
 
+class PlaylistPanel(Vertical):
+    """The playlist's art + info header over its tracklist, sized like the
+    album panel (fit_detail_panel) so the tracks stay on a short terminal."""
+
+    count = 0  # the playlist's track count, once loaded
+
+    def on_resize(self, _: events.Resize) -> None:
+        self.fit()
+
+    def fit(self) -> None:
+        # One column only: a long playlist pages its rows in lazily.
+        fit_detail_panel(self, self.count, two_col=False)
+
+
 class PlaylistScreen(NowPlayingViewMixin, Screen):
     """A playlist page pushed from the Playlists tab or Search."""
 
@@ -91,11 +105,13 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         layout: vertical;
         border: round $accent 40%;
         border-title-color: $qobit-muted;
+        border-subtitle-color: $qobit-muted;
         border-title-style: bold;
     }
     PlaylistScreen #playlist-panel:focus-within {
         border: round $accent;
         border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     PlaylistScreen #playlist-panel:focus-within .detail-tracklist {
         border-top: round $accent;
@@ -106,17 +122,17 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
     def __init__(self, playlist_id: str) -> None:
         super().__init__()
         self._playlist_id = playlist_id
-        self._name = "Playlist"
+        self._title = "Playlist"  # not `_name`: that's Textual's `name`
 
     def nav_levels(self) -> list[str]:
-        return [self._name]
+        return [self._title]
 
     def nav_to(self, depth: int) -> None:
         pass  # one level
 
     def compose(self) -> ComposeResult:
         yield from page_header(self.app)  # type: ignore[arg-type]
-        with Vertical(id="playlist-panel"):
+        with PlaylistPanel(id="playlist-panel"):
             with Horizontal(classes="detail-header"):
                 yield Art(classes="detail-art")
                 # Not focusable (see AlbumDetailPanel): a click on the header
@@ -135,7 +151,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
-        _set_art_width(self.query_one(".detail-art", TGPImage), 14)
+        square_width(self.query_one(".detail-art", TGPImage), ART_MAX)
         self.query_one("#playlist-panel").border_title = readout("Playlist")
         self.query_one("#playlist-panel").border_subtitle = "loading…"
         self._wire_now_playing(PlaylistTrackRow, ".detail-tracklist")
@@ -159,9 +175,11 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             return
 
         try:
-            panel = self.query_one("#playlist-panel")
-            self._name = playlist.name
-            self.query_one(Art).placeholder = playlist.name
+            panel = self.query_one(PlaylistPanel)
+            self._title = playlist.name
+            panel.count = playlist.tracks_count or len(playlist.tracks)
+            panel.fit()
+            self.query_one(".detail-art", Art).placeholder = playlist.name
             app.nav_changed()
             panel.border_subtitle = ""
             panel.border_title = readout("Playlist")  # the name is in bold right below

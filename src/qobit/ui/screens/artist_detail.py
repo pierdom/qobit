@@ -15,7 +15,6 @@ from textual.screen import Screen
 from textual.timer import Timer
 from textual.widget import AwaitMount, Widget
 from textual.widgets import ContentSwitcher, Footer, Label, ListItem, ListView
-from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
 from ...qobuz.client import QobuzError
@@ -33,7 +32,7 @@ from .._now_playing import (
 from .._utils import readout, strip_html
 from ..nav import page_header
 from ..themes import HEART, theme_color
-from ..widgets.art import Art
+from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
@@ -66,16 +65,6 @@ def select_card(card: Widget, selected: bool) -> None:
 def is_hires_album(album: Album) -> bool:
     """Streamable above CD quality (more than 16 bits)."""
     return album.hires_streamable or (album.maximum_bit_depth or 0) > 16
-
-
-def _set_art_width(image: TGPImage, height: int) -> None:
-    """Fix a card/header art widget's width so it renders square for the given
-    cell height, using the terminal's actual cell aspect ratio. Shared by every
-    grid card (AlbumCard, ArtistCard, PlaylistCard) and detail header that
-    sizes a TGPImage against a fixed height."""
-    cell = get_cell_size()
-    if cell.width > 0 and cell.height > 0:
-        image.styles.width = round(height * cell.height / cell.width)
 
 
 class ArtistTrackRow(NowPlayingRowMixin, ListItem):
@@ -194,11 +183,13 @@ class ArtistTracks(_TitleSwitch, Widget):
         height: 1fr;
         border: round $accent 40%;
         border-title-color: $qobit-muted;
+        border-subtitle-color: $qobit-muted;
         border-title-style: bold;
     }
     ArtistTracks TrackListView:focus {
         border: round $accent;
         border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     ArtistTracks.-columns #artist-favs { margin-left: 1; }
     """
@@ -397,7 +388,8 @@ class AlbumCard(Widget):
         display: block;
     }
     AlbumCard .card-year {
-        height: 1;
+        height: auto;  /* 2 rows when HI-RES moves below the year (_year_line) */
+        max-height: 2;
         width: 1fr;
         color: $qobit-muted;
         overflow: hidden hidden;
@@ -426,12 +418,28 @@ class AlbumCard(Widget):
             yield Label(self._year_line(), classes="card-year card-secondary")
 
     def _year_line(self) -> Content:
-        """``1997  ·  HI-RES``. Colour comes from the CSS (muted; the
-        selection's text colour when selected), so no `dim` here: on a
-        selected card it halved the contrast."""
+        """``1997  ·  HI-RES``, or HI-RES on the row below when the card is
+        too narrow for both (an artist page's small tiles: it wrapped after
+        the ``·`` and the one-row line cut HI-RES off). Colour comes from the
+        CSS (muted; the selection's text colour when selected), so no `dim`
+        here: on a selected card it halved the contrast."""
         year = str(self._album.year) if self._album.year else "—"
-        hires = ("  ·  ", ("HI-RES", "bold $qobit-hires")) if is_hires_album(self._album) else ()
-        return plain_if_highlighted(self, Content.assemble(year, *hires))
+        if not is_hires_album(self._album):
+            return plain_if_highlighted(self, Content(year))
+        hires = ("HI-RES", "bold $qobit-hires")
+        sep = "  ·  "
+        try:
+            width = self.query_one(".card-year").size.width
+        except NoMatches:
+            width = 0
+        if width and len(year) + len(sep) + len(hires[0]) > width:
+            sep = "\n"
+        return plain_if_highlighted(self, Content.assemble(year, sep, hires))
+
+    def on_resize(self, _: events.Resize) -> None:
+        # The year line's layout depends on the card's width: rebuild it once
+        # the label has its new size.
+        self.call_after_refresh(self.refresh_selected)
 
     @property
     def highlighted(self) -> bool:
@@ -444,7 +452,7 @@ class AlbumCard(Widget):
 
     def on_mount(self) -> None:
         img_h = GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H
-        _set_art_width(self.query_one(TGPImage), img_h)
+        square_width(self.query_one(TGPImage), img_h)
         # Art is fetched lazily by the parent grid's sync_visible_art() once
         # this card's region is known — not eagerly here — so a 200-card
         # favourites grid doesn't fire 200 fetches for art never scrolled to.
@@ -794,7 +802,7 @@ class ArtistCard(Widget):
             yield Label(self._label(), classes="card-name card-primary")
 
     def on_mount(self) -> None:
-        _set_art_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
+        square_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
         # See AlbumCard.on_mount — art loads lazily via the grid's
         # sync_visible_art(), not eagerly here.
 
@@ -916,6 +924,7 @@ class ArtistReleases(_TitleSwitch, Widget):
     ArtistReleases #similar-artists:focus {
         border: round $accent;
         border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     """
 
@@ -976,7 +985,7 @@ class ArtistReleases(_TitleSwitch, Widget):
 
     @property
     def _labels(self) -> list[str]:
-        count = f" · {self._similar_count}" if self._similar_count is not None else ""
+        count = f"  ·  {self._similar_count}" if self._similar_count is not None else ""
         return [readout("Albums & EPs"), readout(f"Similar artists{count}")]
 
     def _switch_state(self) -> tuple[Widget, list[str], int] | None:
@@ -1049,11 +1058,13 @@ class ArtistHeader(Widget):
         height: 7;
         border: round $accent 40%;
         border-title-color: $qobit-muted;
+        border-subtitle-color: $qobit-muted;
         border-title-style: bold;
     }
     ArtistHeader .ah-bio-section:focus {
         border: round $accent;
         border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     ArtistHeader .ah-bio {
         width: 1fr;
@@ -1072,6 +1083,7 @@ class ArtistHeader(Widget):
     ArtistHeader .ah-similar:focus {
         border: round $accent;
         border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     ArtistHeader.-similar .ah-similar { display: block; }
     ArtistHeader .ah-similar ListItem { height: 1; padding: 0 1; }
@@ -1091,7 +1103,7 @@ class ArtistHeader(Widget):
         yield ListView(classes="ah-similar")
 
     def on_mount(self) -> None:
-        _set_art_width(self.query_one(TGPImage), 7)
+        square_width(self.query_one(TGPImage), 7)
         self.watch(self.app, "theme", self._on_theme, init=False)
 
     artist: Artist | None = None
@@ -1212,12 +1224,14 @@ class ArtistScreen(Screen):
         margin: 0;
         border: round $accent 40%;
         border-title-color: $qobit-muted;
+        border-subtitle-color: $qobit-muted;
         border-title-style: bold;
     }
 
     ArtistScreen #albums:focus {
         border: round $accent;
         border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
 
     ArtistScreen #album-view {

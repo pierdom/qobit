@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from textual.app import RenderResult
 from textual.content import Content
+from textual_image._terminal import get_cell_size
 from textual_image.renderable.tgp import Image as TGPRenderable
 from textual_image.widget import TGPImage
 
@@ -26,6 +27,14 @@ def initials(text: str) -> str:
     if len(words) == 1:
         return words[0][:2].upper()
     return (words[0][0] + words[1][0]).upper()
+
+
+def square_width(image: TGPImage, height: int) -> None:
+    """Set ``image``'s width so it renders square at ``height`` rows, from
+    the terminal's cell aspect ratio (unknown: left as is)."""
+    cell = get_cell_size()
+    if cell.width > 0 and cell.height > 0:
+        image.styles.width = round(height * cell.height / cell.width)
 
 
 class Art(TGPImage, Renderable=TGPRenderable):

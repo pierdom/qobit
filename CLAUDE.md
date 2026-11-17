@@ -166,15 +166,19 @@ or scroll nears the end; End mounts everything. Whole-list code reads
 `PagedListView.rows` (mounted + backlog). A hard 200 cap once hid most of a
 library: don't add one back.
 
-**Album panel height.** `AlbumDetailPanel` sizes itself from its own height
-(`_fit`, on resize and on load): the tracklist keeps half the panel and at
-least `MIN_TRACK_ROWS`, the art gets the rest (`ART_MIN`–`ART_MAX`), and
-below `ART_MIN` the art goes (`-no-art`; two columns when wide). It posts
+**Album panel height.** `AlbumDetailPanel` and the playlist page's
+`PlaylistPanel` size themselves from their own height
+(`album_detail.fit_detail_panel`, on resize and on load): the tracklist keeps
+half the panel and at least `MIN_TRACK_ROWS`, the art gets the rest
+(`ART_MIN`–`ART_MAX`), and below `ART_MIN` the art goes (`-no-art` on the
+`.detail-header`; the album's tracklist goes two columns when wide,
+`-two-col` on it). The classes sit on the parts because scoped
+`DEFAULT_CSS` can't match a class on the host widget itself. The album panel posts
 `Resized`; each host with an `ArtistHeader` above it (AlbumScreen, Albums,
 Artists while an album is open) calls `fit_artist_header`, which decides
 from the panel's height *with* the header so it can't oscillate. Never key
 this on the terminal height: three hosts with different chrome broke that.
-`tests/test_album_fit.py` checks all three at 24/32/45 rows.
+`tests/test_album_fit.py` checks all three at 24/32/45 rows, and the playlist page.
 
 **Grids.** The container holds focus and `_cursor`, toggling `-selected` on
 cards; `selected_card()` returns the current one. Filtering hides/shows cards
@@ -291,7 +295,9 @@ whenever a track is loaded (`-has-track`), not only while playing.
 - The playing row's bar meter: `_now_playing.playing_icon()`; rows that show it
   register with `track_live()`, and the app's beat timer calls `tick()`.
 - Cover art is `widgets.art.Art` (a TGPImage with an initials placeholder): use
-  it for any new image and set `.placeholder` when the subject changes.
+  it for any new image and set `.placeholder` when the subject changes;
+  `square_width(image, rows)` sizes it square. Query a page's own art by
+  class (`.detail-art`): a bare `query_one(Art)` can find the transport's.
 - Panel titles go through `_utils.readout()` (uppercase, same length).
 - `nav.Wordmark` sits on the Screen's `overlay` layer, docked right with height
   1, so it shares the tab bar's row; it hides below `Wordmark.MIN_WIDTH`.
@@ -337,7 +343,9 @@ computed styles: they misled three times):
 - qobit's chrome uses `$accent` for lines (borders, rules); text in the accent
   colour uses `$qobit-accent-text` (the accent where it reads, darker or
   lighter where it doesn't: light themes). Unfocused titles and subtitles are
-  `$text-muted`, never a faded accent (`$accent 40%` was 2.6:1); no text
+  `$qobit-muted`, never a faded accent (`$accent 40%` was 2.6:1): a rule
+  that colours a border title colours its subtitle too (unset, it takes
+  the faded border colour; `tests/test_panel_css.py`); no text
   colour with an alpha (`$x 60%`): use a variable that is readable as is.
   Rich `Text` doesn't resolve `$variables`: read `app.theme_variables[...]`.
 - Backgrounds: page sections paint none (no bands, no panel fills, no

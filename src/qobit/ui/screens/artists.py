@@ -72,12 +72,14 @@ class ArtistsView(TypeToFilter, Widget):
         grid-rows: 4;
         border: round $accent 40%;
         border-title-color: $qobit-muted;
+        border-subtitle-color: $qobit-muted;
         border-title-style: bold;
         padding: 0 1 0 1;
     }
     ArtistsView #artist-albums-grid:focus {
         border: round $accent;
         border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     """
 

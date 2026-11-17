@@ -15,13 +15,12 @@ from textual.css.query import NoMatches
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import quality_text
 from .._images import fetch_image
 from ..themes import BAR_END, BAR_START, HIRES, MUTED, READOUT, theme_color, theme_text_color
-from .art import Art
+from .art import Art, square_width
 
 if TYPE_CHECKING:
     from ...qobuz.models import Track
@@ -272,10 +271,7 @@ class TransportBar(Widget):
         yield _TransportContent()
 
     def on_mount(self) -> None:
-        cell = get_cell_size()
-        if cell.width > 0 and cell.height > 0:
-            img_w = round(4 * cell.height / cell.width)
-            self.query_one(TGPImage).styles.width = img_w
+        square_width(self.query_one(TGPImage), 4)
         app: QobitApp = self.app  # type: ignore[assignment]
         self.watch(app, "now_playing", self._on_now_playing, init=True)
         self.watch(app, "is_playing", self._on_is_playing, init=True)

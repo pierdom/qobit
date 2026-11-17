@@ -18,12 +18,11 @@ from ...qobuz.models import Playlist
 from .._filter import TypeToFilter, filter_prompt
 from .._images import fetch_image
 from .._utils import readout, status_line
-from ..widgets.art import Art
+from ..widgets.art import Art, square_width
 from .artist_detail import (
     GRID_CARD_IMG_H,
     LIBRARY_TILE_MIN_W,
     _GridNav,
-    _set_art_width,
 )
 
 if TYPE_CHECKING:
@@ -116,7 +115,7 @@ class PlaylistCard(Widget):
             yield Label(date, classes="card-date card-secondary", markup=False)
 
     def on_mount(self) -> None:
-        _set_art_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
+        square_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
         # See AlbumCard.on_mount (artist_detail.py) — art loads lazily via the
         # grid's sync_visible_art(), not eagerly here.
 
