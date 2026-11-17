@@ -105,7 +105,7 @@ Inside tmux, sharp images need `set -g allow-passthrough on` in kitty or
 Ghostty; without it, qobit uses blocks.
 
 You can choose yourself with `qobit --images MODE` (for one run) or from the
-command palette (`Ctrl+P`, "Cover art", saved):
+command palette (`Ctrl+P`, then "Images", saved):
 
 - `auto`: the default, as in the table above.
 - `kitty`: always use the Kitty graphics protocol.

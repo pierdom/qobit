@@ -141,14 +141,14 @@ def test_palette_switch_applies_and_saves(ui_app):
 
     async def run():
         async with ui_app.run_test(size=(130, 40)) as pilot:
-            labels = [label for label, _cb, _help in ui_app.image_mode_commands()]
-            assert "Cover art: auto" not in labels  # the current setting
-            assert "Cover art: off" in labels
+            labels = [entry[0] for entry in ui_app.image_mode_commands()]
+            assert "Images: auto" not in labels  # the current setting
+            assert "Images: off" in labels
             ui_app.set_image_setting("off")
             await pilot.pause()
             assert _images.image_mode() == "off"
             assert config.get_image_mode() == "off"
-            assert "Cover art: off" in ui_app.status_msg
+            assert "Images: off" in ui_app.status_msg
 
     asyncio.run(run())
 
@@ -159,3 +159,26 @@ def test_cli_images_flag_overrides_for_the_run(ui_app):
     QobitApp(connect=False, images="blocks")
     assert _images.image_mode() == "blocks"
     assert config.get_image_mode() == "auto"  # not saved
+
+
+@pytest.mark.parametrize("query", ["images", "cover"])
+def test_palette_finds_the_modes(ui_app, query):
+    """The flag is `--images`, the feature "cover art": both find the entries,
+    and nothing else does."""
+    from album_pages import wait_until
+
+    async def run():
+        async with ui_app.run_test(size=(130, 40)) as pilot:
+            await pilot.press("ctrl+p")
+            await wait_until(pilot, lambda: ui_app.screen.query("CommandInput"))
+            ui_app.screen.query_one("CommandInput").value = query
+            commands = ui_app.screen.query_one("CommandList")
+
+            def found() -> list[str]:
+                options = (commands.get_option_at_index(i) for i in range(commands.option_count))
+                return [str(o.prompt).split("\n")[0] for o in options]
+
+            await wait_until(pilot, lambda: len(found()) == 3)
+            assert found() == ["Images: Kitty graphics", "Images: colour blocks", "Images: off"]
+
+    asyncio.run(run())

@@ -15,7 +15,7 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
   protocol used to show every image as garbled characters. qobit now draws
   cover art there with coloured half blocks. Choose the mode with
   `qobit --images auto|kitty|blocks|off` or from the command palette
-  ("Cover art", saved). `off` shows initials and downloads no covers, for
+  ("Images", saved). `off` shows initials and downloads no covers, for
   slow machines.
 
 ### Fixed

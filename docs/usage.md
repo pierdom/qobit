@@ -181,7 +181,7 @@ with the server).
 
 qobit draws cover art with the Kitty graphics protocol where the terminal
 supports it (kitty, Ghostty) and with coloured half blocks elsewhere. To
-choose, run `qobit --images MODE` for one run, or pick "Cover art: …" in the
+choose, run `qobit --images MODE` for one run, or pick "Images: …" in the
 command palette (`Ctrl+P`) to save it:
 
 | Mode | What you get |

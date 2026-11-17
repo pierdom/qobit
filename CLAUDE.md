@@ -495,7 +495,7 @@ must not annotate `-> None` (read as the string "None": TypeError at import).
 Images: `widgets.art.Art` draws per `_images.image_mode()`: "kitty"
 (textual-image's TGP renderable), "blocks" (`art.Blocks`, coloured half
 blocks) or "off" (the initials tile). The setting (`IMAGE_MODES`: config
-`images`, `qobit --images`, palette "Cover art") resolves "auto" from
+`images`, `qobit --images`, palette "Images: …") resolves "auto" from
 textual-image's terminal query at import (Kitty if it chose TGP, else
 blocks). `Art` keeps its renderable until the image, size or mode changes:
 textual-image rebuilt it on every render, so each repaint re-encoded and

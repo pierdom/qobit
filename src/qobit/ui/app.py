@@ -104,7 +104,8 @@ class _TransparentANSIToTruecolor(_ANSIToTruecolor):
 
 
 class QobitCommands(Provider):
-    def _commands(self) -> list[tuple[str, object, str]]:
+    def _commands(self) -> list[tuple[str, ...] | tuple[str, object, str]]:
+        """(label, callback, help[, other names to search by])."""
         app: QobitApp = self.app  # type: ignore[assignment]
         if app._client.user_auth_token:
             name = get_account().get("name")
@@ -146,13 +147,19 @@ class QobitCommands(Provider):
 
     async def search(self, query: str) -> Hits:
         matcher = self.matcher(query)
-        for label, callback, help_text in self._commands():
+        words = query.lower().split()
+        for label, callback, help_text, *aliases in self._commands():
             score = matcher.match(label)
             if score > 0:
                 yield Hit(score, matcher.highlight(label), callback, help=help_text)
+            elif words and all(any(w in a for a in aliases) for w in words):
+                # Found by another name ("cover" finds "Images: …"), below the
+                # label matches. Plain words, not fuzzy: fuzzy matching on the
+                # descriptions found half the palette.
+                yield Hit(0.5, label, callback, help=help_text)
 
     async def discover(self) -> Hits:
-        for label, callback, help_text in self._commands():
+        for label, callback, help_text, *_aliases in self._commands():
             yield Hit(0, label, callback, help=help_text)
 
 
@@ -1187,13 +1194,18 @@ class QobitApp(App[None]):
         "off": "off",
     }
 
-    def image_mode_commands(self) -> list[tuple[str, object, str]]:
-        """Palette entries for the cover art modes other than the current one."""
+    def image_mode_commands(self) -> list[tuple[str, object, str, str]]:
+        """Palette entries for the cover art modes other than the current one
+        ("Images", as `qobit --images`; "cover" and "art" find them too)."""
+        current = self._IMAGE_MODE_NAMES[self._image_setting]
+        if self._image_setting == "auto":
+            current += f" ({self._IMAGE_MODE_NAMES[image_mode()]})"
         return [
             (
-                f"Cover art: {self._IMAGE_MODE_NAMES[mode]}",
+                f"Images: {self._IMAGE_MODE_NAMES[mode]}",
                 partial(self.set_image_setting, mode),
-                self._IMAGE_MODE_HELP[mode],
+                f"{self._IMAGE_MODE_HELP[mode]}. Cover art now: {current}",
+                "cover art pictures artwork",
             )
             for mode in IMAGE_MODES
             if mode != self._image_setting
@@ -1213,7 +1225,7 @@ class QobitApp(App[None]):
             name += f" ({self._IMAGE_MODE_NAMES[now]})"
         # Covers skipped while off load as pages open (and with the next track).
         later = was == "off" and now != "off"
-        self._flash_status(f"Cover art: {name}" + ("; covers load as you browse" if later else ""))
+        self._flash_status(f"Images: {name}" + ("; covers load as you browse" if later else ""))
 
     def action_toggle_radio_mode(self) -> None:
         self.radio_mode = not self.radio_mode
