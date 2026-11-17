@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 import qobit.ui.app as app_module
-from qobit import config, store
+from qobit import config, library_cache, store
 from qobit.ui import _images
 from qobit.ui.screens import queue as queue_module
 
@@ -66,6 +66,7 @@ def isolated_filesystem_state(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "DATA_DIR", tmp_path / "data")
     monkeypatch.setattr(_images, "_CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(_images, "_image_mode", None)  # a test that set it leaks to the next
+    monkeypatch.setattr(library_cache, "_data", None)  # its file, read into memory
     # A developer's real shell may export these for CLI convenience (the
     # README documents QOBUZ_AUDIO_DEVICE as a valid override); without
     # clearing them, "nothing configured" tests would pass or fail depending

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from textual import work
 from textual.binding import Binding
 from textual.widget import AwaitMount, Widget
@@ -55,6 +57,19 @@ class PagedListView(ListView):
         self._backlog = rows[_PAGE_ROWS:]
         if rows:
             await self.mount(*rows[:_PAGE_ROWS])
+
+    async def select_where(self, match: Callable[[ListItem], bool]) -> bool:
+        """Put the cursor on the first row ``match`` accepts, mounting the
+        backlog up to it if needed (a list redrawn after a background
+        refresh keeps the user's place). False if there's none."""
+        rows = self.rows
+        idx = next((i for i, r in enumerate(rows) if match(r)), None)
+        if idx is None:
+            return False
+        if idx >= len(self._nodes) and (pending := self._mount_more(everything=True)):
+            await pending
+        self.index = idx
+        return True
 
     @property
     def rows(self) -> list[ListItem]:

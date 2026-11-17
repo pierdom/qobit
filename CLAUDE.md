@@ -270,10 +270,24 @@ theme change) show ♥ from `is_favorite_album` / `is_followed_artist` (cache
 reads), after awaiting `ensure_favorite_*` in a `_load_heart` worker. The
 album/artist toggles call `_refresh_hearts()`, which walks every screen.
 
-**Favourites.** `ensure_favorite_tracks/albums/artists()` fetch once each (one
-lock per list, loaded in parallel at startup); a failed load isn't cached.
+**Favourites.** `ensure_favorite_tracks/albums/artists()` and
+`ensure_user_playlists()` load once each (one lock per list, the favourites
+in parallel at startup); a failed load isn't cached.
 `toggle_favorite`, `toggle_favorite_album` and `toggle_follow_artist` update
 the caches and patch the Tracks/Albums/Artists tabs, so nothing re-fetches.
+
+**Library on disk** (`library_cache.py`, `DATA_DIR/library_cache.json`, one
+account, `VERSION`ed: a mismatch reads as empty). `QobitApp._load_library`
+returns the disk copy at once and starts `_refresh_library`, which fetches
+again and, only if the list differs (dataclass `==`), replaces it, saves it
+and calls `_library_changed` (Tracks `library_changed`, Albums/Artists
+`favorites_changed`, Playlists `library_changed`: each redraws and puts the
+cursor back with `select_where`). A toggle calls `_library_edited` (saves,
+and bumps `_library_edits` so a refresh started before it is dropped); the
+refresh is also dropped after an account change. Saves run in a thread
+worker. Models round-trip through `dataclasses.asdict`: a model field change
+that old entries can't fill needs a `VERSION` bump. conftest resets the
+module's memory copy (`_data`) per test.
 
 **Self-wiring widgets.** TransportBar and NowPlayingHero `watch()` the app's
 reactives on mount, so any instance anywhere is live. Now-playing art shows
@@ -546,6 +560,7 @@ to 600 px JPEG, cached in memory and in `~/.cache/qobit/images/`.
 ~/.local/share/qobit/player_state.json last track + position
 ~/.local/share/qobit/queue_state.json  timeline + cursor
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ
+~/.local/share/qobit/library_cache.json favourites + playlists, last fetched (library_cache)
 ~/.local/share/qobit/mpv.sock          mpv IPC socket (fixed path)
 ~/.local/share/qobit/stream.m3u        stream URL for mpv (0600, while playing)
 ~/.local/share/qobit/qobit.lock        held (shared) by every running TUI
@@ -584,9 +599,7 @@ uv run pytest
 
 - `i` menu on playlists; Search, AlbumScreen, PlaylistScreen and PlaylistsView
   redesign (art, richer headers, quality badges); TrackScreen detail overlay.
-- Next: library cache on disk (favourite tracks/albums/artists shown at
-  once, refreshed from Qobuz in the background; files in ACCOUNT_FILES);
-  gapless playback.
+- Next: gapless playback.
 - Queue reorder; ReplayGain, CMAF fallback.
 - Qobuz Connect phase 3 (autoplay ↔ radio, shuffle/repeat UI, play reporting),
   phase 4 (qobit as controller, LAN discovery).

@@ -32,6 +32,7 @@ def test_erase_removes_every_account_trace_and_keeps_settings():
         "the queue and its history",
         "the last track",
         "the mixes",
+        "the saved copy of the library",
         "2 cached covers",
     ]
     assert config.get_oauth_session() == ("", "", [])

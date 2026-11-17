@@ -85,6 +85,7 @@ class ArtistsView(TypeToFilter, Widget):
 
     _view: str = "grid"  # "grid" | "artist" | "album"
     _loaded: bool = False
+    _reselect: str | None = None  # artist id to put the cursor back on
     _sort_key: str = "favorited_at"
     _sort_reverse: bool = True
     _render_version: int = 0
@@ -268,6 +269,9 @@ class ArtistsView(TypeToFilter, Widget):
             return
         await grid.set_cards([ArtistCard(a) for a in artists])
         self._apply_filter()
+        if (keep := self._reselect) is not None:
+            self._reselect = None
+            await grid.select_where(lambda c: isinstance(c, ArtistCard) and c.artist.id == keep)
 
     @work
     async def _load(self) -> None:
@@ -284,11 +288,14 @@ class ArtistsView(TypeToFilter, Widget):
         self._render_grid()
 
     def favorites_changed(self) -> None:
-        """A artist was added or removed elsewhere (the ``i`` menu): redraw
-        the grid from the app's cache. Before the first load there's nothing
+        """The followed artists changed elsewhere (the ``i`` menu, or a
+        background refresh of the library): redraw the grid from the app's
+        cache, the cursor on the artist it was on. Before the first load there's nothing
         to redraw; the load reads the cache anyway."""
         app: QobitApp = self.app  # type: ignore[assignment]
         if self._loaded and app._fav_artists is not None:
+            card = self.query_one("#fav-artists-grid", ArtistGrid).selected_card()
+            self._reselect = card.artist.id if isinstance(card, ArtistCard) else None
             self._artists = list(app._fav_artists)
             self._update_subtitle()
             self._render_grid()

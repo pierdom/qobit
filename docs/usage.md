@@ -29,7 +29,7 @@ still works.
 
 `qobit logout`, or `^p` → *Log out of Qobuz*, erases everything the account
 left on this machine: the session, the queue and its history, the last
-track, the mixes and the cached covers. Settings (audio device, theme,
+track, the mixes, the saved copy of the library and the cached covers. Settings (audio device, theme,
 volume) stay; `qobit logout --all` deletes those too, leaving nothing of
 qobit. `qobit logout` refuses while qobit is running (it would write the
 queue back): log out from inside it instead. If a different account logs in
@@ -225,6 +225,7 @@ playerctl -p qobit metadata   # title / artist / album / artUrl while playing
 ~/.local/share/qobit/player_state.json last track + position
 ~/.local/share/qobit/queue_state.json  the queue (history, current, up next)
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ
+~/.local/share/qobit/library_cache.json favourite tracks, albums, artists and your playlists, as last fetched
 ~/.local/share/qobit/connect.lock      held while Qobuz Connect is on
 ~/.local/share/qobit/qobit.lock        held while qobit runs (qobit logout refuses then)
 ~/.local/share/qobit/mpv.sock          mpv IPC socket
@@ -232,5 +233,5 @@ playerctl -p qobit metadata   # title / artist / album / artUrl while playing
 ~/.cache/qobit/images/                 cover-art cache (safe to delete: qobit clear-cache)
 ```
 
-`qobit logout` erases the session, the three `.json` state files and the
+`qobit logout` erases the session, the four `.json` account files and the
 cover cache; `qobit logout --all` removes everything listed here.

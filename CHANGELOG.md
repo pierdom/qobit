@@ -7,6 +7,17 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Added
+
+- **Library at startup without waiting.** The Tracks, Albums, Artists and
+  Playlists tabs show your library as it was last time, straight away, while
+  qobit fetches it from Qobuz in the background. If anything changed, the tab
+  updates and the cursor stays on the same item. Offline, the saved copy
+  stays on screen. Logging out erases it with the rest of the account's
+  data.
+
 ## [0.11.0] - 2026-11-17
 
 ### Added

@@ -519,7 +519,10 @@ class QueueView(Widget):
             fav_ids = app._fav_ids
             if fav_ids is None:
                 self._hearts_when_loaded()
-            await self._reconcile(app, fav_ids or set())
+            # Gone mid-way: logout rebuilds every view (App.recompose) while
+            # a reconcile, started by the favourites arriving, may be running.
+            with contextlib.suppress(NoMatches):
+                await self._reconcile(app, fav_ids or set())
 
     @work(exclusive=True, group="_hearts_when_loaded")
     async def _hearts_when_loaded(self) -> None:

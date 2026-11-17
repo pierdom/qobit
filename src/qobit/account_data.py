@@ -2,7 +2,8 @@
 
 Logging out erases it all (a shared machine must not show the next person
 the last one's listening): the session, the queue and its history, the last
-track, the mixes, the cover-art cache. Settings stay (audio device, theme,
+track, the mixes, the saved copy of the library, the cover-art cache.
+Settings stay (audio device, theme,
 volume, the radio and Connect switches): they belong to the machine, not the
 account. ``erase_settings`` removes those too (``qobit logout --all``).
 
@@ -17,10 +18,15 @@ import contextlib
 import fcntl
 from typing import IO
 
-from . import config, store
+from . import config, library_cache, store
 
 # Every file in DATA_DIR that carries account activity.
-ACCOUNT_FILES = ("queue_state.json", "player_state.json", "mixes_cache.json")
+ACCOUNT_FILES = (
+    "queue_state.json",
+    "player_state.json",
+    "mixes_cache.json",
+    "library_cache.json",
+)
 # The stream playlist (audio/player.py) holds a signed URL naming the
 # account: normally removed when playback stops, erased here if left over.
 _LEFTOVER_FILES = ("stream.m3u",)
@@ -67,6 +73,7 @@ def erase_account_data() -> list[str]:
         "queue_state.json": "the queue and its history",
         "player_state.json": "the last track",
         "mixes_cache.json": "the mixes",
+        "library_cache.json": "the saved copy of the library",
     }
     for name in ACCOUNT_FILES:
         path = store.DATA_DIR / name
@@ -74,6 +81,7 @@ def erase_account_data() -> list[str]:
             with contextlib.suppress(FileNotFoundError):
                 path.unlink()
                 removed.append(names[name])
+    library_cache.forget()
     for name in _LEFTOVER_FILES:
         with contextlib.suppress(FileNotFoundError):
             (store.DATA_DIR / name).unlink()

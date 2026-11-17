@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -659,6 +660,22 @@ class _GridNav:
             cards[idx].scroll_visible(animate=False, top=True)
         else:
             cards[idx].scroll_visible()
+
+    async def select_where(self, match: Callable[[Widget], bool]) -> bool:
+        """Put the cursor on the first shown card ``match`` accepts, mounting
+        the backlog up to it if needed (a grid redrawn after a background
+        refresh keeps the user's place). False if there's none."""
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        idx = next((i for i, c in enumerate(cards) if match(c)), None)
+        if idx is None and self._backlog and any(match(c) for c in self._backlog):
+            if (pending := self._mount_more(everything=True)) is not None:
+                await pending
+            cards = self._visible_cards()  # type: ignore[attr-defined]
+            idx = next((i for i, c in enumerate(cards) if match(c)), None)
+        if idx is None:
+            return False
+        self._move_cursor(idx, cards)  # type: ignore[attr-defined]
+        return True
 
     def select_first(self) -> None:
         """After a filter: the cursor on the first visible card, and no card
