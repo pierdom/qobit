@@ -75,13 +75,15 @@ def erase_account_data() -> list[str]:
         "mixes_cache.json": "the mixes",
         "library_cache.json": "the saved copy of the library",
     }
+    # Before the files go: a library save still running in a thread then
+    # finds the file erased and writes nothing (it would recreate it).
+    library_cache.forget()
     for name in ACCOUNT_FILES:
         path = store.DATA_DIR / name
         if path.exists():
             with contextlib.suppress(FileNotFoundError):
                 path.unlink()
                 removed.append(names[name])
-    library_cache.forget()
     for name in _LEFTOVER_FILES:
         with contextlib.suppress(FileNotFoundError):
             (store.DATA_DIR / name).unlink()

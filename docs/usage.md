@@ -230,8 +230,12 @@ playerctl -p qobit metadata   # title / artist / album / artUrl while playing
 ~/.local/share/qobit/qobit.lock        held while qobit runs (qobit logout refuses then)
 ~/.local/share/qobit/mpv.sock          mpv IPC socket
 ~/.local/share/qobit/stream.m3u        the playing stream's URL, while playing
-~/.cache/qobit/images/                 cover-art cache (safe to delete: qobit clear-cache)
+~/.cache/qobit/images/                 cover-art cache
 ```
+
+`qobit clear-cache` deletes the cover-art cache and the saved copy of the
+library (`--covers` or `--library` for just one). Both are safe to delete:
+qobit fetches them again when it needs them.
 
 `qobit logout` erases the session, the four `.json` account files and the
 cover cache; `qobit logout --all` removes everything listed here.

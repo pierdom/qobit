@@ -30,6 +30,10 @@ KINDS = ("tracks", "albums", "artists", "playlists")
 
 _lock = threading.Lock()  # saves run in worker threads
 _data: dict[str, Any] | None = None  # the file, read once per process
+# Bumped by each erase (logout, clear-cache). A save started before one (a
+# worker thread still writing the old account's lists) is dropped instead of
+# bringing the file back.
+_epoch = 0
 
 
 def _track(d: dict) -> Track:
@@ -79,17 +83,41 @@ def load(kind: str, account: str) -> list[Any] | None:
         return None
 
 
-def save(kind: str, items: list[Any], account: str) -> None:
-    """Save ``items`` (models) as the list of ``kind`` for ``account``."""
+def epoch() -> int:
+    """The current erase count: pass it to ``save`` from where the save was
+    decided."""
+    return _epoch
+
+
+def save(kind: str, items: list[Any], account: str, since: int | None = None) -> None:
+    """Save ``items`` (models) as the list of ``kind`` for ``account``;
+    nothing if the file was erased after ``since`` (an ``epoch()``)."""
     rows = [dataclasses.asdict(i) for i in items]
     with _lock:
+        if since is not None and since != _epoch:
+            return
         data = _file(account)
         data[kind] = rows
         store.save(FILE, data)
 
 
 def forget() -> None:
-    """Drop the copy read into memory (after the file was erased)."""
-    global _data
+    """Drop the copy read into memory (after the file was erased), and any
+    save still on its way."""
+    global _data, _epoch
     with _lock:
         _data = None
+        _epoch += 1
+
+
+def clear() -> int:
+    """Delete the file (``qobit clear-cache``). Returns its size in bytes, 0
+    if there was none."""
+    forget()  # first: a save on its way finds the file erased (see erase)
+    path = store.DATA_DIR / FILE
+    try:
+        size = path.stat().st_size
+        path.unlink()
+    except FileNotFoundError:
+        size = 0
+    return size

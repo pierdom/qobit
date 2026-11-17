@@ -698,9 +698,12 @@ class QobitApp(App[None]):
     async def action_logout(self) -> None:
         """Log out and erase what the account left on this machine. Qobuz has
         no revoke call: the token is forgotten here, not cancelled there."""
-        await self._erase_account()
+        # The session first: erasing rebuilds the views, and the new ones ask
+        # for the library (the queue's hearts). With the token still set,
+        # that fetched it again and saved a fresh copy of what was erased.
         self._client.user_auth_token = None
         self._client.account = None
+        await self._erase_account()
         self.request_login("Logged out. Log in again, or press Esc to stay logged out.")
 
     async def _erase_account(self) -> None:
@@ -1010,14 +1013,19 @@ class QobitApp(App[None]):
         return (self._client.account or {}).get("name") or get_account().get("name") or ""
 
     async def _load_library(self, kind: str) -> list:
-        """The disk copy (and a refresh in the background), else a fetch."""
+        """The disk copy (and a refresh in the background), else a fetch.
+        Nothing while logged out: after a logout the rebuilt views still ask
+        (the queue's hearts), and a fetch would save a copy for nobody."""
+        if not self._client.user_auth_token:
+            raise QobuzError("Not logged in")
+        since = library_cache.epoch()  # a logout during the awaits drops the save
         # In a thread: thousands of tracks take a moment to parse on a Pi.
         cached = await asyncio.to_thread(library_cache.load, kind, self._account_key())
         if cached is not None:
             self._refresh_library(kind)
             return cached
         items = await self._fetch_library(kind)
-        self._save_library(kind, items)
+        self._save_library(kind, items, since)
         return items
 
     async def _fetch_library(self, kind: str) -> list:
@@ -1025,18 +1033,23 @@ class QobitApp(App[None]):
         raw = await getattr(self._client, method)()
         return [model.from_api(r) for r in raw]
 
-    def _save_library(self, kind: str, items: list | None = None) -> None:
-        """Write the list (default: the app's) to the disk copy, in a thread."""
+    def _save_library(self, kind: str, items: list | None = None, since: int | None = None) -> None:
+        """Write the list (default: the app's) to the disk copy, in a thread.
+        ``since``: the ``library_cache.epoch()`` when the list was asked for
+        (default: now); an erase after it (logout) drops the save."""
         if items is None:
             items = getattr(self, self._LIBRARY[kind][0])
         if items is None:
             return
-        self._write_library(kind, list(items), self._account_key())
+        if since is None:
+            since = library_cache.epoch()
+        self._write_library(kind, list(items), self._account_key(), since)
 
     @work(thread=True, group="_write_library")
-    def _write_library(self, kind: str, items: list, account: str) -> None:
+    def _write_library(self, kind: str, items: list, account: str, since: int) -> None:
         with contextlib.suppress(Exception):  # a read-only disk: no copy, no harm
-            library_cache.save(kind, items, account)
+            # Dropped if logout erased the file meanwhile (`since`).
+            library_cache.save(kind, items, account, since)
 
     def _library_edited(self, kind: str) -> None:
         """A toggle changed the list: save it, and drop any refresh in flight
@@ -1047,6 +1060,7 @@ class QobitApp(App[None]):
     @work(group="_refresh_library")
     async def _refresh_library(self, kind: str) -> None:
         edits, account = self._library_edits.get(kind, 0), self._account_key()
+        since = library_cache.epoch()
         try:
             fresh = await self._fetch_library(kind)
         except Exception:
@@ -1059,7 +1073,7 @@ class QobitApp(App[None]):
             or self._account_key() != account
         ):
             return  # logged out, edited meanwhile (the edit saved it), or another account
-        self._save_library(kind, fresh)
+        self._save_library(kind, fresh, since)
         if fresh == current:
             return
         setattr(self, attr, fresh)

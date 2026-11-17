@@ -524,6 +524,7 @@ def test_failed_favourites_fetch_is_retried_not_cached(app, monkeypatch):
         return [{"id": 7, "title": "T"}]
 
     monkeypatch.setattr(app._client, "get_all_favorite_tracks", fetch)
+    monkeypatch.setattr(app._client, "user_auth_token", "tok")  # logged in: it fetches
     assert asyncio.run(app.ensure_favorite_ids()) == set()
     assert asyncio.run(app.ensure_favorite_ids()) == {"7"}
 

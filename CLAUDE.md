@@ -285,7 +285,12 @@ and calls `_library_changed` (Tracks `library_changed`, Albums/Artists
 cursor back with `select_where`). A toggle calls `_library_edited` (saves,
 and bumps `_library_edits` so a refresh started before it is dropped); the
 refresh is also dropped after an account change. Saves run in a thread
-worker. Models round-trip through `dataclasses.asdict`: a model field change
+worker and carry the `library_cache.epoch()` from when their list was asked
+for: an erase (logout, `qobit clear-cache`) bumps it first, so a save begun
+before it is dropped instead of writing the old account's library back.
+`_load_library` refuses while logged out, and `action_logout` clears the
+token before `_erase_account` (the rebuilt views ask for the library at
+once; with the token still set they fetched and saved it again). Models round-trip through `dataclasses.asdict`: a model field change
 that old entries can't fill needs a `VERSION` bump. conftest resets the
 module's memory copy (`_data`) per test.
 

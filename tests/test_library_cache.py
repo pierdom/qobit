@@ -198,3 +198,73 @@ def test_albums_grid_keeps_its_cursor(ui_app):
             await wait_until(pilot, lambda: grid.selected_card()._album.id == keep)
 
     asyncio.run(run())
+
+
+# ── erasing it ────────────────────────────────────────────────────────────
+
+
+def test_a_save_on_its_way_doesnt_bring_it_back():
+    """A save running in a thread when logout erased the file would write
+    the old account's library back."""
+    since = library_cache.epoch()
+    library_cache.save("tracks", _tracks([1]), "me", since)
+    account_data.erase_account_data()
+    library_cache.save("tracks", _tracks([1, 2]), "me", since)  # the late one
+    assert not (store.DATA_DIR / library_cache.FILE).exists()
+
+
+def test_logout_in_the_app_wipes_it(ui_app):
+    library_cache.save("tracks", _tracks([1, 2]), ACCOUNT)
+    _slow_fetch(ui_app, [1, 2, 3])
+
+    async def run():
+        async with ui_app.run_test(size=(130, 40)) as pilot:
+            ui_app.request_login = lambda *_a, **_k: None  # the stub can't log in
+            await wait_until(pilot, lambda: ui_app._fav_tracks is not None)
+            ui_app._save_library("tracks")  # a save on its way, then logout
+            await ui_app.action_logout()
+            await pilot.pause(0.5)
+            assert not (store.DATA_DIR / library_cache.FILE).exists()
+            assert ui_app._fav_tracks is None and ui_app._user_playlists is None
+            assert library_cache.load("tracks", ACCOUNT) is None
+
+    asyncio.run(run())
+
+
+def _clear_cache(capsys, *flags: str) -> str:
+    import argparse
+
+    from qobit.__main__ import cmd_clear_cache
+
+    args = argparse.Namespace(covers="--covers" in flags, library="--library" in flags)
+    assert cmd_clear_cache(args) == 0
+    return capsys.readouterr().out
+
+
+def _seed_caches():
+    from qobit.ui import _images
+
+    library_cache.save("tracks", _tracks([1]), "me")
+    covers = _images._cache_dir()
+    covers.mkdir(parents=True, exist_ok=True)
+    (covers / "a.jpg").write_bytes(b"1")
+    return store.DATA_DIR / library_cache.FILE, covers / "a.jpg"
+
+
+def test_clear_cache_deletes_covers_and_library(capsys):
+    library, cover = _seed_caches()
+    out = _clear_cache(capsys)
+    assert not library.exists() and not cover.exists()
+    assert "Cleared 1 cached cover(s)" in out
+    assert "Cleared the saved copy of the library" in out
+    assert library_cache.load("tracks", "me") is None  # not from memory either
+    assert "No saved copy of the library" in _clear_cache(capsys)
+
+
+def test_clear_cache_one_of_them(capsys):
+    library, cover = _seed_caches()
+    _clear_cache(capsys, "--library")
+    assert not library.exists() and cover.exists()
+    library, cover = _seed_caches()
+    _clear_cache(capsys, "--covers")
+    assert library.exists() and not cover.exists()

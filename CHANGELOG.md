@@ -17,6 +17,9 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
   updates and the cursor stays on the same item. Offline, the saved copy
   stays on screen. Logging out erases it with the rest of the account's
   data.
+- **`qobit clear-cache` clears the saved library too.** It deletes the cover
+  art cache and the saved copy of the library; `--covers` or `--library`
+  picks one. Both are fetched again when needed.
 
 ## [0.11.0] - 2026-11-17
 
