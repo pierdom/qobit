@@ -17,6 +17,10 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
   `qobit --images auto|kitty|blocks|off` or from the command palette
   ("Images", saved). `off` shows initials and downloads no covers, for
   slow machines.
+- **Animations setting.** "Animations: turn off" in the command palette
+  stops the wordmark's colour cycle and the bar meter, which cost CPU on
+  slow machines such as a Raspberry Pi. `TEXTUAL_ANIMATIONS=none` turns
+  them off too. See "Slow machines" in the usage guide.
 
 ### Fixed
 
@@ -39,6 +43,13 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
   bottom four or five times. Now only what changes is restyled, and the key
   bar is rebuilt once, when its keys change: a switch takes about half the
   time it did.
+- **Much less memory.** Each grid card kept its full-size cover twice: after
+  scrolling 300 albums qobit used 1.1 GB. Cards now keep a copy at their own
+  size, shrunk off the UI thread, and fewer full covers stay in memory: about
+  300 MB for the same scroll.
+- **Faster startup.** The saved theme is now applied before the screen is
+  built, instead of restyling every widget afterwards: about 30% less CPU
+  time at startup.
 - **Focus right after startup.** Switching tab in the first moment after
   launch could leave the keys going to the Playback list, hidden behind the
   new tab.

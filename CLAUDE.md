@@ -321,6 +321,12 @@ whenever a track is loaded (`-has-track`), not only while playing.
   with the theme background off (the terminal's colour is unknown) or on
   ANSI themes. A `─` track was tried and rejected for its look.
 
+**Slow machines** (a Raspberry Pi 4 is a target). The theme is set in
+`QobitApp.__init__`, before anything mounts (in `on_mount` it restyled every
+widget: 30% of startup). `app.animations` (config `animations`, palette,
+off with `TEXTUAL_ANIMATIONS=none`) gates the Wordmark's frame timer and the
+beat meter: the Wordmark at 12 fps was most of the idle CPU while playing.
+
 **Status line.** `status_msg` is the transport's `artist — title` line; use
 `_flash_status()` for transient notices (auto-clears after ~3 s).
 
@@ -524,7 +530,11 @@ textual-image's terminal query at import (Kitty if it chose TGP, else
 blocks). `Art` keeps its renderable until the image, size or mode changes:
 textual-image rebuilt it on every render, so each repaint re-encoded and
 re-sent the whole image (20 sends for 10 grid cursor moves;
-`tests/test_art_modes.py`). It frees its Kitty image on unmount. All
+`tests/test_art_modes.py`). It frees its Kitty image on unmount. Grid cards pass
+`Art(rows=…)`: the image is kept at that height in pixels (`fit_image`;
+`Art.show(img)` shrinks it in a thread), not the 600 px cover (cards held
+two full copies each: 1.1 GB after scrolling 300 albums). The memory cache
+holds 48 covers (~1.1 MB each decoded); misses come from the disk cache. All
 fetches go through `ui/_images.fetch_image(url)`: none with images off
 (`terminal=False` for the OS media widget's art), 6 concurrent, normalised
 to 600 px JPEG, cached in memory and in `~/.cache/qobit/images/`.

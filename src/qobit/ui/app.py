@@ -26,6 +26,7 @@ from ..audio.player import MpvPlayer
 from ..audio.verify import Signal, check_signal
 from ..config import (
     get_account,
+    get_animations,
     get_audio_device,
     get_connect_enabled,
     get_image_mode,
@@ -36,6 +37,7 @@ from ..config import (
     get_software_volume_enabled,
     get_transparent_background,
     save_oauth_session,
+    set_animations,
     set_connect_enabled,
     set_radio_mode,
     set_saved_theme,
@@ -146,6 +148,13 @@ class QobitCommands(Provider):
                 "(bit-perfect, through mpv). While active, the queue is controlled from the app.",
             ),
             *app.image_mode_commands(),
+            (
+                f"Animations: turn {'off' if app.animations else 'on'}",
+                app.action_toggle_animations,
+                "The wordmark's colour cycle and the playing track's bar meter. "
+                "Off saves CPU on slow machines",
+                "motion meter wordmark low power cpu",
+            ),
             (
                 f"Software volume: turn {'off' if app.software_volume_enabled else 'on'}",
                 app.action_toggle_software_volume,
@@ -463,6 +472,10 @@ class QobitApp(App[None]):
     # Endless radio: when on, _advance_queue refills an empty queue with Qobuz
     # song-radio suggestions. Reactive so the transport indicator stays live.
     radio_mode: reactive[bool] = reactive(False)
+    # The wordmark's colour cycle and the bar meter: config `animations`
+    # (palette), off as well with TEXTUAL_ANIMATIONS=none. Each frame redraws,
+    # which costs on a slow CPU (a Raspberry Pi) for decoration only.
+    animations: reactive[bool] = reactive(True)
     # Software volume (see action_toggle_software_volume): off by default,
     # since this is the one control that can take the signal path out of
     # bit-perfect. `volume` is meaningless while disabled; TransportBar only
@@ -488,6 +501,17 @@ class QobitApp(App[None]):
         set_image_mode(self._image_setting)  # before anything draws
         for theme in QOBIT_THEMES:
             self.register_theme(theme)
+        # The theme before anything is mounted: set in on_mount, it restyled
+        # every widget of every tab (a quarter of the startup's CPU time).
+        saved_theme = get_saved_theme()
+        if saved_theme and saved_theme in self.available_themes:
+            self.theme = saved_theme
+        else:
+            # No saved preference (first launch, or an invalid/removed theme
+            # name) — default to qobit's own look rather than a generic
+            # Textual built-in. Still just an ordinary theme choice: `^p` →
+            # Theme switches away from it like any other.
+            self.theme = CYBERDECK_THEME.name
         self._connect_wanted = get_connect_enabled() if connect is None else connect
         self._connect: ConnectPlayContext | None = None
         self._connect_lock: object | None = None  # flock'd file while Connect is on
@@ -579,16 +603,10 @@ class QobitApp(App[None]):
         self._poll_player()
         # The playing rows' bar meter (_now_playing.tick): decorative, idle
         # (one flag check) while nothing plays.
-        self.set_interval(_BEAT_SECS, lambda: tick(self.is_playing and not self.is_paused))
-        saved_theme = get_saved_theme()
-        if saved_theme and saved_theme in self.available_themes:
-            self.theme = saved_theme
-        else:
-            # No saved preference (first launch, or an invalid/removed theme
-            # name) — default to qobit's own look rather than a generic
-            # Textual built-in. Still just an ordinary theme choice: `^p` →
-            # Theme switches away from it like any other.
-            self.theme = CYBERDECK_THEME.name
+        self.animations = get_animations() and self.animation_level != "none"
+        self.set_interval(
+            _BEAT_SECS, lambda: tick(self.animations and self.is_playing and not self.is_paused)
+        )
         # Persist any subsequent theme changes (skip the initial/default ones).
         self._theme_ready = True
         if get_transparent_background():
@@ -1235,6 +1253,11 @@ class QobitApp(App[None]):
         # Covers skipped while off load as pages open (and with the next track).
         later = was == "off" and now != "off"
         self._flash_status(f"Images: {name}" + ("; covers load as you browse" if later else ""))
+
+    def action_toggle_animations(self) -> None:
+        self.animations = not self.animations
+        set_animations(self.animations)
+        self._flash_status(f"Animations {'on' if self.animations else 'off'}")
 
     def action_toggle_radio_mode(self) -> None:
         self.radio_mode = not self.radio_mode

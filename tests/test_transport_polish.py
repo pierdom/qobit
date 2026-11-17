@@ -226,3 +226,44 @@ async def _mark_one_colour(ui_app):
             covered = [s for s in content.spans if s.start == 0]
             assert covered and covered[0].end == 2
             await pilot.pause(0.15)
+
+
+def test_animations_off_stops_the_wordmark_and_the_meter(ui_app, monkeypatch):
+    """Off (palette, saved; or TEXTUAL_ANIMATIONS=none): no frame timer, the
+    meter shows ▶. Slow machines (a Raspberry Pi) spent CPU on them."""
+    from qobit import config
+    from qobit.ui import _now_playing
+
+    _hold_play_state(ui_app, monkeypatch)
+
+    async def run():
+        async with ui_app.run_test(size=(160, 40)) as pilot:
+            mark = ui_app.screen.query_one(Wordmark)
+            ui_app.now_playing = _track()
+            ui_app.is_playing = True
+            await pilot.pause(0.4)
+            assert mark._timer._active.is_set()
+            assert _now_playing.playing_icon(3, False) != "▶"
+
+            ui_app.action_toggle_animations()
+            await pilot.pause(0.4)
+            assert not ui_app.animations and config.get_animations() is False
+            assert mark._timer._active.is_set() is False
+            assert _now_playing.playing_icon(3, False) == "▶"
+
+            ui_app.action_toggle_animations()
+            await pilot.pause(0.4)
+            assert mark._timer._active.is_set() and config.get_animations() is True
+
+    asyncio.run(run())
+
+
+def test_textual_animations_none_turns_them_off(ui_app, monkeypatch):
+    _hold_play_state(ui_app, monkeypatch)
+    ui_app.animation_level = "none"  # what TEXTUAL_ANIMATIONS=none sets
+
+    async def run():
+        async with ui_app.run_test(size=(160, 40)):
+            assert not ui_app.animations
+
+    asyncio.run(run())

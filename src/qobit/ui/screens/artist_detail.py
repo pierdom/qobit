@@ -427,7 +427,7 @@ class AlbumCard(Widget):
         return self._album
 
     def compose(self) -> ComposeResult:
-        yield Art(self._album.title)
+        yield Art(self._album.title, rows=GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H)
         with Vertical(classes="card-info"):
             yield Label(escape(self._album.title), classes="card-title card-primary", markup=True)
             yield Label(
@@ -486,7 +486,7 @@ class AlbumCard(Widget):
         img = await fetch_image(url)
         if img is not None and self.is_attached:
             with contextlib.suppress(NoMatches):
-                self.query_one(TGPImage).image = img
+                await self.query_one(Art).show(img)
 
     def on_click(self) -> None:
         self.post_message(AlbumCard.Selected(self._album))
@@ -822,7 +822,7 @@ class ArtistCard(Widget):
         return self._artist
 
     def compose(self) -> ComposeResult:
-        yield Art(self._artist.name)
+        yield Art(self._artist.name, rows=GRID_CARD_IMG_H)
         with Vertical(classes="card-info"):
             yield Label(self._label(), classes="card-name card-primary")
 
@@ -853,7 +853,7 @@ class ArtistCard(Widget):
         img = await fetch_image(url)
         if img is not None and self.is_attached:
             with contextlib.suppress(NoMatches):
-                self.query_one(TGPImage).image = img
+                await self.query_one(Art).show(img)
 
     def on_click(self) -> None:
         self.post_message(ArtistCard.Selected(self._artist))

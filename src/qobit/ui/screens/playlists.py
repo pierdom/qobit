@@ -98,7 +98,7 @@ class PlaylistCard(Widget):
         return self._playlist
 
     def compose(self) -> ComposeResult:
-        yield Art(self._playlist.name)
+        yield Art(self._playlist.name, rows=GRID_CARD_IMG_H)
         with Vertical(classes="card-info"):
             yield Label(escape(self._playlist.name), classes="card-name card-primary", markup=True)
             # Plain text: the CSS gives the muted colour, or the selection's
@@ -130,7 +130,7 @@ class PlaylistCard(Widget):
         img = await fetch_image(url)
         if img is not None and self.is_attached:
             with contextlib.suppress(NoMatches):
-                self.query_one(TGPImage).image = img
+                await self.query_one(Art).show(img)
 
     def on_click(self) -> None:
         self.post_message(PlaylistCard.Selected(self._playlist))

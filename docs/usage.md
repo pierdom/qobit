@@ -193,6 +193,22 @@ command palette (`Ctrl+P`) to save it:
 
 On a slow machine, `off` is the lightest, then `blocks`.
 
+## Slow machines (Raspberry Pi and similar)
+
+qobit runs on small boards such as a Raspberry Pi 4 with 2 GB of RAM. To
+keep it quick there:
+
+- **Animations off.** In the command palette, pick "Animations: turn off".
+  The wordmark stops changing colour and the playing track shows ▶ instead
+  of the bar meter. qobit also turns them off when `TEXTUAL_ANIMATIONS=none`
+  is set.
+- **Lighter cover art.** `blocks` costs less than `kitty`, and `off` costs
+  nothing (see [Cover art](#cover-art)).
+- **Memory.** qobit keeps at most 48 full-size covers in memory, and each
+  grid card keeps a small copy at its own size. The rest stay on disk
+  (`~/.cache/qobit/images`, up to 200 MB). Scrolling a library of hundreds
+  of albums uses about 300 MB.
+
 ## Media keys and now-playing widgets
 
 On macOS qobit appears in Now Playing / Control Center; on Linux it publishes

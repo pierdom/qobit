@@ -10,6 +10,7 @@ queries and CSS (``query_one(TGPImage)``, ``Card TGPImage``).
 
 from __future__ import annotations
 
+import asyncio
 from typing import IO
 
 from PIL import Image as PILImage
@@ -39,6 +40,20 @@ def initials(text: str) -> str:
     if len(words) == 1:
         return words[0][:2].upper()
     return (words[0][0] + words[1][0]).upper()
+
+
+# Pixel rows per cell when the terminal doesn't say (blocks mode, no reply).
+_CELL_PX_FALLBACK = 24
+
+
+def fit_image(image: PILImage.Image, edge: int) -> PILImage.Image:
+    """``image`` shrunk so its longest side is at most ``edge`` pixels (as
+    is when it already fits)."""
+    if max(image.size) <= edge:
+        return image
+    small = image.copy()
+    small.thumbnail((edge, edge), PILImage.BILINEAR, reducing_gap=2.0)
+    return small
 
 
 def square_width(image: TGPImage, height: int) -> None:
@@ -84,10 +99,44 @@ class Art(TGPImage, Renderable=TGPRenderable):
     Art { color: $qobit-accent-text; }
     """
 
-    def __init__(self, placeholder: str = "", **kwargs: object) -> None:
+    _rows: int | None = None
+
+    def __init__(self, placeholder: str = "", *, rows: int | None = None, **kwargs: object) -> None:
+        """``rows``: the fixed height the art always has (a grid card's). Its
+        image is then kept at that size, not the 600 px cover: a grid of
+        cards held two full copies each (1.1 GB after scrolling 300
+        albums), and every render rescaled the full one."""
+        self._rows = rows
         super().__init__(**kwargs)  # type: ignore[arg-type]
         self._placeholder = placeholder
         self._drawn: tuple[object, ...] | None = None  # (mode, size) of _renderable
+
+    def _edge(self) -> int | None:
+        """The longest side, in pixels, the image is kept at (None: as is)."""
+        if self._rows is None:
+            return None
+        cell = get_cell_size()
+        return self._rows * (cell.height if cell.height > 0 else _CELL_PX_FALLBACK)
+
+    @property  # type: ignore[override]
+    def image(self) -> PILImage.Image | None:
+        return TGPImage.image.fget(self)  # type: ignore[attr-defined]
+
+    @image.setter
+    def image(self, value: PILImage.Image | None) -> None:
+        edge = self._edge()
+        if edge is not None and isinstance(value, PILImage.Image):
+            value = fit_image(value, edge)  # a no-op after show()
+        TGPImage.image.fset(self, value)  # type: ignore[attr-defined]
+
+    async def show(self, image: PILImage.Image) -> None:
+        """Set ``image``, shrunk to this art's size in a worker thread (a
+        grid page of covers resized at once stalled the UI on slow CPUs)."""
+        edge = self._edge()
+        if edge is not None:
+            image = await asyncio.to_thread(fit_image, image, edge)
+        if self.is_attached:
+            self.image = image
 
     @property
     def placeholder(self) -> str:

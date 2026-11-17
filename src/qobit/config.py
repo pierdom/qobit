@@ -164,6 +164,18 @@ def set_image_mode(value: str) -> None:
     save(cfg)
 
 
+def get_animations() -> bool:
+    """The wordmark's colour cycle and the playing row's bar meter (on by
+    default; off saves CPU on slow machines)."""
+    return bool(load().get("animations", True))
+
+
+def set_animations(value: bool) -> None:
+    cfg = load()
+    cfg["animations"] = value
+    save(cfg)
+
+
 def get_radio_mode() -> bool:
     return bool(load().get("radio_mode", False))
 

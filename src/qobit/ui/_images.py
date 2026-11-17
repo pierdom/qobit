@@ -51,10 +51,11 @@ def image_mode() -> str:
 # network or thrash PIL/Kitty rendering all at once.
 _FETCH_SEM = asyncio.Semaphore(6)
 
-# URL → decoded PIL Image, bounded LRU.  Evicts the least-recently-used entry
-# once the limit is hit so long browsing sessions don't accumulate hundreds of
-# MB of PIL objects.  200 entries at ~600×600 JPEG-decoded ≈ 40–80 MB ceiling.
-_IMAGE_CACHE_MAX = 200
+# URL → decoded PIL Image, bounded LRU. A 600×600 cover decodes to ~1.1 MB,
+# so 48 entries hold ~50 MB (200 held over 200 MB: too much for a 2 GB
+# Raspberry Pi). A miss is cheap: the disk cache below, decoded in a thread.
+# Grid cards keep their own copy at card size (Art(rows=…)).
+_IMAGE_CACHE_MAX = 48
 _IMAGE_CACHE: OrderedDict[str, PILImage.Image] = OrderedDict()
 
 

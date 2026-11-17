@@ -182,3 +182,35 @@ def test_palette_finds_the_modes(ui_app, query):
             assert found() == ["Images: Kitty graphics", "Images: colour blocks", "Images: off"]
 
     asyncio.run(run())
+
+
+class _CardApp(App):
+    get_theme_variable_defaults = QobitApp.get_theme_variable_defaults
+    CSS = "Art { width: 10; height: 5; }"
+
+    def compose(self):
+        yield Art("Kind of Blue", rows=5)
+
+
+def test_a_card_keeps_its_cover_at_card_size(monkeypatch):
+    """Cards kept the 600 px cover (and textual-image a copy of it): 1.1 GB
+    after scrolling 300 albums. A card with fixed rows keeps a copy at its
+    size, made off the UI thread; the shared cache keeps fewer covers."""
+    _images.set_image_mode("blocks")
+    monkeypatch.setattr(
+        art_module, "get_cell_size", lambda: type("S", (), {"width": 10, "height": 20})()
+    )
+
+    async def run():
+        app = _CardApp()
+        async with app.run_test(size=(40, 10)) as pilot:
+            art = app.query_one(Art)
+            await art.show(COVER)
+            await pilot.pause()
+            assert max(art.image.size) == 5 * 20
+            assert COVER.size == (600, 600)  # the cached original is untouched
+            art.image = COVER  # the setter shrinks too
+            assert max(art.image.size) == 100
+
+    asyncio.run(run())
+    assert _images._IMAGE_CACHE_MAX <= 64

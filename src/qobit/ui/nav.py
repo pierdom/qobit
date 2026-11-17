@@ -230,6 +230,7 @@ class Wordmark(Widget):
         self._timer = self.set_interval(_FRAME_SECS, self.refresh, pause=True)
         self.watch(self.app, "is_playing", self._sync, init=False)
         self.watch(self.app, "is_paused", self._sync, init=False)
+        self.watch(self.app, "animations", self._sync, init=False)
         self._sync()
 
     def fit(self, width: int) -> None:
@@ -237,7 +238,7 @@ class Wordmark(Widget):
 
     def _live(self) -> bool:
         app: QobitApp = self.app  # type: ignore[assignment]
-        return app.is_playing and not app.is_paused
+        return app.animations and app.is_playing and not app.is_paused
 
     def _sync(self, *_: object) -> None:
         if self._live():
