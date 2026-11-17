@@ -66,8 +66,11 @@ class PagedListView(ListView):
         idx = next((i for i, r in enumerate(rows) if match(r)), None)
         if idx is None:
             return False
-        if idx >= len(self._nodes) and (pending := self._mount_more(everything=True)):
-            await pending
+        if idx >= len(self._nodes) and self._backlog:
+            # Through that row and a page more, not the whole backlog.
+            n = idx - len(self._nodes) + _PAGE_ROWS
+            batch, self._backlog = self._backlog[:n], self._backlog[n:]
+            await self.mount(*batch)
         self.index = idx
         return True
 

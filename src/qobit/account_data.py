@@ -3,9 +3,9 @@
 Logging out erases it all (a shared machine must not show the next person
 the last one's listening): the session, the queue and its history, the last
 track, the mixes, the saved copy of the library, the cover-art cache.
-Settings stay (audio device, theme,
-volume, the radio and Connect switches): they belong to the machine, not the
-account. ``erase_settings`` removes those too (``qobit logout --all``).
+Settings stay (audio device, theme, volume, the radio and Connect switches):
+they belong to the machine, not the account. ``erase_settings`` removes those
+too (``qobit logout --all``).
 
 A running TUI rewrites the queue within a second, so the CLI erases nothing
 while one runs: every TUI holds a shared flock on ``DATA_DIR/qobit.lock`` for
@@ -25,7 +25,6 @@ ACCOUNT_FILES = (
     "queue_state.json",
     "player_state.json",
     "mixes_cache.json",
-    "library_cache.json",
 )
 # The stream playlist (audio/player.py) holds a signed URL naming the
 # account: normally removed when playback stops, erased here if left over.
@@ -73,17 +72,17 @@ def erase_account_data() -> list[str]:
         "queue_state.json": "the queue and its history",
         "player_state.json": "the last track",
         "mixes_cache.json": "the mixes",
-        "library_cache.json": "the saved copy of the library",
     }
-    # Before the files go: a library save still running in a thread then
-    # finds the file erased and writes nothing (it would recreate it).
-    library_cache.forget()
     for name in ACCOUNT_FILES:
         path = store.DATA_DIR / name
         if path.exists():
             with contextlib.suppress(FileNotFoundError):
                 path.unlink()
                 removed.append(names[name])
+    # In ~/.cache with the covers. clear() first stops any save still running
+    # in a thread (it would write one back).
+    if library_cache.clear():
+        removed.append("the saved copy of the library")
     for name in _LEFTOVER_FILES:
         with contextlib.suppress(FileNotFoundError):
             (store.DATA_DIR / name).unlink()

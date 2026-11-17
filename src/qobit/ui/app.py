@@ -1043,13 +1043,15 @@ class QobitApp(App[None]):
             return
         if since is None:
             since = library_cache.epoch()
-        self._write_library(kind, list(items), self._account_key(), since)
+        number = library_cache.ticket()  # decided now: an older save can't win
+        self._write_library(kind, list(items), self._account_key(), since, number)
 
     @work(thread=True, group="_write_library")
-    def _write_library(self, kind: str, items: list, account: str, since: int) -> None:
+    def _write_library(self, kind: str, items: list, account: str, since: int, number: int) -> None:
         with contextlib.suppress(Exception):  # a read-only disk: no copy, no harm
-            # Dropped if logout erased the file meanwhile (`since`).
-            library_cache.save(kind, items, account, since)
+            # Dropped if logout erased the files meanwhile (`since`), or a
+            # newer save of this list was written first (`number`).
+            library_cache.save(kind, items, account, since, number)
 
     def _library_edited(self, kind: str) -> None:
         """A toggle changed the list: save it, and drop any refresh in flight
@@ -1073,9 +1075,9 @@ class QobitApp(App[None]):
             or self._account_key() != account
         ):
             return  # logged out, edited meanwhile (the edit saved it), or another account
-        self._save_library(kind, fresh, since)
         if fresh == current:
-            return
+            return  # the disk copy is right too: nothing to write
+        self._save_library(kind, fresh, since)
         setattr(self, attr, fresh)
         self._library_changed(kind)
 
@@ -1095,6 +1097,7 @@ class QobitApp(App[None]):
                 base.query_one(AlbumsView).favorites_changed()
         elif kind == "artists":
             self._refresh_hearts()
+            self._refresh_followed_tiles()
             with contextlib.suppress(Exception):
                 base.query_one(ArtistsView).favorites_changed()
         else:
@@ -1155,14 +1158,19 @@ class QobitApp(App[None]):
             self._flash_status(f"Unfollowed {artist.name}")
         self._library_edited("artists")
         self._refresh_hearts()
+        self._refresh_followed_tiles()
         with contextlib.suppress(Exception):
             self.query_one(ArtistsView).favorites_changed()
+
+    def _refresh_followed_tiles(self) -> None:
+        """The ♥ on artist tiles (Similar artists) after the followed artists
+        changed: a toggle, or a background refresh of the library."""
         from .screens.artist_detail import ArtistCard
 
-        for screen in self.screen_stack:  # the ♥ on Similar artists tiles
+        followed = {a.id for a in self._fav_artists or ()}
+        for screen in self.screen_stack:
             for card in screen.query(ArtistCard):
-                if card.artist.id == artist.id:
-                    card.set_followed(on)
+                card.set_followed(card.artist.id in followed)
 
     # ── seek from mouse click on bar ─────────────────────────────────────────
 

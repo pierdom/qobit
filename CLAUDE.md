@@ -22,6 +22,7 @@ src/qobit/
 ├── store.py             JSON runtime state in DATA_DIR (player/queue state)
 ├── account_data.py      what an account leaves on disk; erase (logout), the
 │                        running-TUI lock (qobit.lock)
+├── library_cache.py     the library lists on disk (shown at start, refreshed)
 ├── qobuz/client.py      QobuzClient: app_id/secrets from the web bundle, OAuth,
 │                        every API call (see "Qobuz API")
 ├── qobuz/oauth.py       login link + redirect server + pasted-address LoginPrompt
@@ -276,23 +277,31 @@ in parallel at startup); a failed load isn't cached.
 `toggle_favorite`, `toggle_favorite_album` and `toggle_follow_artist` update
 the caches and patch the Tracks/Albums/Artists tabs, so nothing re-fetches.
 
-**Library on disk** (`library_cache.py`, `DATA_DIR/library_cache.json`, one
-account, `VERSION`ed: a mismatch reads as empty). `QobitApp._load_library`
-returns the disk copy at once and starts `_refresh_library`, which fetches
-again and, only if the list differs (dataclass `==`), replaces it, saves it
-and calls `_library_changed` (Tracks `library_changed`, Albums/Artists
-`favorites_changed`, Playlists `library_changed`: each redraws and puts the
-cursor back with `select_where`). A toggle calls `_library_edited` (saves,
-and bumps `_library_edits` so a refresh started before it is dropped); the
-refresh is also dropped after an account change. Saves run in a thread
-worker and carry the `library_cache.epoch()` from when their list was asked
-for: an erase (logout, `qobit clear-cache`) bumps it first, so a save begun
-before it is dropped instead of writing the old account's library back.
+**Library on disk** (`library_cache.py`: `~/.cache/qobit/library/<kind>.json`
+(`$XDG_CACHE_HOME` honoured, like the covers; a cache, not state: Qobuz has
+it all), one file per list so a toggle rewrites one list; each names its
+account and a format `VERSION`, a mismatch reads as empty; nothing kept in
+memory there; logout erases it through `library_cache.clear()`, not
+`ACCOUNT_FILES`, which is DATA_DIR only).
+`QobitApp._load_library` returns the disk copy at once and starts
+`_refresh_library`, which fetches again and, only if the list differs
+(dataclass `==`), saves it, replaces it and calls `_library_changed`
+(Tracks `library_changed`, Albums/Artists `favorites_changed`, Playlists
+`library_changed`: each redraws and puts the cursor back with
+`select_where`, which mounts only through that item). Unchanged: nothing is
+written. A toggle calls `_library_edited` (saves, and bumps
+`_library_edits` so a refresh started before it is dropped); a refresh is
+also dropped after an account change. Saves run in a thread worker and
+carry `library_cache.epoch()` from when their list was asked for (an erase
+calls `cancel_saves()` first: a save begun before logout is dropped instead
+of writing the old account's library back) and a `ticket()` from when they
+were decided (a pool thread finishing late can't overwrite a newer list).
 `_load_library` refuses while logged out, and `action_logout` clears the
 token before `_erase_account` (the rebuilt views ask for the library at
-once; with the token still set they fetched and saved it again). Models round-trip through `dataclasses.asdict`: a model field change
-that old entries can't fill needs a `VERSION` bump. conftest resets the
-module's memory copy (`_data`) per test.
+once; with the token still set they fetched and saved it again). Models
+round-trip through `dataclasses.asdict`: a model field change that old
+entries can't fill needs a `VERSION` bump. `qobit clear-cache` leaves the
+library alone while a TUI runs (it would write it back).
 
 **Self-wiring widgets.** TransportBar and NowPlayingHero `watch()` the app's
 reactives on mount, so any instance anywhere is live. Now-playing art shows
@@ -485,7 +494,8 @@ must not annotate `-> None` (read as the string "None": TypeError at import).
   queue-save timer stopped, drop caches, `account_data.erase_account_data()`,
   pop pages, then `App.recompose()` rebuilds every view empty. Also run when
   a *different* account logs in (names compared). A new file that holds
-  account activity goes in `account_data.ACCOUNT_FILES`, or logout leaves it
+  account activity goes in `account_data.ACCOUNT_FILES` (a cache file in
+  `~/.cache` gets erased explicitly, like the library), or logout leaves it
   behind. Every TUI holds a shared flock on `DATA_DIR/qobit.lock`;
   `qobit logout` refuses while one runs.
 - Esc on a pushed screen: `action_back` first calls the screen's
@@ -565,11 +575,11 @@ to 600 px JPEG, cached in memory and in `~/.cache/qobit/images/`.
 ~/.local/share/qobit/player_state.json last track + position
 ~/.local/share/qobit/queue_state.json  timeline + cursor
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ
-~/.local/share/qobit/library_cache.json favourites + playlists, last fetched (library_cache)
 ~/.local/share/qobit/mpv.sock          mpv IPC socket (fixed path)
 ~/.local/share/qobit/stream.m3u        stream URL for mpv (0600, while playing)
 ~/.local/share/qobit/qobit.lock        held (shared) by every running TUI
 ~/.cache/qobit/images/                 cover-art cache (qobit clear-cache)
+~/.cache/qobit/library/                favourites + playlists, last fetched (library_cache)
 ```
 
 ## Development

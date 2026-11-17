@@ -290,8 +290,8 @@ class ArtistsView(TypeToFilter, Widget):
     def favorites_changed(self) -> None:
         """The followed artists changed elsewhere (the ``i`` menu, or a
         background refresh of the library): redraw the grid from the app's
-        cache, the cursor on the artist it was on. Before the first load there's nothing
-        to redraw; the load reads the cache anyway."""
+        cache, the cursor on the artist it was on. Before the first load
+        there's nothing to redraw; the load reads the cache anyway."""
         app: QobitApp = self.app  # type: ignore[assignment]
         if self._loaded and app._fav_artists is not None:
             card = self.query_one("#fav-artists-grid", ArtistGrid).selected_card()

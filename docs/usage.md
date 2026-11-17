@@ -225,17 +225,18 @@ playerctl -p qobit metadata   # title / artist / album / artUrl while playing
 ~/.local/share/qobit/player_state.json last track + position
 ~/.local/share/qobit/queue_state.json  the queue (history, current, up next)
 ~/.local/share/qobit/mixes_cache.json  DailyQ / WeeklyQ
-~/.local/share/qobit/library_cache.json favourite tracks, albums, artists and your playlists, as last fetched
 ~/.local/share/qobit/connect.lock      held while Qobuz Connect is on
 ~/.local/share/qobit/qobit.lock        held while qobit runs (qobit logout refuses then)
 ~/.local/share/qobit/mpv.sock          mpv IPC socket
 ~/.local/share/qobit/stream.m3u        the playing stream's URL, while playing
 ~/.cache/qobit/images/                 cover-art cache
+~/.cache/qobit/library/                your favourites and playlists, as last fetched
 ```
 
 `qobit clear-cache` deletes the cover-art cache and the saved copy of the
 library (`--covers` or `--library` for just one). Both are safe to delete:
-qobit fetches them again when it needs them.
+qobit fetches them again when it needs them. Quit qobit before clearing the
+library: a running qobit keeps it in memory and would save it again.
 
-`qobit logout` erases the session, the four `.json` account files and the
-cover cache; `qobit logout --all` removes everything listed here.
+`qobit logout` erases the session, the account's `.json` files and both
+caches; `qobit logout --all` removes everything listed here.

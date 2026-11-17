@@ -6,10 +6,11 @@ Fetching every list at each start took seconds (worse on a Raspberry Pi)."""
 from __future__ import annotations
 
 import asyncio
+import json
 
 from album_pages import ALBUM, wait_until
 
-from qobit import account_data, library_cache, store
+from qobit import account_data, library_cache
 from qobit.qobuz.models import Album, Playlist, Track
 
 ACCOUNT = ""  # the stub client has no account name
@@ -32,7 +33,6 @@ def test_each_kind_reads_back_as_saved():
     lists = {"tracks": _tracks([1, 2]), "albums": [album], "playlists": [playlist]}
     for kind, items in lists.items():
         library_cache.save(kind, items, "me")
-    library_cache.forget()  # read from the file, not memory
     for kind, items in lists.items():
         assert library_cache.load(kind, "me") == items
     assert library_cache.load("artists", "me") is None  # never saved
@@ -41,25 +41,30 @@ def test_each_kind_reads_back_as_saved():
 def test_another_account_or_format_reads_as_empty():
     library_cache.save("tracks", _tracks([1]), "me")
     assert library_cache.load("tracks", "someone else") is None
-    library_cache.forget()
-    data = store.load(library_cache.FILE)
-    store.save(library_cache.FILE, {**data, "version": library_cache.VERSION + 1})
-    library_cache.forget()
+    file = library_cache.path("tracks")
+    file.write_text(json.dumps({**json.loads(file.read_text()), "version": 99}))
     assert library_cache.load("tracks", "me") is None
 
 
 def test_entries_from_older_fields_read_as_empty():
-    store.save(
-        library_cache.FILE,
-        {"version": library_cache.VERSION, "account": "me", "tracks": [{"id": "1", "nope": 2}]},
-    )
+    library_cache.save("tracks", [], "me")
+    data = {"version": library_cache.VERSION, "account": "me", "items": [{"id": "1", "nope": 2}]}
+    library_cache.path("tracks").write_text(json.dumps(data))
     assert library_cache.load("tracks", "me") is None
+
+
+def test_an_older_save_finishing_last_is_dropped():
+    """Saves run in a thread pool: the older list must not win."""
+    first, second = library_cache.ticket(), library_cache.ticket()
+    library_cache.save("tracks", _tracks([1, 2]), "me", number=second)
+    library_cache.save("tracks", _tracks([1]), "me", number=first)
+    assert [t.id for t in library_cache.load("tracks", "me")] == ["1", "2"]
 
 
 def test_logout_erases_it():
     library_cache.save("tracks", _tracks([1]), "me")
     account_data.erase_account_data()
-    assert not (store.DATA_DIR / library_cache.FILE).exists()
+    assert not (library_cache.path("tracks")).exists()
     assert library_cache.load("tracks", "me") is None
 
 
@@ -101,9 +106,14 @@ def test_tracks_show_from_disk_then_update_keeping_the_cursor(ui_app):
             )
             await wait_until(pilot, lambda: lv.highlighted_child.track.id == "3")
             assert ui_app._fav_ids == {"9", "1", "3", "4", "5"}
-            library_cache.forget()
-            saved = library_cache.load("tracks", ACCOUNT)
-            assert [t.id for t in saved] == ["9", "1", "3", "4", "5"]
+            # Written by a thread worker: poll.
+            await wait_until(
+                pilot,
+                lambda: (
+                    [t.id for t in library_cache.load("tracks", ACCOUNT) or ()]
+                    == ["9", "1", "3", "4", "5"]
+                ),
+            )
 
     asyncio.run(run())
 
@@ -120,9 +130,16 @@ def test_an_unchanged_list_is_not_redrawn(ui_app):
             lv = view.query_one("#fav-tracks")
             await wait_until(pilot, lambda: len(lv.rows) == 3)
             rows, version = list(lv.rows), view._render_version
-            release.set()
-            await pilot.pause(0.5)
+            writes = []
+            save = library_cache.save
+            library_cache.save = lambda *a, **k: (writes.append(a[0]), save(*a, **k))
+            try:
+                release.set()
+                await pilot.pause(0.5)
+            finally:
+                library_cache.save = save
             assert view._render_version == version and list(lv.rows) == rows
+            assert "tracks" not in writes  # the disk copy is right: not rewritten
 
     asyncio.run(run())
 
@@ -160,7 +177,6 @@ def test_a_toggle_during_the_refresh_wins(ui_app):
             release.set()
             await pilot.pause(0.5)
             assert [t.id for t in ui_app._fav_tracks] == ["1", "2", "7"]
-            library_cache.forget()
             await wait_until(
                 pilot,
                 lambda: (
@@ -210,7 +226,7 @@ def test_a_save_on_its_way_doesnt_bring_it_back():
     library_cache.save("tracks", _tracks([1]), "me", since)
     account_data.erase_account_data()
     library_cache.save("tracks", _tracks([1, 2]), "me", since)  # the late one
-    assert not (store.DATA_DIR / library_cache.FILE).exists()
+    assert not (library_cache.path("tracks")).exists()
 
 
 def test_logout_in_the_app_wipes_it(ui_app):
@@ -224,7 +240,7 @@ def test_logout_in_the_app_wipes_it(ui_app):
             ui_app._save_library("tracks")  # a save on its way, then logout
             await ui_app.action_logout()
             await pilot.pause(0.5)
-            assert not (store.DATA_DIR / library_cache.FILE).exists()
+            assert not (library_cache.path("tracks")).exists()
             assert ui_app._fav_tracks is None and ui_app._user_playlists is None
             assert library_cache.load("tracks", ACCOUNT) is None
 
@@ -248,7 +264,7 @@ def _seed_caches():
     covers = _images._cache_dir()
     covers.mkdir(parents=True, exist_ok=True)
     (covers / "a.jpg").write_bytes(b"1")
-    return store.DATA_DIR / library_cache.FILE, covers / "a.jpg"
+    return library_cache.path("tracks"), covers / "a.jpg"
 
 
 def test_clear_cache_deletes_covers_and_library(capsys):
@@ -268,3 +284,44 @@ def test_clear_cache_one_of_them(capsys):
     library, cover = _seed_caches()
     _clear_cache(capsys, "--covers")
     assert library.exists() and not cover.exists()
+
+
+def test_clear_cache_leaves_the_library_while_qobit_runs(capsys, monkeypatch):
+    """The running app holds the library in memory and would write it back
+    on the next change."""
+    import argparse
+
+    import qobit.__main__ as cli
+
+    library, _cover = _seed_caches()
+    monkeypatch.setattr(cli, "tui_running", lambda: True)
+    assert cli.cmd_clear_cache(argparse.Namespace(covers=False, library=True)) == 1
+    assert library.exists()
+    assert "quit it first" in capsys.readouterr().err
+
+
+def test_reselecting_mounts_through_the_row_not_the_whole_list():
+    from textual.app import App
+    from textual.widgets import Label, ListItem
+
+    from qobit.ui.widgets.lists import _PAGE_ROWS, PagedListView
+
+    class _App(App):
+        def compose(self):
+            yield PagedListView()
+
+    async def run():
+        app = _App()
+        async with app.run_test(size=(60, 20)) as pilot:
+            lv = app.query_one(PagedListView)
+            rows = [ListItem(Label(str(i)), name=str(i)) for i in range(1000)]
+            await lv.set_rows(rows)
+            assert await lv.select_where(lambda r: r.name == "450")
+            await pilot.pause()
+            assert lv.index == 450 and lv.highlighted_child.name == "450"
+            # Through it and a page, plus the page the scroll's look-ahead
+            # adds: not all 1000.
+            assert len(lv.children) <= 450 + 2 * _PAGE_ROWS
+            assert len(lv.rows) == 1000
+
+    asyncio.run(run())

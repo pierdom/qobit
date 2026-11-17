@@ -667,9 +667,14 @@ class _GridNav:
         refresh keeps the user's place). False if there's none."""
         cards = self._visible_cards()  # type: ignore[attr-defined]
         idx = next((i for i, c in enumerate(cards) if match(c)), None)
-        if idx is None and self._backlog and any(match(c) for c in self._backlog):
-            if (pending := self._mount_more(everything=True)) is not None:
-                await pending
+        backlog = self._backlog or []
+        at = next((i for i, c in enumerate(backlog) if match(c)), None)
+        if idx is None and at is not None:
+            # Through that card and a page more, not the whole backlog
+            # (mounting gets slower the more a grid holds).
+            batch, self._backlog = backlog[: at + _GRID_PAGE], backlog[at + _GRID_PAGE :]
+            await self.mount(*batch)  # type: ignore[attr-defined]
+            self.sync_visible_art()
             cards = self._visible_cards()  # type: ignore[attr-defined]
             idx = next((i for i, c in enumerate(cards) if match(c)), None)
         if idx is None:
@@ -816,6 +821,8 @@ class ArtistCard(Widget):
         self._art_requested = False
 
     def set_followed(self, followed: bool) -> None:
+        if followed == self._followed:
+            return  # called for every tile on screen: only the changed redraw
         self._followed = followed
         with contextlib.suppress(NoMatches):
             self.query_one(".card-name", Label).update(self._label())

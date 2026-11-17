@@ -262,13 +262,19 @@ def cmd_clear_cache(args: argparse.Namespace) -> int:
         else:
             print(f"Cleared {removed} cached cover(s) ({_human_bytes(freed)}) from {path}")
     if both or args.library:
+        if tui_running():
+            # It holds the library in memory and writes it back on the next
+            # change: the copy would be back within minutes.
+            print(
+                "qobit is running: quit it first to clear the saved library.",
+                file=sys.stderr,
+            )
+            return 1
         freed = library_cache.clear()
         if freed:
             print(f"Cleared the saved copy of the library ({_human_bytes(freed)})")
         else:
             print("No saved copy of the library")
-        if tui_running():
-            print("qobit is running: it saves a new copy the next time it loads the library.")
     return status
 
 
