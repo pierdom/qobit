@@ -218,6 +218,7 @@ class PlaylistsView(TypeToFilter, Widget):
     """
 
     _loaded: bool = False
+    _reselect: str | None = None  # playlist id to put the cursor back on
     _sort_key: str = "updated_at"
     _sort_reverse: bool = True
     _render_version: int = 0
@@ -336,6 +337,9 @@ class PlaylistsView(TypeToFilter, Widget):
             return
         await grid.set_cards([PlaylistCard(p) for p in playlists])
         grid.select_first()
+        if (keep := self._reselect) is not None:
+            self._reselect = None
+            await grid.select_where(lambda c: isinstance(c, PlaylistCard) and c.playlist.id == keep)
 
     @work
     async def _load(self) -> None:
@@ -343,12 +347,23 @@ class PlaylistsView(TypeToFilter, Widget):
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
         grid.border_subtitle = "loading…"
         try:
-            items = await app._client.get_all_user_playlists()
+            self._playlists = list(await app.ensure_user_playlists())
         except Exception as e:
             grid.border_subtitle = ""
             await grid.mount(status_line(str(e), error=True))
             return
-        self._playlists = [Playlist.from_api(raw) for raw in items]
+        self._update_subtitle()
+        self._render_grid()
+
+    def library_changed(self) -> None:
+        """A background refresh brought different playlists: redraw, the
+        cursor on the playlist it was on."""
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if not self._loaded or app._user_playlists is None:
+            return
+        card = self.query_one("#user-playlists-grid", PlaylistGrid).selected_card()
+        self._reselect = card.playlist.id if isinstance(card, PlaylistCard) else None
+        self._playlists = list(app._user_playlists)
         self._update_subtitle()
         self._render_grid()
 

@@ -64,6 +64,7 @@ class AlbumsView(TypeToFilter, Widget):
 
     _album_view_active: bool = False
     _loaded: bool = False
+    _reselect: str | None = None  # album id to put the cursor back on
     _sort_key: str = "favorited_at"
     _sort_reverse: bool = True
     _render_version: int = 0
@@ -242,6 +243,9 @@ class AlbumsView(TypeToFilter, Widget):
             return
         await grid.set_cards([AlbumCard(a, show_artist=True) for a in albums])
         self._apply_filter()
+        if (keep := self._reselect) is not None:
+            self._reselect = None
+            await grid.select_where(lambda c: isinstance(c, AlbumCard) and c._album.id == keep)
 
     @work
     async def _load(self) -> None:
@@ -258,11 +262,14 @@ class AlbumsView(TypeToFilter, Widget):
         self._render_grid()
 
     def favorites_changed(self) -> None:
-        """A album was added or removed elsewhere (the ``i`` menu): redraw
-        the grid from the app's cache. Before the first load there's nothing
-        to redraw; the load reads the cache anyway."""
+        """The favourite albums changed elsewhere (the ``i`` menu, or a
+        background refresh of the library): redraw the grid from the app's
+        cache, the cursor on the album it was on. Before the first load
+        there's nothing to redraw; the load reads the cache anyway."""
         app: QobitApp = self.app  # type: ignore[assignment]
         if self._loaded and app._fav_albums is not None:
+            card = self.query_one("#fav-albums-grid", AlbumGrid).selected_card()
+            self._reselect = card._album.id if isinstance(card, AlbumCard) else None
             self._albums = list(app._fav_albums)
             self._update_subtitle()
             self._render_grid()

@@ -97,6 +97,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
     """
 
     _loaded: bool = False
+    _reselect: str | None = None  # track id to put the cursor back on
     _sort_key: str = "favorited_at"
     _sort_reverse: bool = True
     _render_version: int = 0
@@ -238,6 +239,9 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
         self._apply_now_playing(rows)
         await lv.set_rows(rows)  # type: ignore[attr-defined]
         self._place_initial_cursor(lv)
+        if (keep := self._reselect) is not None:
+            self._reselect = None
+            await lv.select_where(lambda r: isinstance(r, FavTrackRow) and r.track.id == keep)  # type: ignore[attr-defined]
         if keep_focus:
             focus_later(self, lv.focus)
 
@@ -253,6 +257,18 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
             await lv.append(ListItem(status_line(str(e), error=True)))
             return
         self._tracks = list(items)
+        self._update_subtitle()
+        self._render_list()
+
+    def library_changed(self) -> None:
+        """A background refresh brought a different list: redraw it, the
+        cursor on the track it was on."""
+        app: QobitApp = self.app  # type: ignore[assignment]
+        if not self._loaded or app._fav_tracks is None:
+            return  # the first load reads the app's list anyway
+        row = self.query_one("#fav-tracks", ListView).highlighted_child
+        self._reselect = row.track.id if isinstance(row, FavTrackRow) else None
+        self._tracks = list(app._fav_tracks)
         self._update_subtitle()
         self._render_list()
 

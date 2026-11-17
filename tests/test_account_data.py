@@ -8,7 +8,7 @@ import subprocess
 import sys
 import textwrap
 
-from qobit import account_data, config, store
+from qobit import account_data, config, library_cache, store
 from qobit.ui import _images
 
 
@@ -17,6 +17,7 @@ def _seed():
     config.set_saved_volume(80)
     for name in account_data.ACCOUNT_FILES:
         store.save(name, {"x": 1})
+    library_cache.save("tracks", [], "Listener")  # in the cache dir, with the covers
     covers = _images._cache_dir()
     covers.mkdir(parents=True, exist_ok=True)
     (covers / "a.jpg").write_bytes(b"1")
@@ -32,12 +33,14 @@ def test_erase_removes_every_account_trace_and_keeps_settings():
         "the queue and its history",
         "the last track",
         "the mixes",
+        "the saved copy of the library",
         "2 cached covers",
     ]
     assert config.get_oauth_session() == ("", "", [])
     assert config.get_account() == {}
     assert not any((store.DATA_DIR / n).exists() for n in account_data.ACCOUNT_FILES)
     assert list(covers.iterdir()) == []
+    assert not library_cache.path("tracks").exists()
     assert config.get_saved_volume() == 80
 
 

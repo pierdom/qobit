@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from rich.markup import escape
@@ -660,6 +661,27 @@ class _GridNav:
         else:
             cards[idx].scroll_visible()
 
+    async def select_where(self, match: Callable[[Widget], bool]) -> bool:
+        """Put the cursor on the first shown card ``match`` accepts, mounting
+        the backlog up to it if needed (a grid redrawn after a background
+        refresh keeps the user's place). False if there's none."""
+        cards = self._visible_cards()  # type: ignore[attr-defined]
+        idx = next((i for i, c in enumerate(cards) if match(c)), None)
+        backlog = self._backlog or []
+        at = next((i for i, c in enumerate(backlog) if match(c)), None)
+        if idx is None and at is not None:
+            # Through that card and a page more, not the whole backlog
+            # (mounting gets slower the more a grid holds).
+            batch, self._backlog = backlog[: at + _GRID_PAGE], backlog[at + _GRID_PAGE :]
+            await self.mount(*batch)  # type: ignore[attr-defined]
+            self.sync_visible_art()
+            cards = self._visible_cards()  # type: ignore[attr-defined]
+            idx = next((i for i, c in enumerate(cards) if match(c)), None)
+        if idx is None:
+            return False
+        self._move_cursor(idx, cards)  # type: ignore[attr-defined]
+        return True
+
     def select_first(self) -> None:
         """After a filter: the cursor on the first visible card, and no card
         (hidden ones included) left looking selected. It was -1 (nothing
@@ -799,6 +821,8 @@ class ArtistCard(Widget):
         self._art_requested = False
 
     def set_followed(self, followed: bool) -> None:
+        if followed == self._followed:
+            return  # called for every tile on screen: only the changed redraw
         self._followed = followed
         with contextlib.suppress(NoMatches):
             self.query_one(".card-name", Label).update(self._label())

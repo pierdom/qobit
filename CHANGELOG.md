@@ -7,6 +7,21 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [0.12.0] - 2026-11-17
+
+### Added
+
+- **Library at startup without waiting.** The Tracks, Albums, Artists and
+  Playlists tabs show your library as it was last time, straight away, while
+  qobit fetches it from Qobuz in the background. If anything changed, the tab
+  updates and the cursor stays on the same item. Offline, the saved copy
+  stays on screen. The copy is kept in `~/.cache/qobit/library`, next to
+  the cover art; logging out erases it with the rest of the account's data.
+- **`qobit clear-cache` clears the saved library too.** It deletes the cover
+  art cache and the saved copy of the library; `--covers` or `--library`
+  picks one. Both are fetched again when needed. It leaves the library
+  alone while qobit is running (that copy would be saved again).
+
 ## [0.11.0] - 2026-11-17
 
 ### Added

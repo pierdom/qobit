@@ -84,7 +84,9 @@ def test_the_beat_and_the_cursor_skip_the_layout_pass(ui_app, monkeypatch):
             lv = ui_app.query_one("#queue-list")
             await wait_until(pilot, lambda: lv.highlighted_child is not None)
             lv.focus()
-            await pilot.pause(0.2)
+            # The hearts' reconcile, once the favourites are in, is a layout.
+            await wait_until(pilot, lambda: ui_app._fav_ids is not None)
+            await pilot.pause(0.3)
 
             layouts: list[str] = []
             refresh = Widget.refresh

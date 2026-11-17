@@ -6,7 +6,7 @@ Usage:
   qobit set-device
   qobit auth [status]
   qobit logout
-  qobit clear-cache
+  qobit clear-cache [--covers | --library]
 
 Running qobit with no arguments launches the TUI.
 """
@@ -244,18 +244,38 @@ def _human_bytes(n: int) -> str:
     return f"{size:.1f} GB"
 
 
-def cmd_clear_cache(_args: argparse.Namespace) -> int:
+def cmd_clear_cache(args: argparse.Namespace) -> int:
+    """Delete the cover art cache and the saved copy of the library (or one
+    of them: --covers, --library). Both are fetched again when needed."""
+    from . import library_cache
     from .ui._images import clear_disk_cache
 
-    path, removed, freed = clear_disk_cache()
-    if path is None:
-        print("Cache directory unavailable — nothing to clear.", file=sys.stderr)
-        return 1
-    if removed == 0:
-        print(f"Cache already empty: {path}")
-    else:
-        print(f"Cleared {removed} cached image(s) ({_human_bytes(freed)}) from {path}")
-    return 0
+    both = not (args.covers or args.library)
+    status = 0
+    if both or args.covers:
+        path, removed, freed = clear_disk_cache()
+        if path is None:
+            print("Cover cache directory unavailable: nothing to clear.", file=sys.stderr)
+            status = 1
+        elif removed == 0:
+            print(f"Cover cache already empty: {path}")
+        else:
+            print(f"Cleared {removed} cached cover(s) ({_human_bytes(freed)}) from {path}")
+    if both or args.library:
+        if tui_running():
+            # It holds the library in memory and writes it back on the next
+            # change: the copy would be back within minutes.
+            print(
+                "qobit is running: quit it first to clear the saved library.",
+                file=sys.stderr,
+            )
+            return 1
+        freed = library_cache.clear()
+        if freed:
+            print(f"Cleared the saved copy of the library ({_human_bytes(freed)})")
+        else:
+            print("No saved copy of the library")
+    return status
 
 
 def _account_line() -> str:
@@ -391,13 +411,19 @@ def main() -> None:
     p_logout = sub.add_parser(
         "logout",
         help="Log out and erase the account's traces here (session, queue, history, "
-        "mixes, cached covers); settings stay",
+        "mixes, saved library, cached covers); settings stay",
     )
     p_logout.add_argument(
         "--all", action="store_true", help="Also delete qobit's settings: nothing of qobit left"
     )
     p_logout.add_argument("--yes", "-y", action="store_true", help="Don't ask (with --all)")
-    sub.add_parser("clear-cache", help="Delete cached cover art from disk")
+    p_clear = sub.add_parser(
+        "clear-cache",
+        help="Delete the cached cover art and the saved copy of the library "
+        "(both are fetched again when needed)",
+    )
+    p_clear.add_argument("--covers", action="store_true", help="Only the cover art")
+    p_clear.add_argument("--library", action="store_true", help="Only the saved library")
 
     args = parser.parse_args()
 
