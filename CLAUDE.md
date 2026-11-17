@@ -584,7 +584,10 @@ uv run pytest
 
 - `i` menu on playlists; Search, AlbumScreen, PlaylistScreen and PlaylistsView
   redesign (art, richer headers, quality badges); TrackScreen detail overlay.
-- Queue reorder; gapless playback, ReplayGain, CMAF fallback.
+- Next: library cache on disk (favourite tracks/albums/artists shown at
+  once, refreshed from Qobuz in the background; files in ACCOUNT_FILES);
+  gapless playback.
+- Queue reorder; ReplayGain, CMAF fallback.
 - Qobuz Connect phase 3 (autoplay ↔ radio, shuffle/repeat UI, play reporting),
   phase 4 (qobit as controller, LAN discovery).
 
