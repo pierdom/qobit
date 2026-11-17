@@ -15,7 +15,6 @@ from textual.css.query import NoMatches
 from textual.events import Resize
 from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView, Static
-from textual_image._terminal import get_cell_size
 from textual_image.widget import TGPImage
 
 from ...qobuz.models import Track
@@ -30,7 +29,7 @@ from .._now_playing import (
     track_live,
 )
 from .._utils import readout, status_line, strip_html
-from ..widgets.art import Art
+from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
 from ..widgets.transport import signal_parts
 
@@ -328,9 +327,7 @@ class NowPlayingHero(Widget):
         self.query_one("#hero-art-row").styles.height = rows
         art = self.query_one(TGPImage)
         art.styles.height = rows
-        cell = get_cell_size()
-        if cell.width > 0 and cell.height > 0:
-            art.styles.width = round(rows * cell.height / cell.width)
+        square_width(art, rows)
 
     # ── reactive watchers ─────────────────────────────────────────────────────
 

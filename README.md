@@ -13,7 +13,7 @@
 [![Textual](https://img.shields.io/badge/TUI-Textual-5A4FCF)](https://textual.textualize.io)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-555)](#install)
 
-A bit-perfect Qobuz client with a terminal UI, for Linux and macOS.
+A bit-perfect Qobuz client for the terminal, on Linux and macOS.
 
 </div>
 
@@ -21,23 +21,24 @@ A bit-perfect Qobuz client with a terminal UI, for Linux and macOS.
 > qobit is an unofficial project. It is not affiliated with, endorsed by or
 > sponsored by Qobuz. See [Disclaimer](#disclaimer).
 
-qobit plays hi-res FLAC from Qobuz through mpv with no resampling and no DSP.
-The output device runs at each track's own sample rate and bit depth, and the
-DAC receives exactly the bits from the file. You browse your library and
-control playback from a keyboard-driven terminal UI with cover art.
+qobit is a Qobuz player for the Linux and macOS terminal. It streams hi-res
+FLAC from Qobuz and plays it through mpv, with no resampling and no DSP. The
+output device runs at each track's own sample rate and bit depth, so the DAC
+gets exactly the bits from the file. You browse your Qobuz library, playlists
+and mixes with the keyboard, and see cover art in the terminal.
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/queue_page.png" width="49%" alt="Playback tab with the queue and the now-playing panel"> <img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/artist_view.png" width="49%" alt="Artist page with bio, top tracks and albums">
+<img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/queue_page.png" width="49%" alt="qobit, a Qobuz terminal client: the Playback tab with the queue and the now-playing panel"> <img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/artist_view.png" width="49%" alt="qobit, a Qobuz terminal client: an artist page with bio, top tracks and albums">
 
 </div>
 
 ## Features
 
-- Bit-perfect output through PipeWire rate-following or exclusive ALSA `hw:` /
-  CoreAudio devices, with a live lamp that checks it on every track (on Linux,
-  down to the rate the DAC actually runs at). Tracks your account can only
-  preview (30-second MP3s) are skipped.
+- Bit-perfect output through PipeWire (following each track's sample rate) or
+  exclusive ALSA `hw:` / CoreAudio devices. An indicator checks it on every
+  track; on Linux it reads the rate the DAC actually runs at. Tracks your
+  account can only preview (30-second MP3s) are skipped.
 - Favourite tracks, artists and albums, and your playlists, with sorting and a
   live filter. Add favourites and follow artists from any list with `i`.
 - A queue you can move back and forth in without losing tracks. It's restored
@@ -166,6 +167,22 @@ qobit builds on other people's work:
   [qobuz-proxy](https://github.com/leolobato/qobuz-proxy), whose protocol work
   is the basis of qobit's Qobuz Connect support.
 
+## AI-assisted development
+
+Most of qobit's code is written with AI assistance (Claude Code). I direct
+the work, review the changes and test them on my own hardware before they
+are merged. The project follows the usual good practices:
+
+- More than 500 automated tests, run on Linux and macOS for every change.
+- Linting and formatting checks (Ruff) in CI.
+- Releases built and published to PyPI by CI, not from a laptop.
+- Design decisions and past mistakes written down in
+  [CLAUDE.md](https://github.com/pierdom/qobit/blob/main/CLAUDE.md), so they
+  are not repeated.
+
+If you find a bug, please
+[open an issue](https://github.com/pierdom/qobit/issues).
+
 ## Disclaimer
 
 qobit is an independent, unofficial project. It is not affiliated with Qobuz in
@@ -173,17 +190,16 @@ any way, and Qobuz does not endorse or sponsor it. The Qobuz name is only used
 to say which service qobit works with.
 
 qobit is not a replacement for the official Qobuz apps. It is a small terminal
-player for a narrow audience: people who want bit-perfect playback from a
-keyboard-driven terminal UI. It does far less than the official apps, so use
-them for everything else.
+player for people who want bit-perfect playback from the keyboard. It does far
+less than the official apps, so use them for everything else.
 
 It talks to the same API as the Qobuz web player. You need your own Qobuz
 subscription, qobit only plays what your account can stream, and you are
 responsible for using it within Qobuz's terms of service.
 
 qobit is free software, provided as is, without any warranty. See sections 15
-and 16 of the [GPL-3.0 license](https://github.com/pierdom/qobit/blob/main/LICENSE). It is an early-stage personal
-project: use it at your own risk.
+and 16 of the [GPL-3.0 license](https://github.com/pierdom/qobit/blob/main/LICENSE).
+It is an early-stage personal project. Use it at your own risk.
 
 ## License
 

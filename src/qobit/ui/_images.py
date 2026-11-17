@@ -52,7 +52,7 @@ _client: httpx.AsyncClient | None = None
 # whole library's art.  Resolved lazily; ``None`` means unavailable (e.g.
 # read-only fs) and the disk layer is skipped silently.
 _UNSET = object()
-_CACHE_DIR: Path | None | object = _UNSET
+_CACHE_DIR: Path | object | None = _UNSET
 
 
 def _get_client() -> httpx.AsyncClient:

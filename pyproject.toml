@@ -4,13 +4,27 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qobit"
-version = "0.10.1"
-description = "A bit-perfect Qobuz client with a terminal UI"
+version = "0.10.2"
+description = "A bit-perfect Qobuz client for the terminal (TUI), for Linux and macOS"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "Piero Fiadino" }]
-keywords = ["qobuz", "hi-res", "flac", "bit-perfect", "tui", "textual", "mpv", "music-player"]
+keywords = [
+    "qobuz",
+    "qobuz-client",
+    "qobuz-player",
+    "linux",
+    "terminal",
+    "tui",
+    "cli",
+    "hi-res",
+    "flac",
+    "bit-perfect",
+    "music-player",
+    "textual",
+    "mpv",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",

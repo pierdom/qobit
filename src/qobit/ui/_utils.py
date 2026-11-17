@@ -55,6 +55,12 @@ DETAIL_HEADER_CSS = """
     height: 1fr;
     border-top: round $accent 40%;
 }
+/* A short panel (album_detail.fit_detail_panel): no art, the header down to
+   the title and the info line. */
+.detail-header.-no-art { padding: 0 2; }
+.detail-header.-no-art .detail-art { display: none; }
+.detail-header.-no-art .detail-sub { margin-top: 0; }
+.detail-header.-no-art .detail-meta { overflow-y: hidden; }
 """
 
 

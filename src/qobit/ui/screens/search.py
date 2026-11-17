@@ -162,11 +162,13 @@ class SearchView(NowPlayingViewMixin, Widget):
         margin: 0;
         border: round $accent 40%;
         border-title-color: $qobit-muted;
+        border-subtitle-color: $qobit-muted;
         border-title-style: bold;
     }
     #artists-results:focus, #tracks-results:focus, #albums-results:focus {
         border: round $accent;
         border-title-color: $qobit-accent-text;
+        border-subtitle-color: $qobit-accent-text;
     }
     """
 
