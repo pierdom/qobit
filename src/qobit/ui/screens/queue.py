@@ -467,11 +467,16 @@ class QueueView(Widget):
             yield NowPlayingHero(id="now-hero")
 
     def on_mount(self) -> None:
-        self.query_one("#queue-list", ListView).border_title = readout("Queue")
         app: QobitApp = self.app  # type: ignore[assignment]
+        self.watch(app, "gapless", self._retitle, init=True)
         self.watch(app, "queue_version", self._on_queue_changed, init=True)
         self.watch(app, "now_playing", self._on_now_playing_changed, init=False)
         self.watch(app, "is_paused", self._on_paused_changed, init=False)
+
+    def _retitle(self, gapless: bool) -> None:
+        """The panel title; a chrome tag while gapless playback is on."""
+        title = readout("Queue") + (f" · {readout('gapless')}" if gapless else "")
+        self.query_one("#queue-list", ListView).border_title = title
 
     def on_resize(self, event: Resize) -> None:
         self.set_class(event.size.width < self._NARROW_BELOW, "-narrow")

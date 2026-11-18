@@ -108,6 +108,14 @@ and hides when there's no room, so the text always shows.
 The OS **previous** media key restarts the track in its first 3 seconds and
 steps back in history after that.
 
+Tracks play **gaplessly**: the next one is lined up in the last 30 seconds.
+Where the sample rate changes between two tracks, the output reopens for the
+new rate (a short pause: qobit doesn't resample). Switch it off with
+`qobit --no-gapless` (this run) or "Gapless playback" in the command palette
+(Ctrl+P, saved); while it is on, the Playback panel title reads
+`QUEUE · GAPLESS`. See
+[Audio setup](audio.md#gapless-playback).
+
 ## Library: Tracks, Artists, Albums, Playlists (`2`–`5`)
 
 | Key | Action |

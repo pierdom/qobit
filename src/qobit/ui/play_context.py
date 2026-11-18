@@ -375,6 +375,7 @@ class ConnectPlayContext:
         app = self.app
         app.connect_state = "active" if active else "ready"
         if active:
+            app._drop_next_up()  # the server's queue, not what mpv had queued
             app._pending_resume = None
             app._flash_status("Playing via Qobuz Connect")
             return

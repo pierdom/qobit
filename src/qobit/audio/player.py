@@ -14,6 +14,28 @@ STREAM_PLAYLIST = "stream.m3u"  # next to the socket; see play()
 _SYSTEM = platform.system()
 
 
+class EntryWatch:
+    """Sees mpv go on to the next playlist entry by itself (a gapless move):
+    its ``playlist-pos`` rises within one process. The poll feeds it each
+    tick; a new process (another stop generation) starts afresh."""
+
+    def __init__(self) -> None:
+        self._gen: int | None = None
+        self._entry: int | None = None
+
+    def moved_on(self, gen: int, entry: object) -> bool:
+        if gen != self._gen:
+            self._gen, self._entry = gen, None
+        if not isinstance(entry, int):
+            return False
+        moved = self._entry is not None and entry > self._entry
+        self._entry = entry
+        return moved
+
+    def reset(self) -> None:
+        self._gen = self._entry = None
+
+
 class MpvPlayer:
     def __init__(self, audio_device: str | None = None, volume: int | None = None) -> None:
         self._device = audio_device
@@ -78,6 +100,21 @@ class MpvPlayer:
         with contextlib.suppress(OSError):
             self.playlist_path.unlink()  # the signed URL: gone with the player
 
+    def append(self, url: str, gen: int) -> bool:
+        """Queue ``url`` after the current track in the running mpv, which then
+        plays it with no gap (it keeps the output device open when the format
+        matches, and has opened the stream by then: ``--prefetch-playlist``).
+        ``gen`` is the ``snapshot()`` generation of the mpv the caller means: a
+        player that was stopped and restarted meanwhile gets nothing (the
+        socket path is the same, so the new mpv would take a stale track). The
+        URL goes over the IPC socket (0700), not argv. False if refused."""
+        result = self._ipc(["loadfile", url, "append"], only_gen=gen)
+        return bool(result and result.get("error") == "success")
+
+    def clear_next(self, gen: int) -> None:
+        """Take what ``append`` queued out of mpv again (the queue changed)."""
+        self._ipc(["playlist-clear"], only_gen=gen)  # keeps the playing entry
+
     @property
     def playlist_path(self) -> Path:
         """The one-line playlist mpv reads the stream URL from (0600, in the
@@ -134,6 +171,14 @@ class MpvPlayer:
             f"--input-ipc-server={self._sock}",
             "--af-clr",
             "--audio-pitch-correction=no",
+            # Gapless between tracks with the same format; a new sample rate
+            # or depth reopens the device. Never "yes": that keeps the first
+            # track's parameters and resamples the rest, and a user's own
+            # mpv.conf could say so: bit-perfect first.
+            "--gapless-audio=weak",
+            # Open the next playlist entry's stream early (the next track is a
+            # network stream: opened only at the boundary it leaves a gap).
+            "--prefetch-playlist=yes",
             # Don't auto-load mpv scripts. The system mpv-mpris plugin would
             # otherwise publish a second MPRIS player exposing the tagless
             # stream URL — wrong artist/title/album/art in the DE. qobit owns
@@ -199,7 +244,9 @@ class MpvPlayer:
         line, self._recv_buf = self._recv_buf.split(b"\n", 1)
         return line
 
-    def _ipc(self, cmd: list) -> dict | None:
+    def _ipc(self, cmd: list, only_gen: int | None = None) -> dict | None:
+        """One command and its answer. ``only_gen``: send only while that is
+        still the stop generation, i.e. to the mpv the caller meant."""
         with self._conn_lock:
             self._request_id += 1
             req_id = self._request_id
@@ -210,6 +257,8 @@ class MpvPlayer:
                 s = self._conn if self._conn is not None else self._connect_locked()
                 if s is None:
                     return None
+                if only_gen is not None and self._stop_gen != only_gen:
+                    return None  # stopped (and maybe restarted) meanwhile
                 try:
                     s.sendall(msg.encode())
                     # mpv shares this connection for unsolicited events (seek,

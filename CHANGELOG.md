@@ -7,6 +7,24 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Added
+
+- **Gapless playback** (on by default; `qobit --no-gapless` for one run, or "Gapless
+  playback: turn off" in the command palette, Ctrl+P, to save it; while on, the
+  Playback panel title shows a GAPLESS tag). Albums, playlists and live records play from one
+  track into the next with no break. In the last 30 seconds of a track qobit
+  fetches the next one and hands it to the same mpv, which has opened it by
+  the time the track ends. If the sample rate or bit depth changes between
+  two tracks (44.1 to 96 kHz, say), the output is reopened for the new
+  format, a short pause: qobit never resamples to hide it. Editing Up Next
+  while a track is lined up takes it back out, and anything that goes wrong
+  falls back to the old behaviour. Skipping with the keys or by picking a row
+  still starts the track fresh, and Qobuz Connect playback is unchanged for
+  now (the server decides track ends there). mpv is also told never to carry
+  one track's sample rate onto the next, whatever your own `mpv.conf` says.
+
 ## [0.12.0] - 2026-11-17
 
 ### Added

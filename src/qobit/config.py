@@ -176,6 +176,17 @@ def set_animations(value: bool) -> None:
     save(cfg)
 
 
+def get_gapless() -> bool:
+    """Gapless playback between tracks (on by default)."""
+    return bool(load().get("gapless", True))
+
+
+def set_gapless(value: bool) -> None:
+    cfg = load()
+    cfg["gapless"] = value
+    save(cfg)
+
+
 def get_radio_mode() -> bool:
     return bool(load().get("radio_mode", False))
 

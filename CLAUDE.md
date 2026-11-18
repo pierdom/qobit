@@ -29,7 +29,8 @@ src/qobit/
 ├── qobuz/models.py      Track, Album, Artist, Playlist, StreamUrl
 ├── audio/device.py      mpv devices + synthesized alsa/hw:CARD=…,DEV=… entries,
 │                        bit-perfect ones flagged and sorted first
-├── audio/player.py      mpv subprocess + IPC, bit-perfect flags, _stop_gen
+├── audio/player.py      mpv subprocess + IPC, bit-perfect flags, _stop_gen,
+│                        append (gapless), EntryWatch
 ├── audio/verify.py      bit-perfect check: mpv IPC + (Linux) ALSA hw_params
 ├── audio/media_keys.py  OS media keys: macOS Now Playing (pyobjc); degrades
 │                        silently without the optional deps
@@ -137,6 +138,27 @@ cursor). Connect treats "stale" as handled, not unplayable.
 together under `_state_lock`. The poll loop reads both via
 `MpvPlayer.snapshot()`: same gen + not running = natural end (advance), new gen
 = stopped. Reading them separately raced and skipped tracks.
+
+**Gapless** (local playback only; `app.gapless`, config `gapless`, default on, `qobit --gapless/--no-gapless`, palette "Gapless playback", a `· GAPLESS` tag in the Playback panel title; off = `_maybe_prefetch` queues nothing and `action_toggle_gapless` drops what is queued). Late in a track (`_PREFETCH_SECS`, 30)
+`watch_playback_pos` → `_maybe_prefetch` resolves the next track's stream
+and `MpvPlayer.append`s it (`loadfile … append`, over the IPC socket) to the
+mpv that's playing; the mpv flags `--prefetch-playlist=yes` (opens the stream
+early: at the boundary it left a gap) and `--gapless-audio=weak` do the rest.
+Never `yes`: it keeps the first track's rate and resamples the rest (bit-
+perfect; a user's mpv.conf must not be able to turn it on). `_next_up`
+(track id, stream) is what's queued in mpv; every way it can stop being the
+next track clears it: `watch_queue_version` → `_check_next_up` (a queue edit),
+`_play_stream` (a new mpv), Connect becoming active, and `append` /
+`clear_next` carry the stop generation they mean (`_ipc(only_gen=)`): the
+socket path is the same for every mpv, so a late append would otherwise land
+in the next process. mpv going on by itself shows as `playlist-pos` rising
+(`EntryWatch`, fed by the poll) → `_on_gapless_transition` moves the cursor
+and runs `_begin_track` (the part of `_play_stream` after `player.play`).
+Nothing queued (last track, an unplayable one, offline) = mpv exits at the
+end, and the natural-end path (`_advance_queue`, radio refill) is unchanged;
+endless radio refills ~30 s early so there is a next track to line up. Under
+Connect nothing is queued (`_ctx` isn't local). `tests/test_gapless*.py`: the
+e2e ones run a real mpv (`--ao=null`) and skip without it.
 
 **Bit-perfect flags.** macOS: `--af-clr`, `--audio-pitch-correction=no`,
 `--audio-exclusive=yes`, `--load-scripts=no` (else the system mpv-mpris
@@ -621,7 +643,6 @@ uv run pytest
 
 - `i` menu on playlists; Search, AlbumScreen, PlaylistScreen and PlaylistsView
   redesign (art, richer headers, quality badges); TrackScreen detail overlay.
-- Next: gapless playback.
 - Queue reorder; ReplayGain, CMAF fallback.
 - Qobuz Connect phase 3 (autoplay ↔ radio, shuffle/repeat UI, play reporting),
   phase 4 (qobit as controller, LAN discovery).

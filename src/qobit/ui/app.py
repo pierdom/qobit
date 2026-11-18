@@ -23,13 +23,14 @@ from textual.worker import get_current_worker
 
 from .. import library_cache
 from ..audio.media_keys import MediaKeys
-from ..audio.player import MpvPlayer
+from ..audio.player import EntryWatch, MpvPlayer
 from ..audio.verify import Signal, check_signal
 from ..config import (
     get_account,
     get_animations,
     get_audio_device,
     get_connect_enabled,
+    get_gapless,
     get_image_mode,
     get_oauth_session,
     get_radio_mode,
@@ -40,6 +41,7 @@ from ..config import (
     save_oauth_session,
     set_animations,
     set_connect_enabled,
+    set_gapless,
     set_radio_mode,
     set_saved_theme,
     set_saved_volume,
@@ -157,6 +159,13 @@ class QobitCommands(Provider):
                 "motion meter wordmark low power cpu",
             ),
             (
+                f"Gapless playback: turn {'off' if app.gapless else 'on'}",
+                app.action_toggle_gapless,
+                "Play the next track with no gap: it is queued in mpv shortly before "
+                "the end. A change of sample rate still reopens the output",
+                "gap less continuous transition",
+            ),
+            (
                 f"Software volume: turn {'off' if app.software_volume_enabled else 'on'}",
                 app.action_toggle_software_volume,
                 "-/= to adjust once on. Below 100% this is DSP — the DAC no longer "
@@ -209,6 +218,9 @@ _HISTORY_MAX = 100
 # Pressing "previous" past this many seconds into a track restarts it; before
 # it, steps back to the previous track in history (standard media convention).
 _PREV_RESTART_THRESHOLD = 3.0
+# The next track is queued in mpv (gapless) this many seconds before the
+# current one ends: a stream URL lasts ~10 minutes, so not at the start.
+_PREFETCH_SECS = 30.0
 
 
 class QobitApp(App[None]):
@@ -473,6 +485,7 @@ class QobitApp(App[None]):
     # Endless radio: when on, _advance_queue refills an empty queue with Qobuz
     # song-radio suggestions. Reactive so the transport indicator stays live.
     radio_mode: reactive[bool] = reactive(False)
+    gapless: reactive[bool] = reactive(True)
     # The wordmark's colour cycle and the bar meter: config `animations`
     # (palette), off as well with TEXTUAL_ANIMATIONS=none. Each frame redraws,
     # which costs on a slow CPU (a Raspberry Pi) for decoration only.
@@ -493,11 +506,18 @@ class QobitApp(App[None]):
     # None until checked (a couple of seconds in) and after a track change.
     signal: reactive[Signal | None] = reactive(None)
 
-    def __init__(self, connect: bool | None = None, images: str | None = None) -> None:
+    def __init__(
+        self,
+        connect: bool | None = None,
+        images: str | None = None,
+        gapless: bool | None = None,
+    ) -> None:
         """``connect`` overrides the saved Qobuz Connect setting for this run
         (``qobit --connect-on``), ``images`` the cover art mode (``qobit
-        --images``); None = use the saved setting."""
+        --images``), ``gapless`` gapless playback (``--gapless`` / ``--no-gapless``);
+        None = use the saved setting."""
         super().__init__()
+        self.gapless = get_gapless() if gapless is None else gapless
         self._image_setting = images or get_image_mode()
         set_image_mode(self._image_setting)  # before anything draws
         for theme in QOBIT_THEMES:
@@ -569,6 +589,13 @@ class QobitApp(App[None]):
         # The stream _play_stream last started (format/rate/depth) — the Connect
         # renderer reports it to the apps.
         self._last_stream: StreamUrl | None = None
+        # Gapless (see _maybe_prefetch): the track queued in mpv behind the
+        # playing one, as (track id, its stream); a track whose stream wasn't
+        # playable (the natural end skips it with a notice); a prefetch under
+        # way.
+        self._next_up: tuple[str, StreamUrl] | None = None
+        self._prefetch_failed: str | None = None
+        self._prefetching = False
         self._flash_timer: object | None = None
         self._queue_save_timer: object | None = None
         self._media_keys = MediaKeys(
@@ -1191,12 +1218,16 @@ class QobitApp(App[None]):
     def _poll_player(self) -> None:
         worker = get_current_worker()
         _seen_gen: int = 0
+        entries = EntryWatch()
         while not worker.is_cancelled:
             # One atomic read: a stop() racing this loop can't make a forced
             # stop look like a natural end (see MpvPlayer.snapshot).
             gen, running = self._player.snapshot()
             if running:
                 _seen_gen = gen
+                if entries.moved_on(gen, self._player.get_property("playlist-pos")):
+                    # mpv went on to the track queued behind the last one.
+                    self.call_from_thread(self._on_gapless_transition)
                 pos = self._player.get_property("time-pos")
                 dur = self._player.get_property("duration")
                 paused = self._player.get_property("pause")
@@ -1214,6 +1245,7 @@ class QobitApp(App[None]):
                     self._last_state_save = now
                     self.call_from_thread(self._save_player_state)
             elif self.is_playing:
+                entries.reset()
                 natural_end = gen == _seen_gen
                 self.call_from_thread(setattr, self, "is_playing", False)
                 self.call_from_thread(setattr, self, "is_paused", False)
@@ -1388,6 +1420,13 @@ class QobitApp(App[None]):
         self.animations = not self.animations
         set_animations(self.animations)
         self._flash_status(f"Animations {'on' if self.animations else 'off'}")
+
+    def action_toggle_gapless(self) -> None:
+        self.gapless = not self.gapless
+        set_gapless(self.gapless)
+        if not self.gapless:
+            self._drop_next_up()  # what's queued in mpv goes: the track ends as before
+        self._flash_status(f"Gapless {'on' if self.gapless else 'off'}")
 
     def action_toggle_radio_mode(self) -> None:
         self.radio_mode = not self.radio_mode
@@ -1659,6 +1698,14 @@ class QobitApp(App[None]):
         if self._player.running:
             self._player.stop()
         self._player.play(stream.url, start=start)
+        self._next_up = None  # a new mpv: nothing is queued behind this track
+        self._prefetch_failed = None
+        self._begin_track(track, stream, gen, start)
+        return "ok"
+
+    def _begin_track(self, track: Track, stream: StreamUrl, gen: int, start: float = 0.0) -> None:
+        """What a track starting means to the app: started by _play_stream, or
+        reached by mpv on its own (a gapless move, _on_gapless_transition)."""
         self.now_playing = track
         self.now_playing_album = None
         self.now_playing_bio = ""
@@ -1672,7 +1719,113 @@ class QobitApp(App[None]):
         self._fetch_now_playing_album(track)
         self.signal = None
         self._verify_signal(gen, stream)
-        return "ok"
+
+    # ── gapless: the next track queued in mpv ────────────────────────────────
+    #
+    # Late in a track the next one's stream is resolved and appended to mpv's
+    # playlist: mpv has opened it by the boundary and, with the same format,
+    # keeps the device open, so nothing is heard between them. The natural end
+    # of the last track is unchanged (nothing appended: mpv exits, the poll
+    # advances, endless radio refills). Local playback only: under Qobuz
+    # Connect the server owns the queue and track ends.
+
+    def _next_track(self) -> Track | None:
+        i = self._cursor + 1
+        return self._timeline[i] if 0 <= i < len(self._timeline) else None
+
+    def watch_playback_pos(self, _: float) -> None:
+        self._maybe_prefetch()
+
+    def _maybe_prefetch(self) -> None:
+        if (
+            not self.gapless
+            or self._next_up is not None
+            or self._prefetching
+            or self._ctx is not self._local_ctx
+            or not self.is_playing
+            or self.is_paused  # paused, the URL could expire before it's heard
+            or self.playback_dur <= 0
+            or self.playback_dur - self.playback_pos > _PREFETCH_SECS
+            or not self._player.running
+        ):
+            return
+        self._prefetching = True
+        self._prefetch()
+
+    @work(group="_prefetch")
+    async def _prefetch(self) -> None:
+        try:
+            await self._prefetch_next()
+        finally:
+            self._prefetching = False
+
+    async def _prefetch_next(self) -> None:
+        gen, _ = self._player.snapshot()
+        playing = self.now_playing
+        track = self._next_track()
+        if track is None and self.radio_mode and playing is not None:
+            # Out of queue under endless radio: refill now, as advance() would
+            # at the end of the track.
+            suggestions = await self._fetch_radio(playing)
+            if suggestions and self._next_track() is None and self.now_playing is playing:
+                self._timeline.extend(suggestions)
+                self.queue_version += 1
+            track = self._next_track()
+        if track is None or track.id == self._prefetch_failed:
+            return
+        try:
+            stream = await self._resolve_stream(str(track.id))
+        except (QobuzError, NoStreamError):
+            stream = None
+        if stream is None or stream.sample:
+            # Not ours to report: the natural end plays (or skips, with the
+            # notice) this track the ordinary way.
+            self._prefetch_failed = track.id
+            return
+        now = self._next_track()  # the queue may have changed while resolving
+        if self._player.snapshot() != (gen, True) or now is None or now.id != track.id:
+            return
+        if await asyncio.to_thread(self._player.append, stream.url, gen):
+            self._next_up = (track.id, stream)
+
+    def _drop_next_up(self) -> None:
+        """Forget the track queued in mpv, and take it out of mpv."""
+        if self._next_up is None:
+            return
+        self._next_up = None
+        gen, running = self._player.snapshot()
+        if running:
+            self._clear_next(gen)
+
+    @work(thread=True, group="_clear_next")
+    def _clear_next(self, gen: int) -> None:
+        self._player.clear_next(gen)
+
+    def _check_next_up(self) -> None:
+        """The queue changed: the track queued in mpv must still be the next."""
+        if self._next_up is None:
+            return
+        nxt = self._next_track()
+        if nxt is None or nxt.id != self._next_up[0]:
+            self._drop_next_up()
+
+    def _on_gapless_transition(self) -> None:
+        """mpv went on to the track queued behind the last one: move the cursor
+        and the transport onto it (nothing to start)."""
+        info, self._next_up = self._next_up, None
+        nxt = self._next_track()
+        if self._ctx is not self._local_ctx or self._advance_lock.locked():
+            return  # Connect took over, or an advance in flight starts its own
+        if info is None or nxt is None or nxt.id != info[0]:
+            # Not what the queue says any more (edited just as mpv moved on):
+            # play the right track the ordinary way.
+            self._advance_queue()
+            return
+        self._cursor += 1
+        self._trim_history()
+        self.queue_version += 1
+        self._play_gen += 1
+        self._begin_track(nxt, info[1], self._play_gen)
 
     @work(exclusive=True, group="_verify_signal")  # a newer track cancels it
     async def _verify_signal(self, gen: int, stream: StreamUrl) -> None:
@@ -1806,6 +1959,7 @@ class QobitApp(App[None]):
     def watch_queue_version(self, _: int) -> None:
         # Every timeline/cursor change bumps queue_version (local edits, Connect
         # mirror rebuilds alike) — persist shortly after the burst settles.
+        self._check_next_up()
         if self._restoring or not self.is_running:
             return
         if self._queue_save_timer is not None:

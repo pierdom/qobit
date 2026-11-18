@@ -39,6 +39,8 @@ and mixes with the keyboard, and see cover art in the terminal.
   exclusive ALSA `hw:` / CoreAudio devices. An indicator checks it on every
   track; on Linux it reads the rate the DAC actually runs at. Tracks your
   account can only preview (30-second MP3s) are skipped.
+- Gapless playback: albums and live records run from track to track without a
+  break (a change of sample rate reopens the output, as bit-perfect needs).
 - Favourite tracks, artists and albums, and your playlists, with sorting and a
   live filter. Add favourites and follow artists from any list with `i`.
 - A queue you can move back and forth in without losing tracks. It's restored
@@ -130,6 +132,7 @@ From the command line:
 qobit play "Kind of Blue"   # search, play the first result, check the output format
 qobit devices               # list audio outputs
 qobit --connect-on          # start with Qobuz Connect enabled for this run
+qobit --no-gapless          # no gapless playback for this run (--gapless: force on)
 ```
 
 ## Documentation
