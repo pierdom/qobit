@@ -72,6 +72,23 @@ The CLI also accepts `qobit play --quality MP3_320`. For tracks your account
 can't stream, Qobuz returns a 30-second MP3 preview. qobit doesn't play these:
 it shows "Not streamable (preview only)" and skips to the next track.
 
+## Gapless playback
+
+In the last 30 seconds of a track qobit adds the next stream to the mpv that
+is already playing. mpv opens it early and, when the format matches, keeps the
+output device open across the boundary.
+
+- **A new sample rate or bit depth** makes mpv reopen the device: a short
+  pause. The alternative is resampling the second track to the first one's
+  rate, which breaks the bit-perfect rule. qobit starts mpv with
+  `--gapless-audio=weak`, so your own `mpv.conf` can't switch it on.
+- **Skipping** (next, previous, picking a row, media keys) starts the track
+  fresh. Editing Up Next takes a lined-up track back out.
+- **Qobuz Connect** playback is not gapless yet: the server decides when a
+  track ends.
+- If the next stream can't be lined up (offline, preview-only track, expired
+  link), the next track starts when this one ends, as before.
+
 ## Verifying
 
 `qobit play` checks the output: after the track starts, it reads mpv's actual

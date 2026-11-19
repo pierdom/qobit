@@ -7,6 +7,27 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Added
+
+- **Shuffle.** `S`, "Shuffle" in the command palette, or `qobit --shuffle` for
+  one run. Up Next goes into random order, a track you start from a list plays
+  first with the rest shuffled, and *Add to queue* lands at a random place.
+  The order is real: Up Next shows it and Previous goes back through what
+  played. Turning shuffle off stops shuffling and leaves the queue as it is.
+  The transport bar shows `[ ⤮ SHUFFLE ]`. Not available under Qobuz Connect.
+- **Gapless playback**, on by default. `qobit --no-gapless` turns it off for
+  one run, "Gapless playback" in the command palette saves the choice, and the
+  transport bar shows `[ ⇉ GAPLESS ]` while it is on. In the last 30 seconds
+  of a track qobit hands the next one to the same mpv, which has opened it by
+  the time the track ends. When the sample rate or bit depth changes between
+  two tracks, the output reopens for the new format: a short pause, because
+  qobit never resamples. mpv is started with `--gapless-audio=weak`, so your
+  own `mpv.conf` can't switch resampling on. Editing Up Next takes a lined-up
+  track back out; any failure falls back to the old behaviour. Skipping still
+  starts the track fresh, and Qobuz Connect playback is not gapless yet.
+
 ## [0.12.0] - 2026-11-17
 
 ### Added

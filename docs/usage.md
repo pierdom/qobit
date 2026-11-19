@@ -46,13 +46,14 @@ after a session expires, the previous account's data is erased the same way.
 | `i` | Menu for what's highlighted. A track: Play next, Add to queue, Play radio, add/remove from favourites, Go to artist, Go to album (+ Remove from queue on Up Next rows). An album (a card, or the album page): add/remove from favourites. An artist (a card, or the artist page): follow/unfollow |
 | `f` | Favourite / unfavourite the highlighted track |
 | `R` | Song radio from the current track |
+| `S` | Shuffle on/off |
 | `Enter` | Open the selected item, or play the selected track |
 | `↑` `↓` `←` `→` | Move in lists and grids |
 | `PageUp` / `PageDown` | Move the selection a page at a time |
 | `Home` / `End` | First / last item |
 | `Escape` | Back one level: close an album inside an artist page, then the page; close a detail view; or clear the filter (the footer shows `esc Back` when there's somewhere to go back to). Otherwise focus the tab bar |
 | `-` / `=` | Software volume down / up, only once it's turned on from `Ctrl+P` (they appear in the footer then) |
-| `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Qobuz Connect, software volume |
+| `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Shuffle, Gapless playback, Qobuz Connect, software volume |
 | `q` | Quit |
 
 Albums, artists and playlists you open from Search, `g`, `i` or Similar
@@ -107,6 +108,19 @@ and hides when there's no room, so the text always shows.
 
 The OS **previous** media key restarts the track in its first 3 seconds and
 steps back in history after that.
+
+Tracks play **gaplessly**. Where the sample rate changes between two tracks the
+output reopens for the new rate, a short pause: qobit doesn't resample.
+`qobit --no-gapless` turns it off for one run; "Gapless playback" in `Ctrl+P`
+saves the choice. The transport title shows `[ ⇉ GAPLESS ]` while it is on.
+See [Audio setup](audio.md#gapless-playback).
+
+**Shuffle** (`S`, `Ctrl+P` → *Shuffle*, or `qobit --shuffle` for one run) puts
+Up Next in random order. A track you start from a list plays first and the
+rest is shuffled; *Add to queue* lands at a random place, *Play next* stays
+next. Up Next shows the real order and Previous goes back through what
+played. Turning it off stops shuffling and leaves the queue as it is. The
+transport title shows `[ ⤮ SHUFFLE ]`. Not available under Qobuz Connect.
 
 ## Library: Tracks, Artists, Albums, Playlists (`2`–`5`)
 

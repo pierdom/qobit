@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import random
 from typing import TYPE_CHECKING
 
 from ..connect import device_info
@@ -63,7 +64,10 @@ class LocalPlayContext:
         # then splice in the new track and its queue. The old Up Next is dropped
         # — this is a deliberate new selection, not a skip within the queue.
         past = app._timeline[: app._cursor + 1] if app._cursor >= 0 else []
-        app._timeline = [*past, track, *(queue or [])]
+        upcoming = list(queue or [])
+        if app.shuffle:
+            random.shuffle(upcoming)  # the chosen track still plays first
+        app._timeline = [*past, track, *upcoming]
         app._cursor = len(past)
         app._trim_history()
         app.queue_version += 1
@@ -115,9 +119,21 @@ class LocalPlayContext:
         app.queue_version += 1
         return True
 
+    def shuffle_upcoming(self) -> None:
+        """Put Up Next in random order (shuffle turned on)."""
+        app = self.app
+        if len(app._play_queue) > 1:
+            upcoming = app._play_queue
+            random.shuffle(upcoming)
+            app._timeline[app._cursor + 1 :] = upcoming
+            app.queue_version += 1
+
     def queue_last(self, track: Track) -> bool:
         app = self.app
-        app._timeline.append(track)
+        if app.shuffle:  # a random place in Up Next, not its end
+            app._timeline.insert(random.randint(app._cursor + 1, len(app._timeline)), track)
+        else:
+            app._timeline.append(track)
         app.queue_version += 1
         return True
 
@@ -375,6 +391,7 @@ class ConnectPlayContext:
         app = self.app
         app.connect_state = "active" if active else "ready"
         if active:
+            app._drop_next_up()  # the server's queue, not what mpv had queued
             app._pending_resume = None
             app._flash_status("Playing via Qobuz Connect")
             return

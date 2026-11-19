@@ -45,5 +45,14 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends dbus-daemon
           }
+      # tests/test_gapless_player.py and test_gapless_e2e.py play on a real mpv
+      # (null audio output); without one they skip.
+      - name: mpv
+        if: runner.os == 'Linux'
+        run: |
+          command -v mpv || {
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends mpv
+          }
       - run: uv sync --group dev
       - run: uv run pytest -v
