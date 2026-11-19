@@ -139,7 +139,7 @@ together under `_state_lock`. The poll loop reads both via
 `MpvPlayer.snapshot()`: same gen + not running = natural end (advance), new gen
 = stopped. Reading them separately raced and skipped tracks.
 
-**Gapless** (local playback only; `app.gapless`, config `gapless`, default on, `qobit --gapless/--no-gapless`, palette "Gapless playback", a `· GAPLESS` tag in the Playback panel title; off = `_maybe_prefetch` queues nothing and `action_toggle_gapless` drops what is queued). Late in a track (`_PREFETCH_SECS`, 30)
+**Gapless** (local playback only; `app.gapless`, config `gapless`, default on, `qobit --gapless/--no-gapless`, palette "Gapless playback", a `[ ⇉ GAPLESS ]` tag in the transport title, hidden under Connect; off = `_maybe_prefetch` queues nothing and `action_toggle_gapless` drops what is queued). Late in a track (`_PREFETCH_SECS`, 30)
 `watch_playback_pos` → `_maybe_prefetch` resolves the next track's stream
 and `MpvPlayer.append`s it (`loadfile … append`, over the IPC socket) to the
 mpv that's playing; the mpv flags `--prefetch-playlist=yes` (opens the stream

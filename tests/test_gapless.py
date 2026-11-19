@@ -398,17 +398,18 @@ def test_switching_off_takes_the_queued_track_out_again(gapless):
     _run(body)
 
 
-def test_the_queue_title_carries_a_tag_while_on(gapless):
+def test_the_transport_title_carries_a_tag_while_on(gapless):
     async def body():
         async with gapless.app.run_test(size=(120, 30)) as pilot:
-            lst = gapless.app.screen_stack[0].query_one("#queue-list")
-            assert "GAPLESS" in lst.border_title
+            bar = gapless.app.screen_stack[0].query_one("TransportBar")
+            assert "GAPLESS" in bar.border_title
             gapless.app.action_toggle_gapless()
             await pilot.pause(0.1)
-            assert "GAPLESS" not in lst.border_title and "QUEUE" in lst.border_title
+            assert "GAPLESS" not in bar.border_title
             gapless.app.action_toggle_gapless()
+            gapless.app.connect_state = "active"  # the server owns track ends
             await pilot.pause(0.1)
-            assert "GAPLESS" in lst.border_title
+            assert "GAPLESS" not in bar.border_title
 
     _run(body)
 

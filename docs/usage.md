@@ -112,8 +112,8 @@ Tracks play **gaplessly**: the next one is lined up in the last 30 seconds.
 Where the sample rate changes between two tracks, the output reopens for the
 new rate (a short pause: qobit doesn't resample). Switch it off with
 `qobit --no-gapless` (this run) or "Gapless playback" in the command palette
-(Ctrl+P, saved); while it is on, the Playback panel title reads
-`QUEUE · GAPLESS`. See
+(Ctrl+P, saved); while it is on, the transport bar title shows
+`[ ⇉ GAPLESS ]`, beside the radio and Connect tags. See
 [Audio setup](audio.md#gapless-playback).
 
 ## Library: Tracks, Artists, Albums, Playlists (`2`–`5`)

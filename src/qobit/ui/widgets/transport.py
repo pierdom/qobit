@@ -282,6 +282,7 @@ class TransportBar(Widget):
         self.watch(app, "quality_label", self._on_quality, init=True)
         self.watch(app, "radio_mode", self._on_radio_mode, init=True)
         self.watch(app, "connect_state", self._on_radio_mode, init=True)
+        self.watch(app, "gapless", self._on_radio_mode, init=True)
         self.watch(app, "volume", self._on_volume, init=True)
         self.watch(app, "software_volume_enabled", self._on_volume, init=True)
         self.watch(app, "signal", self._on_volume, init=True)
@@ -296,6 +297,9 @@ class TransportBar(Widget):
         # refill is dormant — don't advertise it.
         if app.radio_mode and app.connect_state != "active":
             tags.append("[ ◈ RADIO ]")
+        # Local playback only: under Connect the server ends the tracks.
+        if app.gapless and app.connect_state != "active":
+            tags.append("[ ⇉ GAPLESS ]")
         connect = {
             "active": "[ ⇄ CONNECT · ACTIVE ]",
             "ready": "[ ⇄ CONNECT ]",

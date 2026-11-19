@@ -12,8 +12,8 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 ### Added
 
 - **Gapless playback** (on by default; `qobit --no-gapless` for one run, or "Gapless
-  playback: turn off" in the command palette, Ctrl+P, to save it; while on, the
-  Playback panel title shows a GAPLESS tag). Albums, playlists and live records play from one
+  playback: turn off" in the command palette, Ctrl+P, to save it; while on,
+  the transport bar shows a `[ ⇉ GAPLESS ]` tag, beside radio and Connect). Albums, playlists and live records play from one
   track into the next with no break. In the last 30 seconds of a track qobit
   fetches the next one and hands it to the same mpv, which has opened it by
   the time the track ends. If the sample rate or bit depth changes between
