@@ -39,8 +39,9 @@ and mixes with the keyboard, and see cover art in the terminal.
   exclusive ALSA `hw:` / CoreAudio devices. An indicator checks it on every
   track; on Linux it reads the rate the DAC actually runs at. Tracks your
   account can only preview (30-second MP3s) are skipped.
-- Gapless playback: albums and live records run from track to track without a
-  break (a change of sample rate reopens the output, as bit-perfect needs).
+- Gapless playback, on by default: albums and live records run from track to
+  track without a break (a change of sample rate reopens the output, as
+  bit-perfect needs). Turn it off with `--no-gapless` or the command palette.
 - Favourite tracks, artists and albums, and your playlists, with sorting and a
   live filter. Add favourites and follow artists from any list with `i`.
 - A queue you can move back and forth in without losing tracks. It's restored
