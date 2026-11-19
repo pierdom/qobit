@@ -74,23 +74,20 @@ it shows "Not streamable (preview only)" and skips to the next track.
 
 ## Gapless playback
 
-Tracks that follow each other play without a break (albums, playlists, live
-records). In the last 30 seconds of a track qobit asks Qobuz for the next
-stream and adds it to the mpv that is already playing; mpv opens it early and,
-when the format matches, keeps the output device open across the boundary.
+In the last 30 seconds of a track qobit adds the next stream to the mpv that
+is already playing. mpv opens it early and, when the format matches, keeps the
+output device open across the boundary.
 
-- **A new sample rate or bit depth** (a 44.1 kHz track followed by a 96 kHz
-  one) makes mpv reopen the device for the new format. That is a short pause,
-  and it is on purpose: the other way is to resample the second track to the
-  first one's rate, which breaks the bit-perfect rule. qobit starts mpv with
-  `--gapless-audio=weak` so that your own `mpv.conf` can't switch that on.
-- **Skipping** (next, previous, picking a row, the media keys) starts the
-  track fresh, as before. Changing Up Next while a track is lined up takes it
-  back out of mpv.
-- **Qobuz Connect** playback is not gapless yet: the server decides there when
-  a track ends.
-- A stream that can't be lined up (offline, a preview-only track, an expired
-  link) simply falls back to starting the next track when this one ends.
+- **A new sample rate or bit depth** makes mpv reopen the device: a short
+  pause. The alternative is resampling the second track to the first one's
+  rate, which breaks the bit-perfect rule. qobit starts mpv with
+  `--gapless-audio=weak`, so your own `mpv.conf` can't switch it on.
+- **Skipping** (next, previous, picking a row, media keys) starts the track
+  fresh. Editing Up Next takes a lined-up track back out.
+- **Qobuz Connect** playback is not gapless yet: the server decides when a
+  track ends.
+- If the next stream can't be lined up (offline, preview-only track, expired
+  link), the next track starts when this one ends, as before.
 
 ## Verifying
 

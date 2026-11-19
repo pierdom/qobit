@@ -11,27 +11,22 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Added
 
-- **Shuffle** (`S`, or "Shuffle" in the command palette; `qobit --shuffle` for
-  one run). Up Next is put in random order, what you start from a list plays
-  the chosen track first and the rest shuffled, and *Add to queue* lands in a
-  random place. The order is real (Up Next shows it, Previous goes back through
-  what played, gapless lines up the track that is next); turning it off stops
-  shuffling and leaves the queue as it is. The transport bar shows
-  `[ ⤮ SHUFFLE ]`. Not under Qobuz Connect yet.
-
-- **Gapless playback** (on by default; `qobit --no-gapless` for one run, or "Gapless
-  playback: turn off" in the command palette, Ctrl+P, to save it; while on,
-  the transport bar shows a `[ ⇉ GAPLESS ]` tag, beside radio and Connect). Albums, playlists and live records play from one
-  track into the next with no break. In the last 30 seconds of a track qobit
-  fetches the next one and hands it to the same mpv, which has opened it by
-  the time the track ends. If the sample rate or bit depth changes between
-  two tracks (44.1 to 96 kHz, say), the output is reopened for the new
-  format, a short pause: qobit never resamples to hide it. Editing Up Next
-  while a track is lined up takes it back out, and anything that goes wrong
-  falls back to the old behaviour. Skipping with the keys or by picking a row
-  still starts the track fresh, and Qobuz Connect playback is unchanged for
-  now (the server decides track ends there). mpv is also told never to carry
-  one track's sample rate onto the next, whatever your own `mpv.conf` says.
+- **Shuffle.** `S`, "Shuffle" in the command palette, or `qobit --shuffle` for
+  one run. Up Next goes into random order, a track you start from a list plays
+  first with the rest shuffled, and *Add to queue* lands at a random place.
+  The order is real: Up Next shows it and Previous goes back through what
+  played. Turning shuffle off stops shuffling and leaves the queue as it is.
+  The transport bar shows `[ ⤮ SHUFFLE ]`. Not available under Qobuz Connect.
+- **Gapless playback**, on by default. `qobit --no-gapless` turns it off for
+  one run, "Gapless playback" in the command palette saves the choice, and the
+  transport bar shows `[ ⇉ GAPLESS ]` while it is on. In the last 30 seconds
+  of a track qobit hands the next one to the same mpv, which has opened it by
+  the time the track ends. When the sample rate or bit depth changes between
+  two tracks, the output reopens for the new format: a short pause, because
+  qobit never resamples. mpv is started with `--gapless-audio=weak`, so your
+  own `mpv.conf` can't switch resampling on. Editing Up Next takes a lined-up
+  track back out; any failure falls back to the old behaviour. Skipping still
+  starts the track fresh, and Qobuz Connect playback is not gapless yet.
 
 ## [0.12.0] - 2026-11-17
 

@@ -39,14 +39,13 @@ and mixes with the keyboard, and see cover art in the terminal.
   exclusive ALSA `hw:` / CoreAudio devices. An indicator checks it on every
   track; on Linux it reads the rate the DAC actually runs at. Tracks your
   account can only preview (30-second MP3s) are skipped.
-- Gapless playback, on by default: albums and live records run from track to
-  track without a break (a change of sample rate reopens the output, as
-  bit-perfect needs). Turn it off with `--no-gapless` or the command palette.
+- Gapless playback, on by default. A change of sample rate reopens the output:
+  qobit never resamples.
 - Favourite tracks, artists and albums, and your playlists, with sorting and a
   live filter. Add favourites and follow artists from any list with `i`.
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
-- Shuffle (`S`): random order for Up Next and for what you start from a list.
+- Shuffle (`S`).
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
 - Artist pages with top tracks, your favourites by that artist, albums and
   similar artists.
@@ -123,10 +122,9 @@ command palette (`Ctrl+P`, then "Images", saved):
 |---|---|---|---|
 | `1`–`7` | switch tab | `Space` | pause / resume |
 | `/` | filter | `[` `]` | seek 10 s |
-| `s` `r` | sort, reverse | `R` | song radio |
+| `s` `r` | sort, reverse | `R` `S` | song radio, shuffle |
 | `i` | menu: queue, favourite, follow | `g` | go to artist / album |
 | `f` | favourite | `Ctrl+P` | command palette |
-| `S` | shuffle | | |
 
 All keys, and how each tab works, are in [docs/usage.md](https://github.com/pierdom/qobit/blob/main/docs/usage.md).
 From the command line:
@@ -135,8 +133,8 @@ From the command line:
 qobit play "Kind of Blue"   # search, play the first result, check the output format
 qobit devices               # list audio outputs
 qobit --connect-on          # start with Qobuz Connect enabled for this run
-qobit --shuffle             # start shuffled for this run
-qobit --no-gapless          # no gapless playback for this run (--gapless: force on)
+qobit --shuffle             # shuffle for this run
+qobit --no-gapless          # no gapless playback for this run
 ```
 
 ## Documentation

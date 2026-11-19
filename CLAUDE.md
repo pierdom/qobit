@@ -139,28 +139,33 @@ together under `_state_lock`. The poll loop reads both via
 `MpvPlayer.snapshot()`: same gen + not running = natural end (advance), new gen
 = stopped. Reading them separately raced and skipped tracks.
 
-**Shuffle** (`app.shuffle`, config `shuffle`, off by default, `S`, palette, `qobit --shuffle/--no-shuffle`, `[ ⤮ SHUFFLE ]` in the transport title; local only, `check_action` hides the key under Connect). Not a play-time pick: it permutes the timeline itself, so Up Next, Previous, persistence and gapless need nothing special. `LocalPlayContext.load` shuffles the queue it splices in (the chosen track first), `queue_last` inserts at a random place, `shuffle_upcoming` (turning on) permutes Up Next; `queue_next` and the radio refill don't shuffle. Off only stops future shuffling (no original order kept). `tests/test_shuffle.py`.
+**Shuffle** (`app.shuffle`, config `shuffle`, `S`, palette, `--[no-]shuffle`,
+`[ ⤮ SHUFFLE ]`; local only, `check_action` hides the key under Connect). It
+permutes the timeline itself, so Up Next, Previous, persistence and gapless
+need nothing special: `LocalPlayContext.load` shuffles the queue it splices in
+(chosen track first), `queue_last` inserts at a random place,
+`shuffle_upcoming` runs when it is turned on. `queue_next` and the radio
+refill don't shuffle. Off only stops future shuffling. `tests/test_shuffle.py`.
 
-**Gapless** (local playback only; `app.gapless`, config `gapless`, default on, `qobit --gapless/--no-gapless`, palette "Gapless playback", a `[ ⇉ GAPLESS ]` tag in the transport title, hidden under Connect; off = `_maybe_prefetch` queues nothing and `action_toggle_gapless` drops what is queued). Late in a track (`_PREFETCH_SECS`, 30)
-`watch_playback_pos` → `_maybe_prefetch` resolves the next track's stream
-and `MpvPlayer.append`s it (`loadfile … append`, over the IPC socket) to the
-mpv that's playing; the mpv flags `--prefetch-playlist=yes` (opens the stream
-early: at the boundary it left a gap) and `--gapless-audio=weak` do the rest.
-Never `yes`: it keeps the first track's rate and resamples the rest (bit-
-perfect; a user's mpv.conf must not be able to turn it on). `_next_up`
-(track id, stream) is what's queued in mpv; every way it can stop being the
-next track clears it: `watch_queue_version` → `_check_next_up` (a queue edit),
-`_play_stream` (a new mpv), Connect becoming active, and `append` /
-`clear_next` carry the stop generation they mean (`_ipc(only_gen=)`): the
-socket path is the same for every mpv, so a late append would otherwise land
-in the next process. mpv going on by itself shows as `playlist-pos` rising
-(`EntryWatch`, fed by the poll) → `_on_gapless_transition` moves the cursor
-and runs `_begin_track` (the part of `_play_stream` after `player.play`).
-Nothing queued (last track, an unplayable one, offline) = mpv exits at the
-end, and the natural-end path (`_advance_queue`, radio refill) is unchanged;
-endless radio refills ~30 s early so there is a next track to line up. Under
-Connect nothing is queued (`_ctx` isn't local). `tests/test_gapless*.py`: the
-e2e ones run a real mpv (`--ao=null`) and skip without it.
+**Gapless** (local only; `app.gapless`, config `gapless`, default on,
+`--[no-]gapless`, palette, `[ ⇉ GAPLESS ]`, hidden under Connect). Late in a
+track (`_PREFETCH_SECS`, 30) `watch_playback_pos` → `_maybe_prefetch` resolves
+the next stream and `MpvPlayer.append`s it (`loadfile … append` over the IPC
+socket) to the running mpv. `--prefetch-playlist=yes` opens it early (at the
+boundary it left a gap); `--gapless-audio=weak` keeps it bit-perfect. Never
+`yes`: it keeps the first track's rate and resamples the rest, and a user's
+mpv.conf must not turn it on. `_next_up` (track id, stream) is what is queued;
+it is cleared by a queue edit (`watch_queue_version` → `_check_next_up`), a
+new mpv (`_play_stream`), Connect becoming active, and turning gapless off.
+`append`/`clear_next` carry the stop generation they mean (`_ipc(only_gen=)`):
+the socket path is the same for every mpv, so a late append would land in the
+next process. mpv moving on by itself shows as `playlist-pos` rising
+(`EntryWatch`, fed by the poll) → `_on_gapless_transition` moves the cursor and
+runs `_begin_track` (what `_play_stream` does after `player.play`). Nothing
+queued (last track, unplayable, offline) = mpv exits and the natural-end path
+(`_advance_queue`) is unchanged; endless radio refills ~30 s early. Tests:
+`tests/test_gapless*.py`; the e2e ones run a real mpv (`--ao=null`), skipped
+without it.
 
 **Bit-perfect flags.** macOS: `--af-clr`, `--audio-pitch-correction=no`,
 `--audio-exclusive=yes`, `--load-scripts=no` (else the system mpv-mpris
