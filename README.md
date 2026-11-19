@@ -46,6 +46,7 @@ and mixes with the keyboard, and see cover art in the terminal.
   live filter. Add favourites and follow artists from any list with `i`.
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
+- Shuffle (`S`): random order for Up Next and for what you start from a list.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
 - Artist pages with top tracks, your favourites by that artist, albums and
   similar artists.
@@ -125,6 +126,7 @@ command palette (`Ctrl+P`, then "Images", saved):
 | `s` `r` | sort, reverse | `R` | song radio |
 | `i` | menu: queue, favourite, follow | `g` | go to artist / album |
 | `f` | favourite | `Ctrl+P` | command palette |
+| `S` | shuffle | | |
 
 All keys, and how each tab works, are in [docs/usage.md](https://github.com/pierdom/qobit/blob/main/docs/usage.md).
 From the command line:
@@ -133,6 +135,7 @@ From the command line:
 qobit play "Kind of Blue"   # search, play the first result, check the output format
 qobit devices               # list audio outputs
 qobit --connect-on          # start with Qobuz Connect enabled for this run
+qobit --shuffle             # start shuffled for this run
 qobit --no-gapless          # no gapless playback for this run (--gapless: force on)
 ```
 

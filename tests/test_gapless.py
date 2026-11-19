@@ -238,6 +238,7 @@ def test_removing_the_queued_track_takes_it_out_of_mpv_and_queues_the_new_next(g
             assert app._next_up is None
             await wait_until(pilot, lambda: gapless.player.cleared == [gapless.player.gen])
             await _late(gapless, pilot, 176.0)
+            await _late(gapless, pilot, 176.0)  # the poll's next tick
             await wait_until(pilot, lambda: gapless.player.appended == ["url-B", "url-C"])
             assert app._next_up[0] == "C"
 
@@ -332,6 +333,7 @@ def test_the_next_track_is_queued_again_behind_the_one_now_playing(gapless):
             await _late(gapless, pilot, 10.0)
             assert gapless.player.appended == ["url-B"]  # far from the end of B
             await _late(gapless, pilot, 180.0)
+            await _late(gapless, pilot, 176.0)  # the poll's next tick
             await wait_until(pilot, lambda: gapless.player.appended == ["url-B", "url-C"])
 
     _run(body)
@@ -424,3 +426,22 @@ def test_the_flag_and_the_saved_setting(monkeypatch):
     assert QobitApp(connect=False, gapless=True).gapless is True  # the flag wins
     config.set_gapless(True)
     assert QobitApp(connect=False, gapless=False).gapless is False
+
+
+def test_shuffling_while_a_track_is_lined_up_swaps_it(gapless, monkeypatch):
+    import qobit.ui.play_context as pc
+
+    monkeypatch.setattr(pc.random, "shuffle", lambda x: x.reverse())  # B, C -> C, B
+
+    async def body():
+        async with gapless.app.run_test(size=(120, 30)) as pilot:
+            gapless.start()
+            await _late(gapless, pilot, 175.0)
+            await wait_until(pilot, lambda: gapless.player.appended == ["url-B"])
+            gapless.app.action_toggle_shuffle()  # the next track is now C
+            await wait_until(pilot, lambda: gapless.player.cleared == [gapless.player.gen])
+            await _late(gapless, pilot, 176.0)  # the poll's next tick
+            await wait_until(pilot, lambda: gapless.player.appended == ["url-B", "url-C"])
+            assert gapless.app._next_up[0] == "C"
+
+    _run(body)

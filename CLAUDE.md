@@ -139,6 +139,8 @@ together under `_state_lock`. The poll loop reads both via
 `MpvPlayer.snapshot()`: same gen + not running = natural end (advance), new gen
 = stopped. Reading them separately raced and skipped tracks.
 
+**Shuffle** (`app.shuffle`, config `shuffle`, off by default, `S`, palette, `qobit --shuffle/--no-shuffle`, `[ ⤮ SHUFFLE ]` in the transport title; local only, `check_action` hides the key under Connect). Not a play-time pick: it permutes the timeline itself, so Up Next, Previous, persistence and gapless need nothing special. `LocalPlayContext.load` shuffles the queue it splices in (the chosen track first), `queue_last` inserts at a random place, `shuffle_upcoming` (turning on) permutes Up Next; `queue_next` and the radio refill don't shuffle. Off only stops future shuffling (no original order kept). `tests/test_shuffle.py`.
+
 **Gapless** (local playback only; `app.gapless`, config `gapless`, default on, `qobit --gapless/--no-gapless`, palette "Gapless playback", a `[ ⇉ GAPLESS ]` tag in the transport title, hidden under Connect; off = `_maybe_prefetch` queues nothing and `action_toggle_gapless` drops what is queued). Late in a track (`_PREFETCH_SECS`, 30)
 `watch_playback_pos` → `_maybe_prefetch` resolves the next track's stream
 and `MpvPlayer.append`s it (`loadfile … append`, over the IPC socket) to the

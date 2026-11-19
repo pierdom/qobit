@@ -46,13 +46,14 @@ after a session expires, the previous account's data is erased the same way.
 | `i` | Menu for what's highlighted. A track: Play next, Add to queue, Play radio, add/remove from favourites, Go to artist, Go to album (+ Remove from queue on Up Next rows). An album (a card, or the album page): add/remove from favourites. An artist (a card, or the artist page): follow/unfollow |
 | `f` | Favourite / unfavourite the highlighted track |
 | `R` | Song radio from the current track |
+| `S` | Shuffle on/off (see [Shuffle](#shuffle)) |
 | `Enter` | Open the selected item, or play the selected track |
 | `↑` `↓` `←` `→` | Move in lists and grids |
 | `PageUp` / `PageDown` | Move the selection a page at a time |
 | `Home` / `End` | First / last item |
 | `Escape` | Back one level: close an album inside an artist page, then the page; close a detail view; or clear the filter (the footer shows `esc Back` when there's somewhere to go back to). Otherwise focus the tab bar |
 | `-` / `=` | Software volume down / up, only once it's turned on from `Ctrl+P` (they appear in the footer then) |
-| `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Qobuz Connect, software volume |
+| `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Shuffle, Gapless playback, Qobuz Connect, software volume |
 | `q` | Quit |
 
 Albums, artists and playlists you open from Search, `g`, `i` or Similar
@@ -141,6 +142,19 @@ Qobuz): `t` or a click on the name in the panel title switches, `Enter` opens
 an artist, `i` follows them, and `♥` marks artists you already follow. From 128
 columns the header also lists a few similar artists beside the bio. Artists Qobuz has no similar artists for show
 only their albums.
+
+## Shuffle
+
+`S` (or `Ctrl+P` → *Shuffle*) turns shuffle on: Up Next is put in random order
+at once, what you start from a list (an album, a playlist, Tracks, Search…)
+plays the track you chose first and the rest shuffled, and *Add to queue* puts
+the track in a random place in Up Next. *Play next* stays where you put it.
+The order is real: Up Next shows it, Previous goes back through what played,
+it is restored on restart, and gapless lines up the track that is next.
+Turning shuffle off stops shuffling from then on; the queue stays as it is.
+`qobit --shuffle` / `--no-shuffle` sets it for one run; while on, the
+transport bar shows `[ ⤮ SHUFFLE ]`. Not available under Qobuz Connect yet
+(the server owns the queue there).
 
 ## Radio and mixes
 

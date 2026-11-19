@@ -392,6 +392,13 @@ def main() -> None:
         help="Gapless playback for this run (--gapless / --no-gapless; default: the "
         "saved setting, on). Not saved: toggle it from the command palette to persist.",
     )
+    parser.add_argument(
+        "--shuffle",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Shuffle for this run (--shuffle / --no-shuffle; default: the saved "
+        "setting, off). Not saved: toggle it with S or the command palette to persist.",
+    )
     sub = parser.add_subparsers(dest="command")
 
     p_play = sub.add_parser("play", help="Search and play a track")
@@ -461,6 +468,7 @@ def main() -> None:
             connect=True if args.connect_on else None,
             images=args.images,
             gapless=args.gapless,
+            shuffle=args.shuffle,
         ).run()
         sys.exit(0)
 

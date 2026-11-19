@@ -187,6 +187,18 @@ def set_gapless(value: bool) -> None:
     save(cfg)
 
 
+def get_shuffle() -> bool:
+    """Shuffle: what is queued to play next is put in random order (off by
+    default)."""
+    return bool(load().get("shuffle", False))
+
+
+def set_shuffle(value: bool) -> None:
+    cfg = load()
+    cfg["shuffle"] = value
+    save(cfg)
+
+
 def get_radio_mode() -> bool:
     return bool(load().get("radio_mode", False))
 

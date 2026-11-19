@@ -36,6 +36,7 @@ from ..config import (
     get_radio_mode,
     get_saved_theme,
     get_saved_volume,
+    get_shuffle,
     get_software_volume_enabled,
     get_transparent_background,
     save_oauth_session,
@@ -45,6 +46,7 @@ from ..config import (
     set_radio_mode,
     set_saved_theme,
     set_saved_volume,
+    set_shuffle,
     set_software_volume_enabled,
     set_transparent_background,
     token_location,
@@ -157,6 +159,13 @@ class QobitCommands(Provider):
                 "The wordmark's colour cycle and the playing track's bar meter. "
                 "Off saves CPU on slow machines",
                 "motion meter wordmark low power cpu",
+            ),
+            (
+                f"Shuffle: turn {'off' if app.shuffle else 'on'}",
+                app.action_toggle_shuffle,
+                "Put Up Next in random order, and shuffle what you start from a list "
+                "or add to the queue. Turning it off stops shuffling; the queue stays as is",
+                "random",
             ),
             (
                 f"Gapless playback: turn {'off' if app.gapless else 'on'}",
@@ -445,6 +454,7 @@ class QobitApp(App[None]):
         Binding("[", "seek_back", "◀10s"),
         Binding("]", "seek_fwd", "10s▶"),
         Binding("R", "start_radio", "Radio"),
+        Binding("S", "toggle_shuffle", "Shuffle"),
         Binding("i", "track_menu", "Menu", show=False),
         Binding("g", "goto_menu", "Go to", show=False),
         # Software volume (off by default; see action_toggle_software_volume).
@@ -486,6 +496,7 @@ class QobitApp(App[None]):
     # song-radio suggestions. Reactive so the transport indicator stays live.
     radio_mode: reactive[bool] = reactive(False)
     gapless: reactive[bool] = reactive(True)
+    shuffle: reactive[bool] = reactive(False)
     # The wordmark's colour cycle and the bar meter: config `animations`
     # (palette), off as well with TEXTUAL_ANIMATIONS=none. Each frame redraws,
     # which costs on a slow CPU (a Raspberry Pi) for decoration only.
@@ -511,13 +522,15 @@ class QobitApp(App[None]):
         connect: bool | None = None,
         images: str | None = None,
         gapless: bool | None = None,
+        shuffle: bool | None = None,
     ) -> None:
         """``connect`` overrides the saved Qobuz Connect setting for this run
         (``qobit --connect-on``), ``images`` the cover art mode (``qobit
-        --images``), ``gapless`` gapless playback (``--gapless`` / ``--no-gapless``);
-        None = use the saved setting."""
+        --images``), ``gapless`` and ``shuffle`` (``--[no-]gapless``,
+        ``--[no-]shuffle``); None = use the saved setting."""
         super().__init__()
         self.gapless = get_gapless() if gapless is None else gapless
+        self.shuffle = get_shuffle() if shuffle is None else shuffle
         self._image_setting = images or get_image_mode()
         set_image_mode(self._image_setting)  # before anything draws
         for theme in QOBIT_THEMES:
@@ -884,6 +897,8 @@ class QobitApp(App[None]):
             return self.software_volume_enabled
         if action == "back":
             return self._can_go_back()
+        if action == "toggle_shuffle":
+            return self._ctx is self._local_ctx  # under Connect the server owns the order
         return True
 
     def _active_view(self) -> Widget | None:
@@ -1421,6 +1436,16 @@ class QobitApp(App[None]):
         set_animations(self.animations)
         self._flash_status(f"Animations {'on' if self.animations else 'off'}")
 
+    def action_toggle_shuffle(self) -> None:
+        if self._ctx is not self._local_ctx:
+            self._flash_status("Shuffle isn't available under Qobuz Connect yet")
+            return
+        self.shuffle = not self.shuffle
+        set_shuffle(self.shuffle)
+        if self.shuffle:
+            self._local_ctx.shuffle_upcoming()  # Up Next now; turning off leaves it as is
+        self._flash_status(f"Shuffle {'on' if self.shuffle else 'off'}")
+
     def action_toggle_gapless(self) -> None:
         self.gapless = not self.gapless
         set_gapless(self.gapless)
@@ -1955,6 +1980,12 @@ class QobitApp(App[None]):
                     "cursor": self._cursor,
                 },
             )
+
+    def watch_connect_state(self, _: str) -> None:
+        # Shuffle's key shows only while qobit owns the queue. Also set at exit
+        # (_stop_connect), when no screen is left to refresh.
+        if self.screen_stack:
+            self.refresh_bindings()
 
     def watch_queue_version(self, _: int) -> None:
         # Every timeline/cursor change bumps queue_version (local edits, Connect

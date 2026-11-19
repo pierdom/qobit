@@ -11,6 +11,14 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 
 ### Added
 
+- **Shuffle** (`S`, or "Shuffle" in the command palette; `qobit --shuffle` for
+  one run). Up Next is put in random order, what you start from a list plays
+  the chosen track first and the rest shuffled, and *Add to queue* lands in a
+  random place. The order is real (Up Next shows it, Previous goes back through
+  what played, gapless lines up the track that is next); turning it off stops
+  shuffling and leaves the queue as it is. The transport bar shows
+  `[ ⤮ SHUFFLE ]`. Not under Qobuz Connect yet.
+
 - **Gapless playback** (on by default; `qobit --no-gapless` for one run, or "Gapless
   playback: turn off" in the command palette, Ctrl+P, to save it; while on,
   the transport bar shows a `[ ⇉ GAPLESS ]` tag, beside radio and Connect). Albums, playlists and live records play from one
