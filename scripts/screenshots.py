@@ -5,7 +5,7 @@ first: ``qobit auth``), and draws its screen to a PNG cell by cell, with the
 cover art pasted over the image cells at full resolution, as a Kitty-protocol
 terminal shows them. Not a terminal capture: no terminal is involved.
 
-What it shows: the cyberdeck theme, The Verve's "Bitter Sweet Symphony" playing
+What it shows: the cyberdeck theme, Fuzz's "Say Hello" playing
 (no audio is started: the play state is set, the track, album, bio and lyrics
 are the real ones: the lyrics come from LRCLIB, the one request that isn't to
 Qobuz), a progress bar past 75% so its gradient shows, and your real favourites
@@ -43,7 +43,7 @@ COLS, ROWS = 132, 40  # wide enough for the artist page's two track lists + Simi
 CELL_W, CELL_H = 15, 32  # a 2x capture of a 7.5 x 16 px cell
 FONT_PX = 25  # DejaVu Sans Mono's advance at this size: 15 px
 
-NOW_PLAYING = ("Hole", "Violet")  # timed lyrics running past 75% of the track
+NOW_PLAYING = ("Fuzz", "Say Hello")  # timed lyrics, from a band of the artists on the other shots
 ARTIST_PAGE = "Ty Segall"
 ALBUM_PAGE = ("Ty Segall", "Possession")  # an English bio, and a HI-RES readout
 # Scenes that need another size: the Playback tab is 160 wide so the queue, the

@@ -59,6 +59,7 @@ _VARIANT_WORDS = frozenset(
     }
 )
 _SUFFIX = re.compile(r"\s[-–—]\s(.*)$")
+_PART = re.compile(r"\b(?:part|pt)\.?\s*(\d+|[ivx]+)\b")  # "Part 2" is another song
 
 
 def variant(title: str) -> frozenset[str]:
@@ -68,7 +69,8 @@ def variant(title: str) -> frozenset[str]:
     if m := _SUFFIX.search(text):
         parts.append(m.group(1))
     words = {w for part in parts for w in re.findall(r"[^\W\d_]+", part)}
-    return frozenset(words & _VARIANT_WORDS)
+    numbered = {f"part {m.group(1)}" for part in parts for m in _PART.finditer(part)}
+    return frozenset(words & _VARIANT_WORDS) | numbered
 
 
 def _artists(name: str) -> set[str]:

@@ -121,10 +121,10 @@ See [Audio setup](audio.md#gapless-playback).
 line (untimed ones scroll with the arrow and page keys; instrumentals say so).
 The Playback tab shows them next to Now Playing: side by side from about 140
 columns, one above the other from about 36 rows, else `l` swaps the two
-(remembered; each panel's border names the key). `L`, or `l` where both
-already show, on a narrow terminal or on another tab, opens them full screen. `,` and `.`
-shift the timing of this track, and `x` removes wrong lyrics for it; both are
-remembered. They are looked up as a track starts (and the next one's near the
+(remembered; each panel's border names the key). `L` opens them full screen,
+as does `l` where both already show, on a narrow terminal or on another tab.
+`,` and `.` shift the timing of this track, and `x` removes wrong lyrics for
+it; both are remembered. They are looked up as a track starts (and the next one's near the
 end), checked against the track, and cached in `~/.cache/qobit/lyrics`.
 **Each lookup sends the track's artist, title, album and length to LRCLIB**:
 `qobit --no-lyrics` turns them off for one run and `Ctrl+P` → *Lyrics* saves the

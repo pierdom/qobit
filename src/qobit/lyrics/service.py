@@ -7,6 +7,7 @@ UI-agnostic. ``lookup`` never raises: offline or a provider down is a
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass
 
 from . import cache
@@ -59,18 +60,25 @@ class LyricsService:
                 failed = True
                 continue
             if lyrics is not None:
-                await asyncio.to_thread(cache.save, query, lyrics, since)
+                await _remember(cache.save, query, lyrics, since)
                 return _result(lyrics, offset)
         if failed:
             return Result("failed", offset=offset)
-        await asyncio.to_thread(cache.save, query, None, since)
+        await _remember(cache.save, query, None, since)
         return Result("none", offset=offset)
 
     async def set_offset(self, query: Query, offset: float) -> None:
-        await asyncio.to_thread(cache.update, query, offset=offset)
+        await _remember(cache.update, query, offset=offset, since=cache.epoch())
 
     async def reject(self, query: Query) -> None:
-        await asyncio.to_thread(cache.update, query, reject=True)
+        await _remember(cache.update, query, reject=True, since=cache.epoch())
+
+
+async def _remember(write, *args, **kwargs) -> None:
+    """A cache write that can't happen (disk full, read-only ~/.cache) costs
+    the cache, not the app: a failing @work worker would close it."""
+    with contextlib.suppress(OSError, ValueError):
+        await asyncio.to_thread(write, *args, **kwargs)
 
 
 def _result(lyrics: Lyrics | None, offset: float) -> Result:

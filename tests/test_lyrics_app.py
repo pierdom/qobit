@@ -814,3 +814,19 @@ def test_each_section_rule_gives_the_count_and_the_playing_time(lyr):
     assert any("RECENTLY PLAYED" in ln and "2  ·  7:27" in ln for ln in lines)
     assert any("UP NEXT" in ln and "2  ·  12:09" in ln for ln in lines)
     assert not any("queued" in ln or "played" in ln.replace("RECENTLY PLAYED", "") for ln in lines)
+
+
+def test_turning_lyrics_off_in_the_three_column_layout_gives_the_cells_back(lyr):
+    async def body():
+        async with lyr.app.run_test(size=(180, 40)) as pilot:
+            await pilot.pause(0.5)
+            view, hero, _ = _pane(lyr.app)
+            assert view.has_class("-side") and hero.styles.width.unit.name == "CELLS"
+            lyr.app.lyrics_enabled = False  # no resize follows
+            await pilot.pause(0.5)
+            assert not view.has_class("-side")
+            assert hero.styles.width is None or hero.styles.width.unit.name != "CELLS"
+            side = view.query_one("#side")
+            assert hero.region.width == side.region.width  # the hero fills its pane
+
+    _run(body)

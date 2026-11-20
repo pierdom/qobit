@@ -119,10 +119,19 @@ def save(query: Query, lyrics: Lyrics | None, since: int | None = None) -> None:
         _write(query, entry)
 
 
-def update(query: Query, *, offset: float | None = None, reject: bool = False) -> None:
+def update(
+    query: Query,
+    *,
+    offset: float | None = None,
+    reject: bool = False,
+    since: int | None = None,
+) -> None:
     """The reader's choices: a new offset, or these lyrics are wrong (they
-    stop showing; the answer is kept so it is not asked for again)."""
+    stop showing; the answer is kept so it is not asked for again). Nothing
+    if the files were erased after ``since``."""
     with _lock:
+        if since is not None and since != _epoch:
+            return
         entry = load(query) or Entry(lyrics=None, fetched_at=time.time())
         if offset is not None:
             entry.offset = offset

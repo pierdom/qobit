@@ -16,6 +16,7 @@ from typing import Any, Protocol
 import httpx
 
 from .. import __version__
+from ..qobuz.sanitize import clean_json
 from .matching import Candidate, pick
 from .model import Lyrics, Query
 
@@ -100,6 +101,6 @@ class LrcLib:
         if r.status_code != 200:
             raise ProviderError(f"{self.name}: HTTP {r.status_code}")
         try:
-            return r.json()
+            return clean_json(r.json())
         except ValueError as e:
             raise ProviderError(f"{self.name}: unreadable answer") from e

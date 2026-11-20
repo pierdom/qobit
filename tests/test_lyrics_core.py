@@ -416,3 +416,46 @@ def test_service_reject_and_offset_are_remembered_with_the_answer():
 
 def test_service_with_no_providers_finds_nothing():
     assert asyncio.run(LyricsService([]).lookup(Q)).status == "none"
+
+
+# ── what the review found ────────────────────────────────────────────────────
+
+
+def test_lrclib_text_has_its_terminal_escapes_removed():
+    """LRCLIB is user-submitted: an OSC 52 in a line must not reach the terminal."""
+    evil = "[00:10.00]ok\x1b]52;c;ZXZpbA==\x07 done\x9b31m"
+    provider, _ = _lrclib(lambda r: httpx.Response(200, json=_row(syncedLyrics=evil)))
+    got = asyncio.run(provider.find(Q))
+    assert "\x1b" not in got.lines[0].text and "\x07" not in got.lines[0].text
+    assert "\x9b" not in got.lines[0].text
+
+
+def test_a_part_number_is_a_different_song():
+    q = Query("Echoes (Part 2)", "Radiohead", "", 245)
+    other = _cand(title="Echoes (Part 1)", duration=249.0, plain="words")
+    assert pick(q, [other]) is None
+    assert pick(q, [_cand(title="Echoes (Part 2)", duration=245.0, plain="words")]) is not None
+
+
+def test_service_a_cache_that_cannot_be_written_costs_the_cache_not_the_app(monkeypatch):
+    def boom(*a, **k):
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr(lyrics_cache, "save", boom)
+    monkeypatch.setattr(lyrics_cache, "update", boom)
+    service = LyricsService([Fake(LY)])
+
+    async def run():
+        got = await service.lookup(Q)
+        await service.set_offset(Q, 0.5)
+        await service.reject(Q)
+        return got
+
+    assert asyncio.run(run()).status == "found"
+
+
+def test_cache_an_offset_decided_before_an_erase_is_dropped():
+    since = lyrics_cache.epoch()
+    lyrics_cache.clear()
+    lyrics_cache.update(Q, offset=1.0, since=since)
+    assert lyrics_cache.load(Q) is None

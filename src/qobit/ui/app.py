@@ -1633,8 +1633,10 @@ class QobitApp(App[None]):
         self.lyrics_version += 1  # the subtitle shows the offset
         self._flash_status(f"Lyrics {self.lyrics_offset:+.1f} s")
 
-    @work(group="_save_lyrics_offset")
+    @work(group="_save_lyrics_offset", exclusive=True)
     async def _save_lyrics_offset(self, query: Query, offset: float) -> None:
+        if query is self._lyrics_query:  # quick presses: the latest one is what is saved
+            offset = self.lyrics_offset
         await self._lyrics.set_offset(query, offset)
 
     def action_lyrics_reject(self) -> None:

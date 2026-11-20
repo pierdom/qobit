@@ -153,8 +153,10 @@ asks the disk cache, then each provider; a provider error is a `failed` result
 and never cached, nothing found is cached as none for a week. `LrcLib` asks
 `/api/get` (exact), then `/api/search`, and every answer goes through
 `matching.pick`: title and one artist equal after `fold`, timed lyrics within
-`SYNC_TOLERANCE` (2.5 s) of the length, text within `PLAIN_TOLERANCE`; never
-take a first search result. `lyrics_line` is recomputed on each position tick
+`SYNC_TOLERANCE` (2.5 s) of the length, text within `PLAIN_TOLERANCE`, the
+same "Part N"; never take a first search result. LRCLIB is user-submitted:
+its answers go through `sanitize.clean_json` like Qobuz's. A cache write that
+fails is swallowed (`service._remember`): a raising worker closes the app. `lyrics_line` is recomputed on each position tick
 but changes only with the line (`_LYRICS_LEAD` covers the 0.5 s poll), so
 `LyricsView` redraws once per line; it draws a window of centred rows itself
 (Textual drops Rich's `justify`; the SVG screenshot collapses unstyled

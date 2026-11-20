@@ -546,6 +546,7 @@ class QueueView(Widget):
         focused = self.app.focused
         if swapped and focused is not None and focused.id == "now-hero":
             self.query_one("#queue-list", ListView).focus()  # the hero just went
+        self.call_after_refresh(self._proportion)  # the cell widths follow -side
 
     def lyrics_swap(self) -> bool:
         """Whether the hero and the lyrics take turns here (`l` swaps them):
