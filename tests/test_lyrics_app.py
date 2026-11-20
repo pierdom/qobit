@@ -7,6 +7,7 @@ headless with a fake lyrics service (nothing goes to the network)."""
 from __future__ import annotations
 
 import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -80,6 +81,23 @@ def lyr(ui_app, monkeypatch):
 
 def _run(body):
     asyncio.run(body())
+
+
+async def quiet(pilot, still: float = 0.3, timeout: float = 8.0) -> None:
+    """Wait until the layout has stopped changing for ``still`` seconds (the
+    footer fit and the pane widths settle in later passes, and a fixed pause
+    was too short on loaded CI runners). Widget geometry, not the screen's
+    text: the playing track's meter keeps that changing."""
+    last, since = None, time.monotonic()
+    end = since + timeout
+    while time.monotonic() < end:
+        await pilot.pause(0.05)
+        screen = pilot.app.screen_stack[0]
+        now = [(w.id, w.region, w.display) for w in screen.walk_children()]
+        if now != last:
+            last, since = now, time.monotonic()
+        elif time.monotonic() - since >= still:
+            return
 
 
 async def press_until(pilot, key: str, condition, tries: int = 3) -> None:
@@ -707,7 +725,7 @@ def test_the_footer_never_cuts_a_key(lyr, width):
     async def body():
         async with lyr.app.run_test(size=(width, 36)) as pilot:
             lyr.play(_track("A"))
-            await pilot.pause(0.5)
+            await quiet(pilot)
             footer = lyr.app.screen_stack[0].query_one("QobitFooter")
             keys = list(footer.query(FooterKey))
             palette = [k for k in keys if k.has_class("-command-palette")]
@@ -749,14 +767,14 @@ def _shares(view, hero, panel):
 def test_three_columns_start_at_40_30_30_and_the_hero_takes_the_extra_width(lyr, width, shares):
     async def body():
         async with lyr.app.run_test(size=(width, 40)) as pilot:
-            await pilot.pause(0.5)
+            await quiet(pilot)
             view, hero, panel = _pane(lyr.app)
             assert view.has_class("-side")
             for got, want in zip(_shares(view, hero, panel), shares, strict=True):
                 assert abs(got - want) <= 1
             assert panel.region.right == view.region.right  # no gap left over
             await pilot.resize_terminal(width + 1, 40)  # odd and even space alike
-            await pilot.pause(0.5)
+            await quiet(pilot)
             assert panel.region.right == view.region.right
 
     _run(body)
@@ -765,7 +783,7 @@ def test_three_columns_start_at_40_30_30_and_the_hero_takes_the_extra_width(lyr,
 def test_two_columns_are_60_40(lyr):
     async def body():
         async with lyr.app.run_test(size=(120, 40)) as pilot:
-            await pilot.pause(0.5)
+            await quiet(pilot)
             view, _, _ = _pane(lyr.app)
             lst, side = view.query_one("#queue-list"), view.query_one("#side")
             share = lst.region.width / (lst.region.width + side.region.width)
@@ -800,7 +818,7 @@ def _queue_lines(lyr, size=(120, 36), hires=()):
             lyr.play(ts[2], ts[3:])
             lyr.app._timeline, lyr.app._cursor = ts, 2
             lyr.app.queue_version += 1
-            await pilot.pause(1.0)
+            await quiet(pilot)
             out.extend(s.text for s in lyr.app.screen._compositor.render_strips())
 
     _run(body)
@@ -827,11 +845,11 @@ def test_each_section_rule_gives_the_count_and_the_playing_time(lyr):
 def test_turning_lyrics_off_in_the_three_column_layout_gives_the_cells_back(lyr):
     async def body():
         async with lyr.app.run_test(size=(180, 40)) as pilot:
-            await pilot.pause(0.5)
+            await quiet(pilot)
             view, hero, _ = _pane(lyr.app)
             assert view.has_class("-side") and hero.styles.width.unit.name == "CELLS"
             lyr.app.lyrics_enabled = False  # no resize follows
-            await pilot.pause(0.5)
+            await quiet(pilot)
             assert not view.has_class("-side")
             assert hero.styles.width is None or hero.styles.width.unit.name != "CELLS"
             side = view.query_one("#side")
@@ -963,7 +981,7 @@ def test_a_long_favourite_title_keeps_its_heart_and_its_length(lyr):
             lyr.app._cursor = 0
             lyr.app.queue_version += 1
             lyr.app._fav_ids = {"L"}
-            await pilot.pause(1.0)
+            await quiet(pilot)
             out.extend(s.text for s in lyr.app.screen._compositor.render_strips())
 
     _run(body)
