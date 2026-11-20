@@ -125,8 +125,9 @@ class Track:
 
     @property
     def hires(self) -> bool:
-        """Better than CD quality."""
-        return bool((self.bit_depth or 0) > 16 or (self.sampling_rate or 0) > 44.1)
+        """Above CD quality, by the rule of the transport's HI-RES tag: more
+        than 16 bits or more than 48 kHz."""
+        return (self.bit_depth or 16) > 16 or (self.sampling_rate or 0) > 48
 
     def by_artist(self, artist_id: str) -> bool:
         return artist_id in (self.artist_id, self.album_artist_id)

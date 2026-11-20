@@ -17,6 +17,7 @@ from textual.css.query import NoMatches
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
+from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, ListView, Tab, Tabs
 from textual.worker import get_current_worker
@@ -661,6 +662,7 @@ class QobitApp(App[None]):
         self._lyrics_prefetched: str | None = None
         self._lyrics_retries = 0
         self._lyrics_prefetch_retried: set[str] = set()
+        self._lyrics_retry_timer: Timer | None = None
         self._prefetch_failed: str | None = None
         self._prefetching = False
         self._flash_timer: object | None = None
@@ -1519,6 +1521,9 @@ class QobitApp(App[None]):
         self._lyrics_prefetched = None
         self._lyrics_retries = 0
         self._lyrics_prefetch_retried = set()
+        if self._lyrics_retry_timer is not None:
+            self._lyrics_retry_timer.stop()  # it belonged to the last lookup
+            self._lyrics_retry_timer = None
         self.lyrics_line = -1
         if track is None:
             self.lyrics_status = "idle"
@@ -1545,12 +1550,19 @@ class QobitApp(App[None]):
         self.lyrics_version += 1
         if result.status == "failed" and self._lyrics_retries < _LYRICS_RETRIES:
             self._lyrics_retries += 1
-            self.set_timer(_LYRICS_RETRY_SECS, lambda: self._retry_lyrics(track))
+            self._lyrics_retry_timer = self.set_timer(
+                _LYRICS_RETRY_SECS, lambda: self._retry_lyrics(track)
+            )
 
     def _retry_lyrics(self, track: Track) -> None:
         """Ask again for the playing track whose lookup failed."""
         now = self.now_playing
-        if now is None or now.id != track.id or self.lyrics_status != "failed":
+        if (
+            now is None
+            or now.id != track.id
+            or not self.lyrics_enabled
+            or self.lyrics_status != "failed"
+        ):
             return  # another track, or the reader turned them off, or it worked
         self.lyrics_status = "loading"
         self.lyrics_version += 1

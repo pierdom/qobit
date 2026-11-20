@@ -10,8 +10,10 @@ _ANY_TAG = re.compile(r"<[^>]+>")
 def markup_escape(text: str) -> str:
     """``text`` for a markup string, shown as it is. Textual reads any
     ``[Word]`` as a style tag (``[PIAS] Recordings`` lost its label), and
-    rich's ``escape`` only covers lowercase ones: every ``[`` gets a ``\\``."""
-    return text.replace("[", "\\[")
+    rich's ``escape`` only covers lowercase ones: every ``[`` gets a ``\\``.
+    A trailing backslash would escape the closing tag the caller adds after
+    it, so it is dropped."""
+    return text.rstrip("\\").replace("[", "\\[")
 
 
 def within(widget: object, css_class: str) -> bool:

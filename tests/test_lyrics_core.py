@@ -487,6 +487,32 @@ def test_a_track_knows_whether_it_is_better_than_cd_quality():
             }
         )
 
-    assert not track(16, 44.1).hires
+    assert not track(16, 44.1).hires and not track(16, 48).hires
     assert track(24, 44.1).hires and track(16, 96).hires and track(24, 192).hires
     assert not Track.from_api({"id": 1, "title": "t", "performer": {"name": "a"}}).hires
+
+
+def test_hires_follows_the_transports_rule():
+    from qobit.qobuz.models import Track
+
+    def track(depth, rate) -> Track:
+        return Track(
+            id="1", title="t", artist="a", album="b", album_id="1", duration=1,
+            bit_depth=depth, sampling_rate=rate,
+        )  # fmt: skip
+
+    assert not track(16, 44.1).hires and not track(16, 48).hires  # CD and 48 kHz are not
+    assert track(24, 44.1).hires and track(16, 96).hires
+    assert not track(None, None).hires
+
+
+def test_markup_escape_drops_a_trailing_backslash():
+    from textual.content import Content
+
+    from qobit.ui._utils import markup_escape
+
+    ending_in_backslash = "Remix " + chr(92)
+    assert (
+        Content.from_markup(f"[italic]{markup_escape(ending_in_backslash)}[/italic]").plain
+        == "Remix "
+    )

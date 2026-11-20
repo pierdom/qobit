@@ -53,11 +53,6 @@ def _meta(t: Track) -> str:
     return f"{meta_indent(_GUTTER)}{t.album}"
 
 
-def _time(t: Track) -> str:
-    """The right edge of a row's title line: the length, HI-RES before it."""
-    return f"HI-RES  {t.duration_str}" if t.hires else t.duration_str
-
-
 def _total(tracks: list[Track]) -> str:
     """Playing time of ``tracks`` (m:ss, h:mm:ss from an hour), "" if unknown."""
     secs = sum(t.duration for t in tracks)
@@ -192,7 +187,8 @@ class TimelineRow(ListItem):
     def _refresh_primary(self) -> None:  # the beat's redraw (_now_playing.tick)
         self._refresh_title()
 
-    def _primary(self) -> Content:
+    def _primary(self) -> tuple[Content, tuple[str, str] | str]:
+        """The title (gutter, artist — title) and the ♥ that follows it."""
         t = self.track
         lead = {
             "history": "↺",
@@ -200,31 +196,37 @@ class TimelineRow(ListItem):
             "next": f"{self._number}.",
         }[self.role]
         text = f"{t.artist} — {t.display_title}"
+        heart = heart_suffix(self._favorite)
         if self.role == "next":  # the number recedes behind the title
-            return Content.assemble(
-                (gutter(lead, _GUTTER), "$qobit-muted"), text, heart_suffix(self._favorite)
-            )
-        return playing_content(
-            lead, text, False, False, heart_suffix(self._favorite), width=_GUTTER
-        )
+            return Content.assemble((gutter(lead, _GUTTER), "$qobit-muted"), text), heart
+        return playing_content(lead, text, False, False, width=_GUTTER), heart
 
-    def _with_time(self, title: Content) -> Content:
+    def _with_time(self, title: Content, heart: tuple[str, str] | str = "") -> Content:
         """The title line with the length (and HI-RES) at its right edge: drawn
         into the line, so the album line below keeps its whole width. The title
-        gives way with an ellipsis. Unknown width (not laid out yet): as is."""
+        gives way with an ellipsis, never the ♥ after it nor the length. Unknown
+        width (not laid out yet): as is."""
+        suffix = Content.assemble(heart)
         if self._width <= 0:
-            return title
-        time = _time(self.track)
-        room = self._width - len(time) - 2
-        if room < 8:  # a very narrow list: no room for both
-            return title
-        style = "$qobit-muted" if self.role == "next" else ""
-        return Content.assemble(title.truncate(room, ellipsis=True, pad=True), "  ", (time, style))
+            return Content.assemble(title, suffix)
+        time = self.track.duration_str
+        badge = "HI-RES  " if self.track.hires else ""
+        room = max(8, self._width - len(badge) - len(time) - 2)
+        if title.cell_length + suffix.cell_length > room:
+            title = title.truncate(max(1, room - suffix.cell_length), ellipsis=True)
+        left = Content.assemble(title, suffix)
+        left = left.pad_right(max(0, room - left.cell_length))
+        muted = "$qobit-muted" if self.role == "next" else ""
+        parts: list[tuple[str, str] | str] = [left, "  "]
+        if badge:
+            parts.append((badge, "bold $qobit-hires"))
+        parts.append((time, muted))
+        return Content.assemble(*parts)
 
     def _refresh_title(self) -> None:
         with contextlib.suppress(NoMatches):
             # One line (nowrap): no layout pass (see NowPlayingRowMixin).
-            title = plain_if_highlighted(self, self._with_time(self._primary()))
+            title = plain_if_highlighted(self, self._with_time(*self._primary()))
             self.query_one(".row-title", Label).update(title, layout=False)
 
     def on_resize(self, event: Resize) -> None:
@@ -239,7 +241,7 @@ class TimelineRow(ListItem):
             self._refresh_title()
 
     def compose(self) -> ComposeResult:
-        yield Label(self._with_time(self._primary()), classes="row-title")
+        yield Label(self._with_time(*self._primary()), classes="row-title")
         yield Label(_meta(self.track), classes="row-meta", markup=False)
 
     def set_paused(self, paused: bool) -> None:

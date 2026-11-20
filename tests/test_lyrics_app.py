@@ -946,3 +946,45 @@ def test_a_failed_early_fetch_is_asked_for_again_once(lyr, monkeypatch):
             assert lyr.app._lyrics_prefetched == "next"  # a second failure is left alone
 
     _run(body)
+
+
+def test_a_long_favourite_title_keeps_its_heart_and_its_length(lyr):
+    import dataclasses
+
+    out: list[str] = []
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 36)) as pilot:
+            long = dataclasses.replace(
+                _track("L"), artist="Art", title="A very long title " * 6, album="Alb", duration=341
+            )
+            lyr.play(_track("T"), [long])
+            lyr.app._timeline = [_track("T"), long]
+            lyr.app._cursor = 0
+            lyr.app.queue_version += 1
+            lyr.app._fav_ids = {"L"}
+            await pilot.pause(1.0)
+            out.extend(s.text for s in lyr.app.screen._compositor.render_strips())
+
+    _run(body)
+    row = next(ln for ln in out if "Art — A very long" in ln)
+    assert "…" in row and "5:41" in row and "♥" in row
+    assert row.index("…") < row.index("♥") < row.index("5:41")
+
+
+def test_a_pending_retry_does_not_outlive_its_lookup(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.3)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["down"] = Result("failed")
+            lyr.play(_track("down"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "failed")
+            assert lyr.app._lyrics_retry_timer is not None
+            lyr.app.lyrics_enabled = False
+            lyr.app._lyrics_track_changed(lyr.app.now_playing)  # what the switch does
+            assert lyr.app._lyrics_retry_timer is None
+            await pilot.pause(0.6)
+            assert [q.title for q in lyr.service.queries].count("down") == 1
+
+    _run(body)
