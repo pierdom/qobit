@@ -9,8 +9,10 @@ import asyncio
 import math
 import shutil
 import struct
+import subprocess
 import time
 import wave
+from pathlib import Path
 
 import pytest
 
@@ -43,7 +45,22 @@ def rig(ui_app, monkeypatch, tmp_path):
     player = MpvPlayer()
     player._sock = tmp_path / "mpv.sock"
     flags = player._flags
-    monkeypatch.setattr(player, "_flags", lambda: [*flags(), "--ao=null"])
+    monkeypatch.setattr(player, "_flags", lambda: [*flags(), "--ao=null", "--msg-level=all=info"])
+    # Each mpv's own output and exit code, printed when the test fails.
+    real_popen = subprocess.Popen
+    procs: list[tuple[subprocess.Popen, Path]] = []
+
+    def popen(cmd, **kw):
+        log = tmp_path / f"mpv{len(procs)}.log"
+        kw["stderr"] = open(log, "wb")  # noqa: SIM115  # lives with the process
+        kw["stdout"] = kw["stderr"]
+        proc = real_popen(cmd, **kw)
+        procs.append((proc, log))
+        return proc
+
+    monkeypatch.setattr("qobit.audio.player.subprocess.Popen", popen)
+    LOG_SOURCES.clear()
+    LOG_SOURCES.append(procs)
     ui_app._player = player
 
     async def resolve(track_id: str):
@@ -60,6 +77,18 @@ def _track(name: str) -> Track:
 
 
 LOG: list[str] = []  # what happened when, printed when an assertion fails
+LOG_SOURCES: list[list] = []  # the mpv processes of this test (see the rig)
+
+
+def _mpv_report() -> str:
+    out = []
+    for proc, log in LOG_SOURCES[0] if LOG_SOURCES else []:
+        try:
+            text = log.read_text(errors="replace")[-1500:]
+        except OSError:
+            text = "(no log)"
+        out.append(f"--- mpv pid {proc.pid} exit code {proc.poll()}\n{text}")
+    return "\n".join(out)
 
 
 async def _play_through(app, player, pilot, after_queued=None) -> list[tuple[str, int | None]]:
@@ -103,7 +132,7 @@ def test_three_tracks_play_through_one_mpv(rig):
 
     seen = asyncio.run(run())
     assert [name for name, _ in seen] == ["A", "B", "C"]
-    assert len({pid for _, pid in seen}) == 1, "\n".join(LOG)  # one mpv for all three
+    assert len({pid for _, pid in seen}) == 1, "\n".join(LOG) + "\n" + _mpv_report()
     assert app._cursor == 2 and not app.is_playing
 
 

@@ -922,8 +922,8 @@ def test_the_queue_border_says_where_you_are(lyr):
 def test_the_footer_keeps_lyrics_where_it_has_little_room(lyr):
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
-            await pilot.pause(0.3)
-            assert "Lyrics" in _screen_text(lyr.app)
+            await quiet(pilot)
+            await wait_until(pilot, lambda: "Lyrics" in _screen_text(lyr.app))
 
     _run(body)
 
