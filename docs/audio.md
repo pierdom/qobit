@@ -57,6 +57,24 @@ here, because below 100% it changes the samples.
 Option A without the rate drop-in. Everything is resampled to one clock
 (often 48 kHz). Configure A instead if you can.
 
+## When it isn't bit-perfect
+
+`qobit doctor` checks the machine and prints what to change. It changes
+nothing and needs no login:
+
+- mpv is installed and recent enough for gapless, and the saved device is still
+  there and is of a bit-perfect kind.
+- Software volume is off, and your `mpv.conf` doesn't set a volume, sample rate,
+  format, channel layout, ReplayGain or mute (qobit starts mpv with your config).
+- Linux: the DAC's rates and sample sizes; for `alsa/hw:`, whether you can open
+  the card and whether something else is playing on it; for PipeWire/PulseAudio,
+  whether the graph follows each track's rate, with the drop-in for your DAC's
+  rates to paste (see A above).
+- The terminal: true colour, Kitty graphics, tmux passthrough.
+
+It exits with 1 if it found a problem, so it works in a script, and its output
+is safe to paste into an issue.
+
 ## Quality
 
 qobit asks for the best format your subscription allows and falls back in this

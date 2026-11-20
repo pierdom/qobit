@@ -140,6 +140,7 @@ From the command line:
 ```bash
 qobit play "Kind of Blue"   # search, play the first result, check the output format
 qobit devices               # list audio outputs
+qobit doctor                # what could stop the output being bit-perfect, and how to fix it
 qobit --connect-on          # start with Qobuz Connect enabled for this run
 qobit --shuffle             # shuffle for this run
 qobit --no-gapless          # no gapless playback for this run

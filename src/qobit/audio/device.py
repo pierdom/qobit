@@ -41,7 +41,11 @@ def list_devices() -> list[DeviceInfo]:
         raise RuntimeError("mpv not found — install mpv and ensure it is in $PATH") from None
     except subprocess.TimeoutExpired:
         return []
+    return parse_devices(output)
 
+
+def parse_devices(output: str) -> list[DeviceInfo]:
+    """The devices in ``mpv --audio-device=help`` output (see list_devices)."""
     devices: list[DeviceInfo] = []
     # (CARD, DEV) -> human description, collected from the ALSA wrapper PCMs so
     # we can synthesize the raw hw: device that mpv itself never lists.

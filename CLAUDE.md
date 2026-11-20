@@ -20,6 +20,8 @@ src/qobit/
 ├── token_store.py       the session token in the system keyring (else config.json)
 ├── _fs.py               private_dir (0700) / write_private (atomic, 0600)
 ├── store.py             JSON runtime state in DATA_DIR (player/queue state)
+├── doctor.py            qobit doctor: checks over a Probe (the machine, or canned in
+│                        tests), parsers for mpv/ALSA/PipeWire output, render
 ├── account_data.py      what an account leaves on disk; erase (logout), the
 │                        running-TUI lock (qobit.lock)
 ├── library_cache.py     the library lists on disk (shown at start, refreshed)

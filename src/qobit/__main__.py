@@ -201,6 +201,15 @@ def cmd_devices(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(_args: argparse.Namespace) -> int:
+    from .config import get_software_volume_enabled
+    from .doctor import exit_code, render, run_checks
+
+    sections = run_checks(device=get_audio_device(), software_volume=get_software_volume_enabled())
+    print(render(sections), end="")
+    return exit_code(sections)
+
+
 def cmd_set_device(_args: argparse.Namespace) -> int:
     try:
         devices = list_devices()
@@ -430,6 +439,11 @@ def main() -> None:
 
     sub.add_parser("devices", help="List available audio output devices")
     sub.add_parser("set-device", help="Interactively pick and save an audio device")
+    sub.add_parser(
+        "doctor",
+        help="Check what could stop the output being bit-perfect (mpv, the device, "
+        "PipeWire, mpv.conf, the terminal) and print how to fix it; changes nothing",
+    )
     p_auth = sub.add_parser("auth", help="Log in to Qobuz (in the browser), or check the login")
     p_auth.add_argument(
         "action",
@@ -466,6 +480,8 @@ def main() -> None:
         )
     move_token_to_keyring()  # a token still in config.json, now that a keyring is here
 
+    if args.command == "doctor":
+        sys.exit(cmd_doctor(args))
     if args.command == "play":
         sys.exit(asyncio.run(cmd_play(args)))
     elif args.command == "devices":
