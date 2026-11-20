@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 
-from album_pages import wait_until
+from album_pages import quiet, wait_until
 from textual.widget import Widget
 
 from qobit.qobuz.models import Track
@@ -86,7 +86,7 @@ def test_the_beat_and_the_cursor_skip_the_layout_pass(ui_app, monkeypatch):
             lv.focus()
             # The hearts' reconcile, once the favourites are in, is a layout.
             await wait_until(pilot, lambda: ui_app._fav_ids is not None)
-            await pilot.pause(0.3)
+            await quiet(pilot)  # a late layout pass would count against the spy
 
             layouts: list[str] = []
             refresh = Widget.refresh
