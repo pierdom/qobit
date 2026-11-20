@@ -176,6 +176,29 @@ def set_animations(value: bool) -> None:
     save(cfg)
 
 
+def get_lyrics() -> bool:
+    """Show lyrics (on by default). Off: nothing is looked up or shown."""
+    return bool(load().get("lyrics", True))
+
+
+def set_lyrics(value: bool) -> None:
+    cfg = load()
+    cfg["lyrics"] = value
+    save(cfg)
+
+
+def get_lyrics_panel() -> bool:
+    """The Playback tab's right-hand panel shows lyrics instead of the Now
+    Playing details (remembered)."""
+    return bool(load().get("lyrics_panel", False))
+
+
+def set_lyrics_panel(value: bool) -> None:
+    cfg = load()
+    cfg["lyrics_panel"] = value
+    save(cfg)
+
+
 def get_gapless() -> bool:
     """Gapless playback between tracks (on by default)."""
     return bool(load().get("gapless", True))

@@ -6,7 +6,7 @@ Usage:
   qobit set-device
   qobit auth [status]
   qobit logout
-  qobit clear-cache [--covers | --library]
+  qobit clear-cache [--covers | --library | --lyrics]
 
 Running qobit with no arguments launches the TUI.
 """
@@ -245,12 +245,14 @@ def _human_bytes(n: int) -> str:
 
 
 def cmd_clear_cache(args: argparse.Namespace) -> int:
-    """Delete the cover art cache and the saved copy of the library (or one
-    of them: --covers, --library). Both are fetched again when needed."""
+    """Delete the cover art cache, the saved copy of the library and the cached
+    lyrics (or one of them: --covers, --library, --lyrics). All are fetched
+    again when needed."""
     from . import library_cache
+    from .lyrics import cache as lyrics_cache
     from .ui._images import clear_disk_cache
 
-    both = not (args.covers or args.library)
+    both = not (args.covers or args.library or args.lyrics)
     status = 0
     if both or args.covers:
         path, removed, freed = clear_disk_cache()
@@ -275,6 +277,12 @@ def cmd_clear_cache(args: argparse.Namespace) -> int:
             print(f"Cleared the saved copy of the library ({_human_bytes(freed)})")
         else:
             print("No saved copy of the library")
+    if both or args.lyrics:
+        freed = lyrics_cache.clear()
+        if freed:
+            print(f"Cleared the cached lyrics ({_human_bytes(freed)})")
+        else:
+            print("No cached lyrics")
     return status
 
 
@@ -399,6 +407,14 @@ def main() -> None:
         help="Shuffle for this run (--shuffle / --no-shuffle; default: the saved "
         "setting, off). Not saved: toggle it with S or the command palette to persist.",
     )
+    parser.add_argument(
+        "--lyrics",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Lyrics for this run (--lyrics / --no-lyrics; default: the saved setting, "
+        "on). Lookups send the track's artist, title, album and length to LRCLIB. "
+        "Not saved: toggle it from the command palette to persist.",
+    )
     sub = parser.add_subparsers(dest="command")
 
     p_play = sub.add_parser("play", help="Search and play a track")
@@ -438,6 +454,7 @@ def main() -> None:
     )
     p_clear.add_argument("--covers", action="store_true", help="Only the cover art")
     p_clear.add_argument("--library", action="store_true", help="Only the saved library")
+    p_clear.add_argument("--lyrics", action="store_true", help="Only the cached lyrics")
 
     args = parser.parse_args()
 
@@ -469,6 +486,7 @@ def main() -> None:
             images=args.images,
             gapless=args.gapless,
             shuffle=args.shuffle,
+            lyrics=args.lyrics,
         ).run()
         sys.exit(0)
 

@@ -23,6 +23,10 @@ src/qobit/
 ├── account_data.py      what an account leaves on disk; erase (logout), the
 │                        running-TUI lock (qobit.lock)
 ├── library_cache.py     the library lists on disk (shown at start, refreshed)
+├── lyrics/              lyrics, UI-agnostic: lrc.py (LRC + plain), matching.py
+│                        (fold, pick: does it belong to the track), cache.py
+│                        (~/.cache/qobit/lyrics), providers.py (LrcLib),
+│                        service.py (cache → providers, in-flight shared)
 ├── qobuz/client.py      QobuzClient: app_id/secrets from the web bundle, OAuth,
 │                        every API call (see "Qobuz API")
 ├── qobuz/oauth.py       login link + redirect server + pasted-address LoginPrompt
@@ -50,6 +54,7 @@ src/qobit/
     ├── _filter.py       TypeToFilter: `/` filter shared by Tracks/Albums/
     │                    Artists/Playlists (Enter keeps results, Esc clears)
     ├── widgets/lists.py PagedListView (page keys move the cursor; lazy rows)
+    ├── widgets/lyrics.py  LyricsView: the lyrics as a window of rows (no widget per line)
     ├── widgets/transport.py  TransportBar (art, title, progress; click to
     │                    pause/seek)
     └── screens/
@@ -66,6 +71,7 @@ src/qobit/
                          user's favourites by the artist), AlbumCard/AlbumGrid,
                          ArtistCard/ArtistGrid, _GridNav (all shared), ArtistScreen
         playlist_detail.py PlaylistScreen
+        lyrics.py        LyricsScreen: the lyrics page (`L`)
         context_menu.py  ContextMenu (`i`), GoToMenu (`g`)
         login.py         LoginScreen: login dialog over QobuzClient.login_oauth
 ```
@@ -138,6 +144,39 @@ cursor). Connect treats "stale" as handled, not unplayable.
 together under `_state_lock`. The poll loop reads both via
 `MpvPlayer.snapshot()`: same gen + not running = natural end (advance), new gen
 = stopped. Reading them separately raced and skipped tracks.
+
+**Lyrics** (`qobit/lyrics/`, `app.lyrics*`; config `lyrics` on by default,
+`lyrics_panel`; `--[no-]lyrics`; palette "Lyrics"). `watch_now_playing` →
+`_lyrics_track_changed` starts `_load_lyrics` (exclusive worker; the answer is
+dropped if the track changed, lyrics went off or the app stopped). The service
+asks the disk cache, then each provider; a provider error is a `failed` result
+and never cached, nothing found is cached as none for a week. `LrcLib` asks
+`/api/get` (exact), then `/api/search`, and every answer goes through
+`matching.pick`: title and one artist equal after `fold`, timed lyrics within
+`SYNC_TOLERANCE` (2.5 s) of the length, text within `PLAIN_TOLERANCE`, the
+same "Part N"; never take a first search result. LRCLIB is user-submitted:
+its answers go through `sanitize.clean_json` like Qobuz's. A cache write that
+fails is swallowed (`service._remember`): a raising worker closes the app. `lyrics_line` is recomputed on each position tick
+but changes only with the line (`_LYRICS_LEAD` covers the 0.5 s poll), so
+`LyricsView` redraws once per line; it draws a window of centred rows itself
+(Textual drops Rich's `justify`; the SVG screenshot collapses unstyled
+leading spaces, check `strip.text`). Rows are wrapped balanced (`wrap`: the
+narrowest width that keeps the row count), so a last word isn't alone. The
+Playback pane (`#side`, holding `#now-hero` and `#lyrics-panel`) is laid out by
+`QueueView._relayout` from the view's own size (`_SIDE_MIN_W` 140 columns:
+side by side; else `_STACK_MIN_H` 26 rows: one above the other; else the two
+take turns, `l`, `lyrics_swap()`; below `_NARROW_BELOW` neither). Two columns are 60/40; three are sized in cells by
+`_proportion`: list 40 / hero 30 / lyrics 30 at 140 columns, the list giving
+its share to the hero up to 30/40/30 at 200 (lyrics stay at 30%). Classes
+`-side`/`-stack`/`-lyrics`/`-hero-off`; lyrics off = hero alone. The next
+track's lyrics are fetched
+`_LYRICS_PREFETCH_SECS` before the end. The reader's offset and "wrong lyrics"
+live in the cache file and survive new answers; the cache is erased at logout
+(`account_data`) and by `clear-cache --lyrics`. conftest points `lyrics.cache.DIR`
+at a temp dir and replaces `LyricsService.default` with one that asks nobody: a
+test must never reach the network (pass a fake provider/service). Qobuz's own
+API has `has_lyrics` on `track/get` only and no endpoint for the text (probed
+2026-11-19): the provider list is where one would go. `tests/test_lyrics_*.py`.
 
 **Shuffle** (`app.shuffle`, config `shuffle`, `S`, palette, `--[no-]shuffle`,
 `[ ⤮ SHUFFLE ]`; local only, `check_action` hides the key under Connect). It
@@ -400,7 +439,8 @@ focus or classes change. `PagedListView` and the grids override
 only; a class that styles only its own widget (a container's border) goes
 through `_utils.set_own_class`. Every screen uses `nav.QobitFooter`
 (rebuilds its keys once per refresh, only if they changed; Textual's did 4–5
-times per tab switch). `_YearLine` rebuilds only on a real width change:
+times per tab switch; hides the keys that don't fit, last first, never cutting
+one: `_refit`/`_hide_overflow`, on resize and after a rebuild). `_YearLine` rebuilds only on a real width change:
 Textual sends every widget a Resize each time its tab is shown.
 `tests/test_tab_switch_speed.py`.
 
@@ -609,6 +649,7 @@ to 600 px JPEG, cached in memory and in `~/.cache/qobit/images/`.
 ~/.local/share/qobit/qobit.lock        held (shared) by every running TUI
 ~/.cache/qobit/images/                 cover-art cache (qobit clear-cache)
 ~/.cache/qobit/library/                favourites + playlists, last fetched (library_cache)
+~/.cache/qobit/lyrics/                 lyrics per track, offset, "wrong lyrics" (lyrics.cache)
 ```
 
 ## Development
@@ -629,8 +670,10 @@ uv run pytest
   scripts/screenshots.py` (log in first: `qobit auth`). It runs the real app
   headless on your session (paths in a temp dir), draws the screen cell by
   cell with DejaVu Sans Mono (block and box characters drawn, not typeset)
-  and pastes the covers over their cells: cyberdeck, Mogwai "playing" past
-  75% (play state set by hand, no audio), Ty Segall's page and album. Not a
+  and pastes the covers over their cells: cyberdeck, a favourite track with
+  timed lyrics ("playing" past 75%, play state set by hand, no audio; the
+  lyrics come from LRCLIB; the Playback shot is 160x48 so the queue, hero and
+  lyrics sit side by side), Ty Segall's page and album. Not a
   terminal capture. Re-run it after a UI change.
 - Verify UI headless: `app.save_screenshot()` → `rsvg-convert` → PNG (Kitty
   images show as garbage there; real captures need a Kitty-protocol terminal).

@@ -80,6 +80,9 @@ class Track:
     # The album's original release year (the transport shows "Album (1959)").
     # None in queues saved before it existed: they load unchanged.
     album_year: int | None = None
+    # The recording's ISRC: names the track across editions (lyrics are cached
+    # by it). None in lists saved before it existed: they load unchanged.
+    isrc: str | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "Track":
@@ -111,6 +114,7 @@ class Track:
             artist_id=str(performer["id"]) if performer.get("id") else None,
             album_artist_id=str(album_artist["id"]) if album_artist.get("id") else None,
             album_year=release_year(album),
+            isrc=data.get("isrc") or None,
         )
 
     def by_artist(self, artist_id: str) -> bool:

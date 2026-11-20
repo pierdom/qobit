@@ -252,7 +252,9 @@ def _clear_cache(capsys, *flags: str) -> str:
 
     from qobit.__main__ import cmd_clear_cache
 
-    args = argparse.Namespace(covers="--covers" in flags, library="--library" in flags)
+    args = argparse.Namespace(
+        covers="--covers" in flags, library="--library" in flags, lyrics="--lyrics" in flags
+    )
     assert cmd_clear_cache(args) == 0
     return capsys.readouterr().out
 
@@ -295,7 +297,7 @@ def test_clear_cache_leaves_the_library_while_qobit_runs(capsys, monkeypatch):
 
     library, _cover = _seed_caches()
     monkeypatch.setattr(cli, "tui_running", lambda: True)
-    assert cli.cmd_clear_cache(argparse.Namespace(covers=False, library=True)) == 1
+    assert cli.cmd_clear_cache(argparse.Namespace(covers=False, library=True, lyrics=False)) == 1
     assert library.exists()
     assert "quit it first" in capsys.readouterr().err
 
@@ -325,3 +327,21 @@ def test_reselecting_mounts_through_the_row_not_the_whole_list():
             assert len(lv.rows) == 1000
 
     asyncio.run(run())
+
+
+def test_clear_cache_clears_the_lyrics_too_or_only_them(capsys):
+    from qobit.lyrics import Line, Lyrics, Query
+    from qobit.lyrics import cache as lyrics_cache
+
+    q = Query("T", "A", "", 100)
+    library, cover = _seed_caches()
+    lyrics_cache.save(q, Lyrics([Line("x")]))
+    out = _clear_cache(capsys, "--lyrics")
+    assert lyrics_cache.load(q) is None and library.exists() and cover.exists()
+    assert "Cleared the cached lyrics" in out
+    lyrics_cache.save(q, Lyrics([Line("x")]))
+    _clear_cache(capsys, "--covers")
+    assert lyrics_cache.load(q) is not None  # a named list leaves the others
+    out = _clear_cache(capsys)
+    assert lyrics_cache.load(q) is None and not library.exists()
+    assert "No cached lyrics" in _clear_cache(capsys)

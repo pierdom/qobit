@@ -32,6 +32,8 @@ from ..config import (
     get_connect_enabled,
     get_gapless,
     get_image_mode,
+    get_lyrics,
+    get_lyrics_panel,
     get_oauth_session,
     get_radio_mode,
     get_saved_theme,
@@ -43,6 +45,8 @@ from ..config import (
     set_animations,
     set_connect_enabled,
     set_gapless,
+    set_lyrics,
+    set_lyrics_panel,
     set_radio_mode,
     set_saved_theme,
     set_saved_volume,
@@ -52,6 +56,7 @@ from ..config import (
     token_location,
 )
 from ..config import set_image_mode as save_image_mode
+from ..lyrics import Lyrics, LyricsService, Query
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, NoStreamError, Playlist, StreamUrl, Track
 from ..store import load as load_state
@@ -168,6 +173,13 @@ class QobitCommands(Provider):
                 "random",
             ),
             (
+                f"Lyrics: turn {'off' if app.lyrics_enabled else 'on'}",
+                app.action_toggle_lyrics,
+                "Show the lyrics of the playing track (l). Each lookup sends its artist, "
+                "title, album and length to LRCLIB",
+                "words karaoke lrclib",
+            ),
+            (
                 f"Gapless playback: turn {'off' if app.gapless else 'on'}",
                 app.action_toggle_gapless,
                 "Play the next track with no gap: it is queued in mpv shortly before "
@@ -230,6 +242,14 @@ _PREV_RESTART_THRESHOLD = 3.0
 # The next track is queued in mpv (gapless) this many seconds before the
 # current one ends: a stream URL lasts ~10 minutes, so not at the start.
 _PREFETCH_SECS = 30.0
+# The next track's lyrics are fetched this many seconds before the end, so they
+# are there when it starts.
+_LYRICS_PREFETCH_SECS = 45.0
+# The poll reads the position every 0.5 s: the current lyric line is chosen
+# this far ahead, so it is never late by the poll's interval.
+_LYRICS_LEAD = 0.3
+# What a nudge of the lyrics' timing (`,` and `.`) moves them by.
+_LYRICS_STEP = 0.5
 
 
 class QobitApp(App[None]):
@@ -455,6 +475,13 @@ class QobitApp(App[None]):
         Binding("]", "seek_fwd", "10s▶"),
         Binding("R", "start_radio", "Radio"),
         Binding("S", "toggle_shuffle", "Shuffle"),
+        Binding("l", "lyrics", "Lyrics"),
+        Binding("L", "lyrics_full", "Lyrics", show=False),
+        # Listed in the footer only on the lyrics page (its own bindings): the
+        # Playback footer has no room for three more keys.
+        Binding("comma", "lyrics_earlier", "Sync ◀0.5s", show=False),
+        Binding("full_stop", "lyrics_later", "Sync 0.5s▶", show=False),
+        Binding("x", "lyrics_reject", "Wrong lyrics", show=False),
         Binding("i", "track_menu", "Menu", show=False),
         Binding("g", "goto_menu", "Go to", show=False),
         # Software volume (off by default; see action_toggle_software_volume).
@@ -497,6 +524,15 @@ class QobitApp(App[None]):
     radio_mode: reactive[bool] = reactive(False)
     gapless: reactive[bool] = reactive(True)
     shuffle: reactive[bool] = reactive(False)
+    # Lyrics (see _lyrics_track_changed): on/off, what the lookup found for the
+    # playing track ("idle", "off", "loading", "found", "instrumental", "none"
+    # or "failed"), the line being sung, a counter widgets redraw on, and
+    # whether the Playback tab's right panel shows them instead of the hero.
+    lyrics_enabled: reactive[bool] = reactive(True)
+    lyrics_status: reactive[str] = reactive("idle")
+    lyrics_line: reactive[int] = reactive(-1)
+    lyrics_version: reactive[int] = reactive(0)
+    lyrics_panel: reactive[bool] = reactive(False)
     # The wordmark's colour cycle and the bar meter: config `animations`
     # (palette), off as well with TEXTUAL_ANIMATIONS=none. Each frame redraws,
     # which costs on a slow CPU (a Raspberry Pi) for decoration only.
@@ -523,14 +559,17 @@ class QobitApp(App[None]):
         images: str | None = None,
         gapless: bool | None = None,
         shuffle: bool | None = None,
+        lyrics: bool | None = None,
     ) -> None:
         """``connect`` overrides the saved Qobuz Connect setting for this run
         (``qobit --connect-on``), ``images`` the cover art mode (``qobit
         --images``), ``gapless`` and ``shuffle`` (``--[no-]gapless``,
-        ``--[no-]shuffle``); None = use the saved setting."""
+        ``--[no-]shuffle``, ``--[no-]lyrics``); None = use the saved setting."""
         super().__init__()
         self.gapless = get_gapless() if gapless is None else gapless
         self.shuffle = get_shuffle() if shuffle is None else shuffle
+        self.lyrics_enabled = get_lyrics() if lyrics is None else lyrics
+        self.lyrics_panel = get_lyrics_panel()
         self._image_setting = images or get_image_mode()
         set_image_mode(self._image_setting)  # before anything draws
         for theme in QOBIT_THEMES:
@@ -607,6 +646,14 @@ class QobitApp(App[None]):
         # playable (the natural end skips it with a notice); a prefetch under
         # way.
         self._next_up: tuple[str, StreamUrl] | None = None
+        # Lyrics of the playing track: the service (cache + providers), what it
+        # found, the reader's sync offset, and the next track whose lyrics are
+        # already being fetched.
+        self._lyrics = LyricsService.default()
+        self.lyrics: Lyrics | None = None
+        self.lyrics_offset = 0.0
+        self._lyrics_query: Query | None = None
+        self._lyrics_prefetched: str | None = None
         self._prefetch_failed: str | None = None
         self._prefetching = False
         self._flash_timer: object | None = None
@@ -897,6 +944,10 @@ class QobitApp(App[None]):
             return self.software_volume_enabled
         if action == "back":
             return self._can_go_back()
+        if action in ("lyrics_earlier", "lyrics_later"):
+            return self._lyrics_visible() and self.lyrics is not None and self.lyrics.synced
+        if action == "lyrics_reject":
+            return self._lyrics_visible() and self.lyrics_status == "found"
         if action == "toggle_shuffle":
             return self._ctx is self._local_ctx  # under Connect the server owns the order
         return True
@@ -1436,6 +1487,175 @@ class QobitApp(App[None]):
         set_animations(self.animations)
         self._flash_status(f"Animations {'on' if self.animations else 'off'}")
 
+    # ── lyrics ───────────────────────────────────────────────────────────────
+    #
+    # A new now-playing track starts a lookup (disk cache, then LRCLIB: see
+    # qobit/lyrics). The current line is recomputed on each position tick and
+    # `lyrics_line` changes only when the line does, so the views redraw once
+    # per line, not once per tick. The next track's lyrics are fetched near the
+    # end of this one.
+
+    def _lyrics_query_for(self, track: Track) -> Query:
+        return Query(
+            title=track.title,
+            artist=track.artist,
+            album=track.album,
+            duration=track.duration,
+            isrc=track.isrc,
+            version=track.version or "",
+        )
+
+    def _lyrics_track_changed(self, track: Track | None) -> None:
+        self.lyrics = None
+        self.lyrics_offset = 0.0
+        self._lyrics_query = None
+        self._lyrics_prefetched = None
+        self.lyrics_line = -1
+        if track is None:
+            self.lyrics_status = "idle"
+        elif not self.lyrics_enabled:
+            self.lyrics_status = "off"
+        elif not self.is_running:
+            self.lyrics_status = "idle"  # nothing to run a lookup on (yet)
+        else:
+            self._lyrics_query = self._lyrics_query_for(track)
+            self.lyrics_status = "loading"
+            self._load_lyrics(track)
+        self.lyrics_version += 1
+
+    @work(exclusive=True, group="_load_lyrics")  # a newer track cancels a stale lookup
+    async def _load_lyrics(self, track: Track) -> None:
+        result = await self._lyrics.lookup(self._lyrics_query_for(track))
+        now = self.now_playing
+        if not self.is_attached or now is None or now.id != track.id or not self.lyrics_enabled:
+            return
+        self.lyrics = result.lyrics
+        self.lyrics_offset = result.offset
+        self.lyrics_status = result.status
+        self._update_lyrics_line()
+        self.lyrics_version += 1
+
+    def _update_lyrics_line(self) -> None:
+        ly = self.lyrics
+        if ly is None or not ly.synced:
+            return
+        self.lyrics_line = ly.line_at(self.playback_pos + _LYRICS_LEAD - self.lyrics_offset)
+
+    def _maybe_prefetch_lyrics(self) -> None:
+        if (
+            not self.lyrics_enabled
+            or self._ctx is not self._local_ctx
+            or not self.is_playing
+            or self.is_paused
+            or self.playback_dur <= 0
+            or self.playback_dur - self.playback_pos > _LYRICS_PREFETCH_SECS
+        ):
+            return
+        nxt = self._next_track()
+        if nxt is None or nxt.id == self._lyrics_prefetched:
+            return
+        self._lyrics_prefetched = nxt.id
+        self._prefetch_lyrics(nxt)
+
+    @work(group="_prefetch_lyrics")
+    async def _prefetch_lyrics(self, track: Track) -> None:
+        await self._lyrics.lookup(self._lyrics_query_for(track))  # fills the cache
+
+    def _lyrics_screen_open(self) -> bool:
+        from .screens.lyrics import LyricsScreen
+
+        return isinstance(self.screen, LyricsScreen)
+
+    def _queue_view(self) -> Widget | None:
+        """The Playback view, when it is what's on screen."""
+        if len(self.screen_stack) != 1 or self.base_tab() != "queue":
+            return None
+        return self._base_view()
+
+    def _lyrics_visible(self) -> bool:
+        """Lyrics are on screen: their page, or the Playback tab's pane."""
+        if self._lyrics_screen_open():
+            return True
+        view = self._queue_view()
+        return view is not None and view.has_class("-lyrics")
+
+    def watch_lyrics_panel(self, _: bool) -> None:
+        self.refresh_bindings()
+
+    def watch_lyrics_version(self, _: int) -> None:
+        self.refresh_bindings()
+
+    def action_lyrics(self) -> None:
+        """`l`: where the Playback tab has room for the right pane but not for
+        the hero and the lyrics together, it swaps between them; anywhere else
+        (they already show together, or there is no room, or another tab) the
+        lyrics page opens."""
+        view = self._queue_view()
+        if self._lyrics_screen_open():
+            self.action_back()
+        elif view is not None and view.lyrics_swap():  # type: ignore[attr-defined]
+            self.lyrics_panel = not self.lyrics_panel
+            set_lyrics_panel(self.lyrics_panel)
+        else:
+            self.action_lyrics_full()
+
+    def action_lyrics_full(self) -> None:
+        """`L`: the lyrics page, from anywhere (again: back)."""
+        from .screens.lyrics import LyricsScreen
+
+        if self._lyrics_screen_open():
+            self.action_back()
+        elif not self.lyrics_enabled:
+            self._flash_status("Lyrics are off: Ctrl+P → Lyrics")
+        else:
+            self.push_screen(LyricsScreen())
+
+    def action_toggle_lyrics(self) -> None:
+        self.lyrics_enabled = not self.lyrics_enabled
+        set_lyrics(self.lyrics_enabled)
+        self._lyrics_track_changed(self.now_playing)  # looked up now, or cleared
+        self._flash_status(f"Lyrics {'on' if self.lyrics_enabled else 'off'}")
+
+    def action_lyrics_earlier(self) -> None:
+        self._nudge_lyrics(-_LYRICS_STEP)
+
+    def action_lyrics_later(self) -> None:
+        self._nudge_lyrics(_LYRICS_STEP)
+
+    def _nudge_lyrics(self, delta: float) -> None:
+        """Shift the lyrics' timing for this track (remembered with them)."""
+        query = self._lyrics_query
+        if query is None or self.lyrics is None or not self.lyrics.synced:
+            return
+        self.lyrics_offset = round(self.lyrics_offset + delta, 3)
+        self._save_lyrics_offset(query, self.lyrics_offset)
+        self._update_lyrics_line()
+        self.lyrics_version += 1  # the subtitle shows the offset
+        self._flash_status(f"Lyrics {self.lyrics_offset:+.1f} s")
+
+    @work(group="_save_lyrics_offset", exclusive=True)
+    async def _save_lyrics_offset(self, query: Query, offset: float) -> None:
+        if query is self._lyrics_query:  # quick presses: the latest one is what is saved
+            offset = self.lyrics_offset
+        await self._lyrics.set_offset(query, offset)
+
+    def action_lyrics_reject(self) -> None:
+        """`x`: these lyrics are wrong for this track: gone, and not asked for
+        again."""
+        query = self._lyrics_query
+        if query is None or self.lyrics_status != "found":
+            return
+        self._reject_lyrics(query)
+        self.lyrics = None
+        self.lyrics_line = -1
+        self.lyrics_status = "none"
+        self.lyrics_version += 1
+        self._flash_status("Lyrics removed for this track")
+
+    @work(group="_reject_lyrics")
+    async def _reject_lyrics(self, query: Query) -> None:
+        await self._lyrics.reject(query)
+
     def action_toggle_shuffle(self) -> None:
         if self._ctx is not self._local_ctx:
             self._flash_status("Shuffle isn't available under Qobuz Connect yet")
@@ -1760,6 +1980,8 @@ class QobitApp(App[None]):
 
     def watch_playback_pos(self, _: float) -> None:
         self._maybe_prefetch()
+        self._update_lyrics_line()
+        self._maybe_prefetch_lyrics()
 
     def _maybe_prefetch(self) -> None:
         if (
@@ -1901,6 +2123,7 @@ class QobitApp(App[None]):
         if track and track.image_url:
             self._fetch_media_key_art(track.image_url)
         self._save_player_state()
+        self._lyrics_track_changed(track)
 
     # ── player state persistence (survive restarts) ──────────────────────────
 
@@ -2345,4 +2568,5 @@ class QobitApp(App[None]):
         self._media_keys.close()
         self._player.stop()
         await self._client.close()
+        await self._lyrics.aclose()
         await close_client()

@@ -24,6 +24,7 @@ from textual.content import Content
 from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
 from textual.widgets import Footer, Tab, Tabs
+from textual.widgets._footer import FooterKey
 
 from .themes import ACCENT_TEXT, BAR_END, BAR_START, HIRES, text_color
 
@@ -282,6 +283,30 @@ class QobitFooter(Footer):
 
     _shown: tuple | None = None
     _pending = False
+    _fit_width = -1  # the width the keys were last fitted to
+
+    def on_resize(self, event: events.Resize) -> None:
+        if event.size.width != self._fit_width:
+            self._refit()
+
+    def _refit(self) -> None:
+        """Keys that don't fit whole are hidden (the last ones first), never
+        cut mid-label: the footer clipped "S" and "^ppa lette" at 120 columns.
+        Every key is shown first so it can be measured."""
+        for key in self.query(FooterKey):
+            key.display = True
+        self.call_after_refresh(self._hide_overflow)
+
+    def _hide_overflow(self) -> None:
+        if not self.is_attached:
+            return
+        self._fit_width = self.size.width
+        keys = list(self.query(FooterKey))
+        palette = [k for k in keys if k.has_class("-command-palette")]
+        limit = self.region.right - sum(k.outer_size.width for k in palette)
+        for key in keys:
+            if key not in palette and key.region.right > limit:
+                key.display = False
 
     def bindings_changed(self, screen: Screen) -> None:
         self._bindings_ready = True
@@ -305,3 +330,4 @@ class QobitFooter(Footer):
         if keys != self._shown:
             self._shown = keys
             await self.recompose()
+            self._refit()

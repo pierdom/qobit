@@ -14,6 +14,8 @@ import pytest
 
 import qobit.ui.app as app_module
 from qobit import config, library_cache, store
+from qobit.lyrics import LyricsService
+from qobit.lyrics import cache as lyrics_cache
 from qobit.ui import _images
 from qobit.ui.screens import queue as queue_module
 
@@ -68,6 +70,10 @@ def isolated_filesystem_state(tmp_path, monkeypatch):
     monkeypatch.setattr(_images, "_image_mode", None)  # a test that set it leaks to the next
     monkeypatch.setattr(library_cache, "DIR", tmp_path / "cache-library")
     monkeypatch.setattr(library_cache, "_written", {})  # the last save per list
+    monkeypatch.setattr(lyrics_cache, "DIR", tmp_path / "cache-lyrics")
+    # No test reaches a lyrics service: the app's default one asks nobody
+    # (tests of the lookups pass their own providers).
+    monkeypatch.setattr(LyricsService, "default", classmethod(lambda cls: cls([])))
     # A developer's real shell may export these for CLI convenience (the
     # README documents QOBUZ_AUDIO_DEVICE as a valid override); without
     # clearing them, "nothing configured" tests would pass or fail depending

@@ -21,15 +21,18 @@ A bit-perfect Qobuz client for the terminal, on Linux and macOS.
 > qobit is an unofficial project. It is not affiliated with, endorsed by or
 > sponsored by Qobuz. See [Disclaimer](#disclaimer).
 
-qobit is a Qobuz player for the Linux and macOS terminal. It streams hi-res
-FLAC from Qobuz and plays it through mpv, with no resampling and no DSP. The
-output device runs at each track's own sample rate and bit depth, so the DAC
-gets exactly the bits from the file. You browse your Qobuz library, playlists
-and mixes with the keyboard, and see cover art in the terminal.
+qobit is a Qobuz player for Linux and macOS that runs in the terminal, with a
+rich TUI. It streams hi-res FLAC from Qobuz and plays it through mpv, with no
+resampling and no DSP. The output device runs at each track's own sample rate
+and bit depth, so the DAC gets exactly the bits from the file. You browse your
+Qobuz library, playlists and mixes with the keyboard, and see cover art in the
+terminal.
+
+It works best in Ghostty or kitty (see [Terminal](#terminal)).
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/queue_page.png" width="49%" alt="qobit, a Qobuz terminal client: the Playback tab with the queue and the now-playing panel"> <img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/artist_view.png" width="49%" alt="qobit, a Qobuz terminal client: an artist page with bio, top tracks and albums">
+<img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/queue_page.png" width="49%" alt="qobit, a Qobuz terminal client: the Playback tab with the queue, the now-playing panel and synced lyrics"> <img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/artist_view.png" width="49%" alt="qobit, a Qobuz terminal client: an artist page with bio, top tracks and albums">
 
 </div>
 
@@ -46,6 +49,10 @@ and mixes with the keyboard, and see cover art in the terminal.
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
 - Shuffle (`S`).
+- Synced lyrics from LRCLIB, shown beside the now-playing panel when the
+  terminal is big enough (`l`). Each lookup sends the track's artist, title,
+  album and length to lrclib.net; `--no-lyrics` or the command palette turns
+  it off.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
 - Artist pages with top tracks, your favourites by that artist, albums and
   similar artists.
@@ -123,6 +130,7 @@ command palette (`Ctrl+P`, then "Images", saved):
 | `1`–`7` | switch tab | `Space` | pause / resume |
 | `/` | filter | `[` `]` | seek 10 s |
 | `s` `r` | sort, reverse | `R` `S` | song radio, shuffle |
+| `l` `L` | lyrics (panel, full screen) | | |
 | `i` | menu: queue, favourite, follow | `g` | go to artist / album |
 | `f` | favourite | `Ctrl+P` | command palette |
 
@@ -135,6 +143,7 @@ qobit devices               # list audio outputs
 qobit --connect-on          # start with Qobuz Connect enabled for this run
 qobit --shuffle             # shuffle for this run
 qobit --no-gapless          # no gapless playback for this run
+qobit --no-lyrics           # no lyrics (and no lookups) for this run
 ```
 
 ## Documentation
@@ -178,18 +187,23 @@ qobit builds on other people's work:
 
 ## AI-assisted development
 
-Most of qobit's code is written with AI assistance (Claude Code). I direct
-the work, review the changes and test them on my own hardware before they
-are merged. The project follows the usual good practices:
+qobit is _vibe coded_ software: most of the codebase is written with AI
+assistance (Claude Code). I do it with care. I keep full control of the work
+and follow the usual good practices of software development, as far as a
+personal project warrants. Every release is tested manually on Linux and
+macOS. I care that it works well: it is my daily driver for listening to music.
 
-- More than 500 automated tests, run on Linux and macOS for every change.
+Besides that:
+
+- More than 700 automated tests, run on Linux and macOS for every change.
 - Linting and formatting checks (Ruff) in CI.
-- Releases built and published to PyPI by CI, not from a laptop.
+- Releases built and published to PyPI by CI.
+- Dependencies kept up to date with Dependabot.
 - Design decisions and past mistakes written down in
   [CLAUDE.md](https://github.com/pierdom/qobit/blob/main/CLAUDE.md), so they
   are not repeated.
 
-If you find a bug, please
+If you find a bug (there will be some), please
 [open an issue](https://github.com/pierdom/qobit/issues).
 
 ## Disclaimer
