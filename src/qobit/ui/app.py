@@ -482,6 +482,7 @@ class QobitApp(App[None]):
         Binding("S", "toggle_shuffle", "Shuffle"),
         Binding("[", "seek_back", "◀10s"),
         Binding("]", "seek_fwd", "10s▶"),
+        Binding("p", "go_to_playing", "Playing"),
         Binding("L", "lyrics_full", "Lyrics", show=False),
         # Listed in the footer only on the lyrics page (its own bindings): the
         # Playback footer has no room for three more keys.
@@ -959,7 +960,24 @@ class QobitApp(App[None]):
             return self._lyrics_visible() and self.lyrics_status == "found"
         if action == "toggle_shuffle":
             return self._ctx is self._local_ctx  # under Connect the server owns the order
+        if action == "go_to_playing":
+            return self._playing_host() is not None
         return True
+
+    def _playing_host(self) -> object | None:
+        """The track list in use (the focused one's view) that can show where
+        the playing track is, if a track is playing."""
+        if self.now_playing is None or self.focused is None:
+            return None
+        return next(
+            (w for w in self.focused.ancestors_with_self if hasattr(w, "show_playing")), None
+        )
+
+    def action_go_to_playing(self) -> None:
+        """`p`: the cursor on the playing track in the list you're in."""
+        host = self._playing_host()
+        if host is not None and not host.show_playing():  # type: ignore[attr-defined]
+            self._flash_status("The playing track isn't in this list")
 
     def _active_view(self) -> Widget | None:
         return self._base_view()

@@ -7,6 +7,21 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Added
+
+- `p` puts the cursor on the playing track in the list you are in (favourites,
+  search, album, playlist, mix). The Tracks tab's border shows where it is
+  (`▶ 312`).
+
+### Fixed
+
+- In shuffle the cursor on a long track list stopped following the playing
+  track: when the next track was further down than the rows loaded so far, it
+  stayed on the old row for good. It now loads the list down to the playing
+  track and follows until you move the cursor yourself.
+
 ## [0.14.1] - 2026-11-20
 
 ### Fixed
