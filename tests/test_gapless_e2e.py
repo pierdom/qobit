@@ -11,6 +11,7 @@ import shutil
 import struct
 import subprocess
 import time
+import traceback
 import wave
 from pathlib import Path
 
@@ -59,6 +60,17 @@ def rig(ui_app, monkeypatch, tmp_path):
         return proc
 
     monkeypatch.setattr("qobit.audio.player.subprocess.Popen", popen)
+
+    real_stop = player.stop
+
+    def stop():
+        """Who ended the track: the caller's stack, in the failure report."""
+        stack = traceback.extract_stack()[-7:-1]
+        frames = [f"{f.filename.rsplit('/', 1)[-1]}:{f.lineno} {f.name}" for f in stack]
+        LOG.append(f"{time.monotonic() - _T0[0]:5.2f}s stop() <- " + " < ".join(reversed(frames)))
+        real_stop()
+
+    monkeypatch.setattr(player, "stop", stop)
     LOG_SOURCES.clear()
     LOG_SOURCES.append(procs)
     ui_app._player = player
@@ -77,6 +89,7 @@ def _track(name: str) -> Track:
 
 
 LOG: list[str] = []  # what happened when, printed when an assertion fails
+_T0 = [0.0]  # when _play_through started
 LOG_SOURCES: list[list] = []  # the mpv processes of this test (see the rig)
 
 
@@ -95,6 +108,7 @@ async def _play_through(app, player, pilot, after_queued=None) -> list[tuple[str
     """Play A (then B, C) to the end; the order of tracks and the mpv each
     was heard in."""
     LOG.clear()
+    _T0[0] = time.monotonic()
     app.play_track(_track("A"), queue=[_track("B"), _track("C")])
     seen: list[tuple[str, int | None]] = []
     start = time.monotonic()

@@ -4,6 +4,8 @@ a client stub that serves them, and opening the album in each place it shows
 
 from __future__ import annotations
 
+import time
+
 from qobit.qobuz.models import Album, Artist
 from qobit.ui.screens.album_detail import AlbumDetailPanel, AlbumScreen
 from qobit.ui.screens.artist_detail import ArtistHeader
@@ -79,3 +81,20 @@ async def wait_until(pilot, condition, timeout: float = 5.0) -> None:
     code = getattr(condition, "__code__", None)
     where = f"{code.co_filename.rsplit('/', 1)[-1]}:{code.co_firstlineno}" if code else condition
     raise AssertionError(f"condition at {where} not met within {timeout} s")
+
+
+async def quiet(pilot, still: float = 0.3, timeout: float = 8.0) -> None:
+    """Wait until the layout has stopped changing for ``still`` seconds (the
+    footer fit and the pane widths settle in later passes, and a fixed pause
+    was too short on loaded CI runners). Widget geometry, not the screen's
+    text: the playing track's meter keeps that changing."""
+    last, since = None, time.monotonic()
+    end = since + timeout
+    while time.monotonic() < end:
+        await pilot.pause(0.05)
+        screen = pilot.app.screen_stack[0]
+        now = [(w.id, w.region, w.display) for w in screen.walk_children()]
+        if now != last:
+            last, since = now, time.monotonic()
+        elif time.monotonic() - since >= still:
+            return

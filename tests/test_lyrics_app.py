@@ -7,11 +7,10 @@ headless with a fake lyrics service (nothing goes to the network)."""
 from __future__ import annotations
 
 import asyncio
-import time
 from types import SimpleNamespace
 
 import pytest
-from album_pages import wait_until
+from album_pages import quiet, wait_until
 
 from qobit import config
 from qobit.lyrics import Line, Lyrics, Query, Result
@@ -81,23 +80,6 @@ def lyr(ui_app, monkeypatch):
 
 def _run(body):
     asyncio.run(body())
-
-
-async def quiet(pilot, still: float = 0.3, timeout: float = 8.0) -> None:
-    """Wait until the layout has stopped changing for ``still`` seconds (the
-    footer fit and the pane widths settle in later passes, and a fixed pause
-    was too short on loaded CI runners). Widget geometry, not the screen's
-    text: the playing track's meter keeps that changing."""
-    last, since = None, time.monotonic()
-    end = since + timeout
-    while time.monotonic() < end:
-        await pilot.pause(0.05)
-        screen = pilot.app.screen_stack[0]
-        now = [(w.id, w.region, w.display) for w in screen.walk_children()]
-        if now != last:
-            last, since = now, time.monotonic()
-        elif time.monotonic() - since >= still:
-            return
 
 
 async def press_until(pilot, key: str, condition, tries: int = 3) -> None:
