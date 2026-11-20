@@ -356,11 +356,15 @@ def test_l_swaps_the_playback_panel_between_hero_and_lyrics_and_is_remembered(ly
             await pilot.pause(0.2)
             assert hero.display and not panel.display
             await pilot.press("l")
-            await pilot.pause(0.2)
-            assert panel.display and not hero.display and config.get_lyrics_panel() is True
+            await wait_until(
+                pilot,
+                lambda: panel.display and not hero.display and config.get_lyrics_panel() is True,
+            )
             await pilot.press("l")
-            await pilot.pause(0.2)
-            assert hero.display and not panel.display and config.get_lyrics_panel() is False
+            await wait_until(
+                pilot,
+                lambda: hero.display and not panel.display and config.get_lyrics_panel() is False,
+            )
 
     _run(body)
 
@@ -371,19 +375,16 @@ def test_l_on_a_narrow_terminal_or_another_tab_opens_the_page_and_escape_closes_
             app = lyr.app
             await pilot.pause(0.2)
             await pilot.press("l")
-            await pilot.pause(0.3)
-            assert isinstance(app.screen, LyricsScreen) and app.lyrics_panel is False
+            await wait_until(pilot, lambda: isinstance(app.screen, LyricsScreen))
+            assert app.lyrics_panel is False
             await pilot.press("escape")
-            await pilot.pause(0.3)
-            assert not isinstance(app.screen, LyricsScreen)
+            await wait_until(pilot, lambda: not isinstance(app.screen, LyricsScreen))
             app.action_switch_tab("tracks")
-            await pilot.pause(0.3)
+            await wait_until(pilot, lambda: app.base_tab() == "tracks")
             await pilot.press("l")
-            await pilot.pause(0.3)
-            assert isinstance(app.screen, LyricsScreen)
+            await wait_until(pilot, lambda: isinstance(app.screen, LyricsScreen))
             await pilot.press("l")  # again: back
-            await pilot.pause(0.3)
-            assert not isinstance(app.screen, LyricsScreen)
+            await wait_until(pilot, lambda: not isinstance(app.screen, LyricsScreen))
 
     _run(body)
 
@@ -394,11 +395,9 @@ def test_capital_l_opens_the_page_from_anywhere(lyr):
             app = lyr.app
             await pilot.pause(0.2)
             await pilot.press("L")
-            await pilot.pause(0.3)
-            assert isinstance(app.screen, LyricsScreen)
+            await wait_until(pilot, lambda: isinstance(app.screen, LyricsScreen))
             await pilot.press("L")
-            await pilot.pause(0.3)
-            assert not isinstance(app.screen, LyricsScreen)
+            await wait_until(pilot, lambda: not isinstance(app.screen, LyricsScreen))
 
     _run(body)
 
@@ -604,8 +603,8 @@ def test_taking_turns_shows_one_and_each_names_the_key_for_the_other(lyr):
             _, hero, panel = _pane(lyr.app)
             assert hero.display and not panel.display and "l" in hero.border_subtitle
             await pilot.press("l")
-            await pilot.pause(0.3)
-            assert panel.display and not hero.display and "now playing" in panel.border_subtitle
+            await wait_until(pilot, lambda: panel.display and not hero.display)
+            assert "now playing" in panel.border_subtitle
 
     _run(body)
 
@@ -619,8 +618,7 @@ def test_l_opens_the_page_when_both_already_show(lyr, size):
             assert hero.display and panel.display
             assert not hero.border_subtitle and "now playing" not in panel.border_subtitle
             await pilot.press("l")
-            await pilot.pause(0.3)
-            assert isinstance(lyr.app.screen, LyricsScreen)
+            await wait_until(pilot, lambda: isinstance(lyr.app.screen, LyricsScreen))
             assert config.get_lyrics_panel() is False  # nothing was swapped or saved
 
     _run(body)
@@ -667,16 +665,13 @@ def test_a_swapped_lyrics_choice_survives_a_resize_through_the_roomy_layouts(lyr
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
             await pilot.pause(0.3)
-            await pilot.press("l")
-            await pilot.pause(0.3)
             _view, hero, panel = _pane(lyr.app)
-            assert panel.display and not hero.display
+            await pilot.press("l")
+            await wait_until(pilot, lambda: panel.display and not hero.display)
             await pilot.resize_terminal(160, 40)  # room for both
-            await pilot.pause(0.3)
-            assert hero.display and panel.display
+            await wait_until(pilot, lambda: hero.display and panel.display)
             await pilot.resize_terminal(120, 30)  # back to taking turns: still the lyrics
-            await pilot.pause(0.3)
-            assert panel.display and not hero.display
+            await wait_until(pilot, lambda: panel.display and not hero.display)
 
     _run(body)
 
@@ -686,16 +681,15 @@ def test_with_lyrics_off_the_hero_has_the_pane_to_itself(lyr, size):
     async def body():
         async with lyr.app.run_test(size=size) as pilot:
             await pilot.pause(0.2)
-            lyr.app.action_toggle_lyrics()
-            await pilot.pause(0.3)
             _view, hero, panel = _pane(lyr.app)
-            assert hero.display and not panel.display and not hero.border_subtitle
+            lyr.app.action_toggle_lyrics()
+            await wait_until(pilot, lambda: hero.display and not panel.display)
+            assert not hero.border_subtitle
             await pilot.press("l")
-            await pilot.pause(0.3)
+            await pilot.pause(0.5)
             assert not isinstance(lyr.app.screen, LyricsScreen)  # says why instead
             lyr.app.action_toggle_lyrics()
-            await pilot.pause(0.3)
-            assert panel.display == (size != (120, 30))
+            await wait_until(pilot, lambda: panel.display == (size != (120, 30)))
 
     _run(body)
 

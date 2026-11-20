@@ -32,13 +32,13 @@ def _tone(path, freq: float, seconds: float) -> None:
 
 @pytest.fixture
 def rig(ui_app, monkeypatch, tmp_path):
-    """The app on a real mpv (null audio) and three 2 s tracks, A, B, C."""
+    """The app on a real mpv (null audio) and three 4 s tracks, A, B, C."""
     if shutil.which("mpv") is None:
         pytest.skip("mpv isn't installed")
     files = {}
     for name, freq in (("A", 330), ("B", 440), ("C", 550)):
         files[name] = tmp_path / f"{name}.wav"
-        _tone(files[name], freq, 2.0)
+        _tone(files[name], freq, 4.0)  # long enough for a slow runner to queue the next
 
     player = MpvPlayer()
     player._sock = tmp_path / "mpv.sock"
