@@ -674,6 +674,10 @@ uv run pytest
 
 - Tests: `conftest.py` redirects config/store/image paths to a tmp dir; never
   touch those modules' path constants outside it. UI rendering isn't in CI.
+  Never assert after a fixed `pilot.pause` on CI's slow runners: poll
+  (`album_pages.wait_until`), wait for the layout to stop changing
+  (`test_lyrics_app.quiet`), or send a key again (`press_until`); a fixed pause
+  flaked many CI runs and one release gate.
 - Harnesses that build `QobitApp()` read the real config: pass `connect=False`
   (or they evict the user's running qobit), use a scratch `store.DATA_DIR`,
   never start mpv (the socket path is shared), stub `set_saved_theme`.
