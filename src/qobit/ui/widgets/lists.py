@@ -66,13 +66,16 @@ class PagedListView(ListView):
         idx = next((i for i, r in enumerate(rows) if match(r)), None)
         if idx is None:
             return False
+        await self.mount_through(idx)
+        self.index = idx
+        return True
+
+    async def mount_through(self, idx: int) -> None:
+        """Mount the backlog up to row ``idx`` (and a page more, not all of it)."""
         if idx >= len(self._nodes) and self._backlog:
-            # Through that row and a page more, not the whole backlog.
             n = idx - len(self._nodes) + _PAGE_ROWS
             batch, self._backlog = self._backlog[:n], self._backlog[n:]
             await self.mount(*batch)
-        self.index = idx
-        return True
 
     @property
     def rows(self) -> list[ListItem]:

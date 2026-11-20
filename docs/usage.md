@@ -47,6 +47,7 @@ after a session expires, the previous account's data is erased the same way.
 | `f` | Favourite / unfavourite the highlighted track |
 | `R` | Song radio from the current track |
 | `S` | Shuffle on/off |
+| `p` | In a track list (favourites, search, album, playlist, mix): put the cursor on the playing track |
 | `l` `L` | Lyrics: `l` swaps the Playback panel between lyrics and Now Playing where they don't fit together, `L` opens them full screen |
 | `,` `.` `x` | While lyrics show: shift their timing 0.5 s earlier / later; remove wrong lyrics |
 | `Enter` | Open the selected item, or play the selected track |
@@ -132,6 +133,10 @@ end), checked against the track, and cached in `~/.cache/qobit/lyrics`.
 **Each lookup sends the track's artist, title, album and length to LRCLIB**:
 `qobit --no-lyrics` turns them off for one run and `Ctrl+P` → *Lyrics* saves the
 choice. Logout and `qobit clear-cache --lyrics` erase the cache.
+
+In a track list the cursor follows the playing track, shuffled or not, until you
+move it yourself (`p` brings it back). On the Tracks tab the border shows where
+the playing track is (`▶ 312`).
 
 **Shuffle** (`S`, `Ctrl+P` → *Shuffle*, or `qobit --shuffle` for one run) puts
 Up Next in random order. A track you start from a list plays first and the

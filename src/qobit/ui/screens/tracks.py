@@ -124,6 +124,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
             self._loaded = True
             self._load()
         focus_later(self, self.query_one("#fav-tracks", ListView).focus)
+        self._resume_follow()
 
     def on_descendant_focus(self, _: events.DescendantFocus) -> None:
         set_own_class(self.query_one("#tracks-container", Vertical), True, "-focused")
@@ -171,7 +172,13 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
         else:
             arrow = "↓" if self._sort_reverse else "↑"
             label = dict(_SORT_OPTIONS)[self._sort_key]
-            container.border_subtitle = f"{arrow} {label}  ·  {len(self._tracks)}"
+            subtitle = f"{arrow} {label}  ·  {len(self._tracks)}"
+            if (pos := self.playing_position()) is not None:
+                subtitle = f"▶ {pos}  ·  {subtitle}"  # where the playing track is: `p` goes there
+            container.border_subtitle = subtitle
+
+    def _np_changed(self) -> None:
+        self._update_subtitle()
 
     def _apply_sort(self) -> None:
         self._update_subtitle()
@@ -242,6 +249,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
         if (keep := self._reselect) is not None:
             self._reselect = None
             await lv.select_where(lambda r: isinstance(r, FavTrackRow) and r.track.id == keep)  # type: ignore[attr-defined]
+        self._update_subtitle()  # the playing track's place in this order
         if keep_focus:
             focus_later(self, lv.focus)
 

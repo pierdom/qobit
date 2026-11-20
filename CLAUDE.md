@@ -466,9 +466,17 @@ and `.row-meta` never wrap (ellipsis, in `QobitApp.CSS`). Empty and failed
 lists/grids use `_utils.status_line()`; a loading tab sets its border subtitle
 to `loading…`. Resolution is `models.quality_text()` (`24-BIT · 96 kHz`).
 
-**Cursor follows playback** only if it was on the playing row (or nowhere):
-`NowPlayingViewMixin` and the Playback list's rebuild keep a cursor the user
-moved.
+**Cursor follows playback** only while it is where we put it: on the playing
+row, or at `_np_followed` (the mixin's own last placement, which the first
+fill also sets). A cursor the user moved stays. The playing row of a lazily
+mounted list (shuffle lands anywhere) is mounted through (`_follow_to`, a
+worker: `select_where`), else the cursor froze on the old row for good. `p`
+(`app.action_go_to_playing` → the focused list's `show_playing()`) puts it back;
+Tracks shows `▶ N` in its border. A hidden tab mounts nothing (`_np_pending`,
+caught up by `_resume_follow` in `activate`); a newer track or a cursor the
+user moved while a follow was mounting wins (`_mount_and_follow` re-checks).
+The Playback list's rebuild also keeps a cursor the user moved. Tests:
+`tests/test_follow_playing.py`.
 
 **Visual rules** (check every UI change on a rendered screenshot, never on
 computed styles: they misled three times):

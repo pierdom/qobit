@@ -157,6 +157,11 @@ class NowPlayingViewMixin:
     _np_row_cls: type | None = None
     _np_list_sel: str | None = None
     _np_playing_row: object | None = None  # live reference to the highlighted row
+    # Where we last put the cursor: while it is still there, the user hasn't
+    # moved it, so it keeps following playback (even after a track whose row
+    # wasn't there to follow to).
+    _np_followed: int | None = None
+    _np_pending: bool = False  # the track changed while this view was hidden
 
     def _wire_now_playing(self, row_cls: type, list_sel: str | None = None) -> None:
         self._np_row_cls = row_cls
@@ -178,13 +183,18 @@ class NowPlayingViewMixin:
         if self._np_list_sel is not None:
             with contextlib.suppress(NoMatches):
                 lv = self.query_one(self._np_list_sel, ListView)  # type: ignore[attr-defined]
-                follow = lv.index is None or lv.highlighted_child is prev
+                follow = (
+                    lv.index is None
+                    or lv.highlighted_child is prev
+                    or (self._np_followed is not None and lv.index == self._np_followed)
+                )
         if prev is not None:
             with contextlib.suppress(Exception):
                 prev.set_playing(False)  # type: ignore[attr-defined]
             self._np_playing_row = None
 
         if now_id is None:
+            self._np_changed()  # nothing plays: a view drops its "where it is" hint
             return
 
         # Single O(n) pass: find the new row, update it, move cursor.
@@ -199,9 +209,10 @@ class NowPlayingViewMixin:
                     if isinstance(row, self._np_row_cls) and row.track.id == now_id:
                         row.set_playing(True, paused=paused)
                         self._np_playing_row = row
-                        if follow and idx < len(lv.children):
-                            lv.index = idx
+                        if follow:
+                            self._follow_to(lv, row, idx)
                         break
+                self._np_changed()
                 return
             except NoMatches:
                 pass
@@ -212,6 +223,79 @@ class NowPlayingViewMixin:
                 row.set_playing(True, paused=paused)
                 self._np_playing_row = row
                 break
+
+    def _np_changed(self) -> None:
+        """The playing track changed (hook: a view shows where it is)."""
+
+    def _follow_to(self, lv: object, row: object, idx: int) -> None:
+        """Put the cursor on the playing row. In a lazily mounted list (shuffle
+        lands anywhere) that row may not be mounted: mount through it, once,
+        and only while the list is on screen (a hidden tab does it when it is
+        shown: `_resume_follow`)."""
+        self.workers.cancel_group(self, "np_follow")  # type: ignore[attr-defined]  # an older follow
+        if idx < len(lv.children):  # type: ignore[attr-defined]
+            lv.index = idx  # type: ignore[attr-defined]
+            self._np_followed = idx
+            self._np_pending = False
+        elif hasattr(lv, "mount_through"):
+            if self.display:  # type: ignore[attr-defined]
+                self.run_worker(  # type: ignore[attr-defined]
+                    self._mount_and_follow(lv, row), group="np_follow", exclusive=True
+                )
+            else:
+                self._np_pending = True
+
+    def _resume_follow(self) -> None:
+        """A tab that was hidden while the track changed: catch up now."""
+        if self._np_pending:
+            self._np_pending = False
+            self.show_playing()
+
+    async def _mount_and_follow(self, lv: object, row: object) -> None:
+        # A worker that raises closes the app: whatever goes wrong here (the
+        # list rebuilt meanwhile) only means the cursor stays.
+        with contextlib.suppress(Exception):
+            now_id = getattr(self.app.now_playing, "id", None)  # type: ignore[attr-defined]
+            if getattr(row, "track", None) is None or row.track.id != now_id:  # type: ignore[attr-defined]
+                return  # another track is playing by now
+            rows = lv.rows  # type: ignore[attr-defined]
+            if row not in rows:
+                return
+            start = lv.index  # type: ignore[attr-defined]
+            await lv.mount_through(rows.index(row))  # type: ignore[attr-defined]
+            # After the await: another track, or the user's own move, wins.
+            if now_id != getattr(self.app.now_playing, "id", None) or lv.index != start:  # type: ignore[attr-defined]
+                return
+            lv.index = lv.rows.index(row)  # type: ignore[attr-defined]
+            self._np_followed = lv.index  # type: ignore[attr-defined]
+            self._np_changed()
+
+    def playing_position(self) -> int | None:
+        """The playing track's place in the list (1-based), if it is in it."""
+        row = self._np_playing_row
+        if row is None or self._np_list_sel is None:
+            return None
+        with contextlib.suppress(NoMatches, ValueError):
+            lv = self.query_one(self._np_list_sel, ListView)  # type: ignore[attr-defined]
+            rows = getattr(lv, "rows", None) or list(lv.children)
+            if row not in rows:  # the list was refilled: that row is gone
+                self._np_playing_row = None
+                return None
+            return rows.index(row) + 1
+        return None
+
+    def show_playing(self) -> bool:
+        """`p`: the cursor on the playing track. False if it isn't in this list
+        (another list is playing, or a filter hides it)."""
+        row = self._np_playing_row
+        if row is None or self._np_list_sel is None:
+            return False
+        with contextlib.suppress(NoMatches, ValueError):
+            lv = self.query_one(self._np_list_sel, ListView)  # type: ignore[attr-defined]
+            rows = getattr(lv, "rows", None) or list(lv.children)
+            self._follow_to(lv, row, rows.index(row))
+            return True
+        return False
 
     def _on_paused_changed(self, paused: bool) -> None:
         # O(1): update the stored playing row directly.
@@ -239,6 +323,7 @@ class NowPlayingViewMixin:
         playing = self._np_playing_row
         children = list(lv.children)  # type: ignore[attr-defined]
         lv.index = children.index(playing) if playing in children else 0  # type: ignore[attr-defined]
+        self._np_followed = lv.index  # type: ignore[attr-defined]  # ours, not the user's: it follows
 
     def _apply_now_playing(self, rows: list, *, first_batch: bool = True) -> None:
         """Mark the playing track in a batch of rows before mounting.
@@ -248,6 +333,7 @@ class NowPlayingViewMixin:
         """
         if first_batch:
             self._np_playing_row = None  # reset stale reference at start of mount
+            self._np_followed = None  # a rebuilt list: indexes mean something else
         if self._np_playing_row is not None:
             return  # already found in a previous batch
         app = self.app  # type: ignore[attr-defined]

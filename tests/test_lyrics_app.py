@@ -435,14 +435,13 @@ def test_the_page_draws_the_sung_line_in_the_middle_and_follows_it(lyr):
             app = lyr.app
             lyr.play(_track("A"), pos=21.0)
             await wait_until(pilot, lambda: app.lyrics is not None)
-            await pilot.press("L")
-            await pilot.pause(0.4)
+            await press_until(pilot, "L", lambda: isinstance(app.screen, LyricsScreen))
+            await wait_until(pilot, lambda: "third line" in _screen_text(app))
             text = _screen_text(app)
             assert "first line" in text and "second line" in text and "third line" in text
             assert "LRCLIB" in text and "LYRICS" in text
             app.playback_pos = 31.0
-            await pilot.pause(0.2)
-            assert app.lyrics_line == 2
+            await wait_until(pilot, lambda: app.lyrics_line == 2)
             assert "third line" in _screen_text(app)
 
     _run(body)
@@ -455,8 +454,8 @@ def test_the_sung_line_is_drawn_in_a_different_style(lyr):
             lyr.play(_track("A"), pos=21.0)
             await wait_until(pilot, lambda: app.lyrics is not None)
             app.playback_pos = 21.0
-            await pilot.press("L")
-            await pilot.pause(0.4)
+            await press_until(pilot, "L", lambda: isinstance(app.screen, LyricsScreen))
+            await quiet(pilot)
             view = app.screen.query_one(LyricsView)
             text = view.render()
             styles = {
@@ -487,12 +486,10 @@ def test_the_page_says_quietly_why_there_are_no_lines(lyr, status, words):
         async with lyr.app.run_test(size=(120, 30)) as pilot:
             app = lyr.app
             await pilot.pause(0.3)
-            await pilot.press("L")
-            await pilot.pause(0.3)
+            await press_until(pilot, "L", lambda: isinstance(app.screen, LyricsScreen))
             app.lyrics_status = status
             app.lyrics_version += 1
-            await pilot.pause(0.2)
-            assert words in _screen_text(app)
+            await wait_until(pilot, lambda: words in _screen_text(app))
 
     _run(body)
 
@@ -504,16 +501,14 @@ def test_untimed_lyrics_scroll_and_do_not_follow(lyr):
             lyr.play(_track("B"))
             await wait_until(pilot, lambda: app.lyrics is PLAIN)
             await pilot.pause(0.3)
-            await pilot.press("L")
-            await pilot.pause(0.4)
-            assert "plain 0" in _screen_text(app) and "plain 59" not in _screen_text(app)
+            await press_until(pilot, "L", lambda: isinstance(app.screen, LyricsScreen))
+            await wait_until(pilot, lambda: "plain 0" in _screen_text(app))
+            assert "plain 59" not in _screen_text(app)
             await pilot.press("pagedown", "pagedown")
-            await pilot.pause(0.2)
-            text = _screen_text(app)
-            assert "plain 0 " not in text and "plain 40" in text
+            await wait_until(pilot, lambda: "plain 40" in _screen_text(app))
+            assert "plain 0 " not in _screen_text(app)
             await pilot.press("pageup", "pageup", "pageup")
-            await pilot.pause(0.2)
-            assert "plain 0" in _screen_text(app)  # clamped at the top
+            await wait_until(pilot, lambda: "plain 0" in _screen_text(app))  # clamped at the top
 
     _run(body)
 
@@ -927,8 +922,8 @@ def test_the_queue_border_says_where_you_are(lyr):
 def test_the_footer_keeps_lyrics_where_it_has_little_room(lyr):
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
-            await pilot.pause(0.3)
-            assert "Lyrics" in _screen_text(lyr.app)
+            await quiet(pilot)
+            await wait_until(pilot, lambda: "Lyrics" in _screen_text(lyr.app))
 
     _run(body)
 
