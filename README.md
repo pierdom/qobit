@@ -21,11 +21,14 @@ A bit-perfect Qobuz client for the terminal, on Linux and macOS.
 > qobit is an unofficial project. It is not affiliated with, endorsed by or
 > sponsored by Qobuz. See [Disclaimer](#disclaimer).
 
-qobit is a Qobuz player for the Linux and macOS terminal. It streams hi-res
-FLAC from Qobuz and plays it through mpv, with no resampling and no DSP. The
-output device runs at each track's own sample rate and bit depth, so the DAC
-gets exactly the bits from the file. You browse your Qobuz library, playlists
-and mixes with the keyboard, and see cover art in the terminal.
+qobit is a Qobuz player for Linux and macOS that runs in the terminal, with a
+rich TUI. It streams hi-res FLAC from Qobuz and plays it through mpv, with no
+resampling and no DSP. The output device runs at each track's own sample rate
+and bit depth, so the DAC gets exactly the bits from the file. You browse your
+Qobuz library, playlists and mixes with the keyboard, and see cover art in the
+terminal.
+
+It works best in Ghostty or kitty (see [Terminal](#terminal)).
 
 <div align="center">
 
@@ -183,18 +186,23 @@ qobit builds on other people's work:
 
 ## AI-assisted development
 
-Most of qobit's code is written with AI assistance (Claude Code). I direct
-the work, review the changes and test them on my own hardware before they
-are merged. The project follows the usual good practices:
+qobit is _vibe coded_ software: most of the codebase is written with AI
+assistance (Claude Code). I do it with care. I keep full control of the work
+and follow the usual good practices of software development, as far as a
+personal project warrants. Every release is tested manually on Linux and
+macOS. I care that it works well: it is my daily driver for listening to music.
 
-- More than 500 automated tests, run on Linux and macOS for every change.
+Besides that:
+
+- More than 700 automated tests, run on Linux and macOS for every change.
 - Linting and formatting checks (Ruff) in CI.
-- Releases built and published to PyPI by CI, not from a laptop.
+- Releases built and published to PyPI by CI.
+- Dependencies kept up to date with Dependabot.
 - Design decisions and past mistakes written down in
   [CLAUDE.md](https://github.com/pierdom/qobit/blob/main/CLAUDE.md), so they
   are not repeated.
 
-If you find a bug, please
+If you find a bug (there will be some), please
 [open an issue](https://github.com/pierdom/qobit/issues).
 
 ## Disclaimer
