@@ -777,8 +777,9 @@ def test_two_columns_are_60_40(lyr):
 # ── queue rows ───────────────────────────────────────────────────────────────
 
 
-def _queue_lines(lyr, size=(120, 36)):
-    """The Playback list's rendered text lines, with a past, a now and an Up Next."""
+def _queue_lines(lyr, size=(120, 36), hires=()):
+    """The Playback list's rendered text lines, with a past, a now and an Up Next
+    (``hires``: the indexes of the tracks with better than CD quality)."""
     import dataclasses
 
     out: list[str] = []
@@ -786,7 +787,14 @@ def _queue_lines(lyr, size=(120, 36)):
     async def body():
         async with lyr.app.run_test(size=size) as pilot:
             ts = [
-                dataclasses.replace(_track(f"T{i}"), artist=f"Art{i}", album=f"Alb{i}", duration=d)
+                dataclasses.replace(
+                    _track(f"T{i}"),
+                    artist=f"Art{i}",
+                    album=f"Alb{i}",
+                    duration=d,
+                    bit_depth=24 if i in hires else 16,
+                    sampling_rate=96 if i in hires else 44.1,
+                )
                 for i, d in enumerate((200, 247, 294, 341, 388))
             ]
             lyr.play(ts[2], ts[3:])
@@ -880,5 +888,61 @@ def test_a_retry_does_not_land_on_another_track(lyr, monkeypatch):
             await pilot.pause(0.8)
             assert lyr.app.lyrics is SYNCED
             assert [q.title for q in lyr.service.queries].count("down") == 1
+
+    _run(body)
+
+
+def test_a_hires_track_shows_it_before_its_length_and_a_cd_one_does_not(lyr):
+    lines = _queue_lines(lyr, hires=(3,))
+    assert any("Art3" in ln and "HI-RES  5:41" in ln for ln in lines)
+    assert not any("HI-RES" in ln and "Art4" in ln for ln in lines)
+    row = next(ln for ln in lines if "Art3" in ln)
+    right = row.index("│", row.index("│") + 1)  # the list's right border
+    assert row[:right].rstrip().endswith("5:41")  # still at the edge
+
+
+def test_the_queue_border_says_where_you_are(lyr):
+    lines = _queue_lines(lyr)
+    assert any("3 of 5" in ln for ln in lines)
+
+
+def test_the_footer_keeps_lyrics_where_it_has_little_room(lyr):
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause(0.3)
+            assert "Lyrics" in _screen_text(lyr.app)
+
+    _run(body)
+
+
+def test_short_lyrics_sit_in_the_middle_of_the_panel(lyr):
+    async def body():
+        async with lyr.app.run_test(size=(180, 40)) as pilot:
+            lyr.play(_track("A"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "found")
+            await pilot.pause(0.3)
+            _, _, panel = _pane(lyr.app)
+            rows = [s.text for s in lyr.app.screen._compositor.render_strips()]
+            first = next(n for n, r in enumerate(rows) if "first line" in r)
+            assert first - panel.region.y > 3  # not hugging the top border
+            below = panel.region.bottom - 1 - max(n for n, r in enumerate(rows) if "line" in r)
+            assert abs(below - (first - panel.region.y - 1)) <= 2  # about even above and below
+
+    _run(body)
+
+
+def test_a_failed_early_fetch_is_asked_for_again_once(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.2)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["next"] = Result("failed")
+            lyr.app._lyrics_prefetched = "next"
+            lyr.app._prefetch_lyrics(_track("next"))
+            await wait_until(pilot, lambda: lyr.app._lyrics_prefetched is None, timeout=3)
+            lyr.app._lyrics_prefetched = "next"
+            lyr.app._prefetch_lyrics(_track("next"))
+            await pilot.pause(0.6)
+            assert lyr.app._lyrics_prefetched == "next"  # a second failure is left alone
 
     _run(body)

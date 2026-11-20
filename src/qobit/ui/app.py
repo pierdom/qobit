@@ -474,11 +474,13 @@ class QobitApp(App[None]):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("space", "pause", "Pause"),
-        Binding("[", "seek_back", "◀10s"),
-        Binding("]", "seek_fwd", "10s▶"),
+        # The footer hides keys from the end when it is short: the ones that
+        # matter most come first (the seek keys are on the mouse and `[` `]`).
+        Binding("l", "lyrics", "Lyrics"),
         Binding("R", "start_radio", "Radio"),
         Binding("S", "toggle_shuffle", "Shuffle"),
-        Binding("l", "lyrics", "Lyrics"),
+        Binding("[", "seek_back", "◀10s"),
+        Binding("]", "seek_fwd", "10s▶"),
         Binding("L", "lyrics_full", "Lyrics", show=False),
         # Listed in the footer only on the lyrics page (its own bindings): the
         # Playback footer has no room for three more keys.
@@ -658,6 +660,7 @@ class QobitApp(App[None]):
         self._lyrics_query: Query | None = None
         self._lyrics_prefetched: str | None = None
         self._lyrics_retries = 0
+        self._lyrics_prefetch_retried: set[str] = set()
         self._prefetch_failed: str | None = None
         self._prefetching = False
         self._flash_timer: object | None = None
@@ -1515,6 +1518,7 @@ class QobitApp(App[None]):
         self._lyrics_query = None
         self._lyrics_prefetched = None
         self._lyrics_retries = 0
+        self._lyrics_prefetch_retried = set()
         self.lyrics_line = -1
         if track is None:
             self.lyrics_status = "idle"
@@ -1576,7 +1580,14 @@ class QobitApp(App[None]):
 
     @work(group="_prefetch_lyrics")
     async def _prefetch_lyrics(self, track: Track) -> None:
-        await self._lyrics.lookup(self._lyrics_query_for(track))  # fills the cache
+        result = await self._lyrics.lookup(self._lyrics_query_for(track))  # fills the cache
+        if result.status == "failed" and track.id not in self._lyrics_prefetch_retried:
+            self._lyrics_prefetch_retried.add(track.id)  # once: the position tick asks again
+            self.set_timer(_LYRICS_RETRY_SECS, lambda: self._forget_prefetch(track.id))
+
+    def _forget_prefetch(self, track_id: str) -> None:
+        if self._lyrics_prefetched == track_id:
+            self._lyrics_prefetched = None
 
     def _lyrics_screen_open(self) -> bool:
         from .screens.lyrics import LyricsScreen

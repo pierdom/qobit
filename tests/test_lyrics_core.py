@@ -471,3 +471,22 @@ def test_cache_a_choice_kept_before_the_isrc_was_known_is_found_with_it():
     lyrics_cache.update(full, reject=True)  # moves to the ISRC key
     assert lyrics_cache.load(full).rejected and lyrics_cache.load(full).offset == 1.5
     assert lyrics_cache.load(bare) is None  # no stale copy under the old key
+
+
+def test_a_track_knows_whether_it_is_better_than_cd_quality():
+    from qobit.qobuz.models import Track
+
+    def track(depth, rate) -> Track:
+        return Track.from_api(
+            {
+                "id": 1,
+                "title": "t",
+                "maximum_bit_depth": depth,
+                "maximum_sampling_rate": rate,
+                "performer": {"name": "a"},
+            }
+        )
+
+    assert not track(16, 44.1).hires
+    assert track(24, 44.1).hires and track(16, 96).hires and track(24, 192).hires
+    assert not Track.from_api({"id": 1, "title": "t", "performer": {"name": "a"}}).hires

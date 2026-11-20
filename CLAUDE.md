@@ -92,6 +92,10 @@ matched by track id, reconfigured, moved; only new tracks mounted, leftovers
 removed last; one reconcile at a time under a lock). Never clear and remount
 it: that flickered and lost the scroll position. `tests/test_queue_reconcile.py`
 checks it against the timeline. `jump_to`/`play_track` are `@work`.
+A row's length (and HI-RES, from `Track.hires`: `bit_depth`/`sampling_rate`) is
+drawn into its title line (`TimelineRow._with_time`, on resize), not a docked
+widget: a dock took the width off the album line too. The list's border
+subtitle is `N of M` (cursor of timeline).
 
 **`queue_version`** is bumped on every timeline/cursor change; widgets watch it.
 Any new timeline mutator must bump it and exist in **both** play contexts.

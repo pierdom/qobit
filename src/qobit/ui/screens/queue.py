@@ -53,6 +53,11 @@ def _meta(t: Track) -> str:
     return f"{meta_indent(_GUTTER)}{t.album}"
 
 
+def _time(t: Track) -> str:
+    """The right edge of a row's title line: the length, HI-RES before it."""
+    return f"HI-RES  {t.duration_str}" if t.hires else t.duration_str
+
+
 def _total(tracks: list[Track]) -> str:
     """Playing time of ``tracks`` (m:ss, h:mm:ss from an hour), "" if unknown."""
     secs = sum(t.duration for t in tracks)
@@ -134,9 +139,6 @@ class TimelineRow(ListItem):
     DEFAULT_CSS = """
     TimelineRow { height: 2; padding: 0 1; }
     TimelineRow Label { width: 1fr; }
-    /* The duration sits at the right of the title line; docked, it takes its
-       width off the title (which then ends in an ellipsis), never overlaps. */
-    TimelineRow .row-dur { dock: right; width: auto; height: 1; padding-left: 2; }
     TimelineRow.-next .row-title { text-style: bold; }
     TimelineRow.-next .row-meta { color: $qobit-muted; }
     TimelineRow.-history .row-title { color: $qobit-muted; }
@@ -157,6 +159,7 @@ class TimelineRow(ListItem):
         self._number = 0
         self._favorite = False
         self._is_paused = False
+        self._width = 0  # the title line's width, once laid out (see _with_time)
 
     def configure(
         self,
@@ -205,11 +208,30 @@ class TimelineRow(ListItem):
             lead, text, False, False, heart_suffix(self._favorite), width=_GUTTER
         )
 
+    def _with_time(self, title: Content) -> Content:
+        """The title line with the length (and HI-RES) at its right edge: drawn
+        into the line, so the album line below keeps its whole width. The title
+        gives way with an ellipsis. Unknown width (not laid out yet): as is."""
+        if self._width <= 0:
+            return title
+        time = _time(self.track)
+        room = self._width - len(time) - 2
+        if room < 8:  # a very narrow list: no room for both
+            return title
+        style = "$qobit-muted" if self.role == "next" else ""
+        return Content.assemble(title.truncate(room, ellipsis=True, pad=True), "  ", (time, style))
+
     def _refresh_title(self) -> None:
         with contextlib.suppress(NoMatches):
             # One line (nowrap): no layout pass (see NowPlayingRowMixin).
-            title = plain_if_highlighted(self, self._primary())
+            title = plain_if_highlighted(self, self._with_time(self._primary()))
             self.query_one(".row-title", Label).update(title, layout=False)
+
+    def on_resize(self, event: Resize) -> None:
+        width = self.content_size.width
+        if width != self._width:
+            self._width = width
+            self._refresh_title()
 
     def watch_highlighted(self, value: bool) -> None:
         super().watch_highlighted(value)  # ListItem: the -highlight class
@@ -217,8 +239,7 @@ class TimelineRow(ListItem):
             self._refresh_title()
 
     def compose(self) -> ComposeResult:
-        yield Label(self.track.duration_str, classes="row-meta row-dur", markup=False)
-        yield Label(self._primary(), classes="row-title")
+        yield Label(self._with_time(self._primary()), classes="row-title")
         yield Label(_meta(self.track), classes="row-meta", markup=False)
 
     def set_paused(self, paused: bool) -> None:
@@ -726,7 +747,10 @@ class QueueView(Widget):
         lv._backlog = desired[limit:]  # type: ignore[attr-defined]
         await self._apply(lv, desired[:limit])
 
-        lv.border_subtitle = ""  # the section rules carry the counts and times
+        # Where you are in the timeline (the section rules carry counts and times).
+        lv.border_subtitle = (
+            f"{app._cursor + 1} of {len(app._timeline)}" if now_playing and app._cursor >= 0 else ""
+        )
 
         target = now_row if follow or held not in desired else held
         self._place_cursor(lv, target, center=first_render)

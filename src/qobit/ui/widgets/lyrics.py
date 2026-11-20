@@ -217,6 +217,8 @@ class LyricsView(Widget):
         top = max(0, min(top, max(0, len(rows) - height)))
         accent = theme_color(app, ACCENT_TEXT)
         text = Text(no_wrap=True, overflow="ellipsis")
+        if len(rows) < height:  # all of it fits: the block sits in the middle
+            text.append("\n" * ((height - len(rows)) // 2))
         for n, (row, index) in enumerate(rows[top : top + height]):
             if n:
                 text.append("\n")
