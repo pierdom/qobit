@@ -124,6 +124,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
             self._loaded = True
             self._load()
         focus_later(self, self.query_one("#fav-tracks", ListView).focus)
+        self._resume_follow()
 
     def on_descendant_focus(self, _: events.DescendantFocus) -> None:
         set_own_class(self.query_one("#tracks-container", Vertical), True, "-focused")

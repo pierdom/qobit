@@ -2182,6 +2182,7 @@ class QobitApp(App[None]):
     # ── media key sync ───────────────────────────────────────────────────────
 
     def watch_now_playing(self, track: Track | None) -> None:
+        self._refresh_bindings_if_shown()  # `p` shows only while something plays
         self._media_keys.update(
             track, self.is_playing, self.is_paused, self.playback_pos, self.playback_dur
         )

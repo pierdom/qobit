@@ -105,7 +105,7 @@ def test_the_border_says_where_the_playing_track_is(ui_app):
             ui_app.now_playing = _track(250)
             box = ui_app.screen.query_one("#tracks-container")
             await wait_until(pilot, lambda: "▶ 251" in str(box.border_subtitle), timeout=8)
-            assert lv.index == 250 or lv.index is not None
+            await wait_until(pilot, lambda: lv.index == 250, timeout=8)
 
     _run(body)
 
@@ -159,5 +159,80 @@ def test_following_survives_a_track_from_another_list(ui_app):
             assert lv.index == 0  # nothing to follow to
             ui_app.now_playing = _track(7)  # back in this list: the cursor, untouched, follows
             await wait_until(pilot, lambda: lv.index == 7)
+
+    _run(body)
+
+
+def test_the_border_hint_goes_when_nothing_plays_any_more(ui_app):
+    _stub(ui_app)
+
+    async def body():
+        async with ui_app.run_test(size=(130, 40)) as pilot:
+            await _open_tracks(ui_app, pilot)
+            box = ui_app.screen.query_one("#tracks-container")
+            ui_app.now_playing = _track(250)
+            await wait_until(pilot, lambda: "▶ 251" in str(box.border_subtitle), timeout=8)
+            ui_app.now_playing = None
+            await wait_until(pilot, lambda: "▶" not in str(box.border_subtitle))
+
+    _run(body)
+
+
+def test_a_newer_track_wins_over_a_follow_still_mounting(ui_app):
+    _stub(ui_app)
+
+    async def body():
+        async with ui_app.run_test(size=(130, 40)) as pilot:
+            lv = await _open_tracks(ui_app, pilot)
+            ui_app.now_playing = _track(0)
+            await wait_until(pilot, lambda: lv.index == 0)
+            real = lv.mount_through
+
+            async def slow(idx):  # the mount is still going when the next track starts
+                await asyncio.sleep(0.4)
+                await real(idx)
+
+            lv.mount_through = slow
+            ui_app.now_playing = _track(250)  # starts mounting
+            await pilot.pause(0.1)
+            ui_app.now_playing = _track(5)  # skipped before it finished
+            await wait_until(pilot, lambda: lv.index == 5)
+            await pilot.pause(1.0)
+            assert lv.index == 5  # the late mount didn't take the cursor to 250
+
+    _run(body)
+
+
+def test_a_tab_you_are_not_on_mounts_nothing_and_catches_up_when_shown(ui_app):
+    _stub(ui_app)
+
+    async def body():
+        async with ui_app.run_test(size=(130, 40)) as pilot:
+            lv = await _open_tracks(ui_app, pilot)
+            ui_app.now_playing = _track(0)
+            await wait_until(pilot, lambda: lv.index == 0)
+            view = ui_app.screen.query_one("#view-tracks")
+            ui_app.action_switch_tab("queue")
+            await wait_until(pilot, lambda: not view.display)  # really hidden
+            ui_app.now_playing = _track(250)
+            await pilot.pause(0.6)
+            assert len(lv.children) == 100  # no rows mounted behind your back
+            ui_app.action_switch_tab("tracks")
+            await wait_until(pilot, lambda: lv.index == 250, timeout=8)
+
+    _run(body)
+
+
+def test_the_footer_gains_p_when_a_track_starts(ui_app):
+    _stub(ui_app)
+
+    async def body():
+        async with ui_app.run_test(size=(130, 40)) as pilot:
+            await _open_tracks(ui_app, pilot)
+            seen = []
+            real = ui_app.refresh_bindings
+            ui_app.refresh_bindings = lambda: (seen.append(1), real())[1]
+            ui_app.now_playing = _track(1)
+            await wait_until(pilot, lambda: bool(seen))
 
     _run(body)

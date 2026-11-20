@@ -213,6 +213,7 @@ class MixesView(NowPlayingViewMixin, Widget):
         """Called by QobitApp when this tab becomes active: first load, focus."""
         if self._tracks:
             focus_later(self, self.query_one("#mix-track-list", TrackListView).focus)
+            self._resume_follow()
         else:  # nothing open yet: start on the DailyQ card
             focus_later(self, self.query(MixCard).first().focus)
 
