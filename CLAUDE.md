@@ -163,7 +163,9 @@ narrowest width that keeps the row count), so a last word isn't alone. The
 Playback pane (`#side`, holding `#now-hero` and `#lyrics-panel`) is laid out by
 `QueueView._relayout` from the view's own size (`_SIDE_MIN_W` 140 columns:
 side by side; else `_STACK_MIN_H` 26 rows: one above the other; else the two
-take turns, `l`, `lyrics_swap()`; below `_NARROW_BELOW` neither). Classes
+take turns, `l`, `lyrics_swap()`; below `_NARROW_BELOW` neither). Two columns are 60/40; three are sized in cells by
+`_proportion`: list 40 / hero 30 / lyrics 30 at 140 columns, the list giving
+its share to the hero up to 30/40/30 at 200 (lyrics stay at 30%). Classes
 `-side`/`-stack`/`-lyrics`/`-hero-off`; lyrics off = hero alone. The next
 track's lyrics are fetched
 `_LYRICS_PREFETCH_SECS` before the end. The reader's offset and "wrong lyrics"

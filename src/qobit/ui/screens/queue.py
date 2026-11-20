@@ -22,6 +22,7 @@ from ...qobuz.models import Track
 from .._images import fetch_image
 from .._now_playing import (
     GUTTER_NUM,
+    gutter,
     heart_suffix,
     meta_indent,
     plain_if_highlighted,
@@ -49,7 +50,15 @@ _UP_NEXT_PAGE = 60
 
 
 def _meta(t: Track) -> str:
-    return f"{meta_indent(_GUTTER)}{t.album}  ·  {t.duration_str}"
+    return f"{meta_indent(_GUTTER)}{t.album}"
+
+
+def _total(tracks: list[Track]) -> str:
+    """Playing time of ``tracks`` (m:ss, h:mm:ss from an hour), "" if unknown."""
+    secs = sum(t.duration for t in tracks)
+    h, rest = divmod(secs, 3600)
+    m, sec = divmod(rest, 60)
+    return "" if not secs else f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
 
 
 class SectionHeader(ListItem):
@@ -77,6 +86,7 @@ class SectionHeader(ListItem):
         super().__init__(disabled=True)
         self.section = title
         self._count = count
+        self._total = ""
         self._width = self._INITIAL_WIDTH_GUESS
         self.set_class(spaced, "-spaced")
 
@@ -90,18 +100,21 @@ class SectionHeader(ListItem):
         self._width = event.size.width - pad
         self.query_one(Label).update(self._line(self._width))
 
-    def set_count(self, count: int, spaced: bool) -> None:
+    def set_count(self, count: int, spaced: bool, total: str = "") -> None:
         self.set_class(spaced, "-spaced")
-        if count == self._count:
+        if (count, total) == (self._count, self._total):
             return
-        self._count = count
+        self._count, self._total = count, total
         with contextlib.suppress(NoMatches):
             self.query_one(Label).update(self._line(self._width))
 
     def _line(self, width: int) -> Text:
         # Uppercase rule: the timeline reads as a console readout.
         left = f"── {self.section.upper()} "
-        right = f" {self._count} ──" if self._count is not None else "──"
+        if self._count is None:
+            right = "──"
+        else:
+            right = f" {self._count}{'  ·  ' + self._total if self._total else ''} ──"
         # `width` is the Label's content width; -1 leaves slack for the list's
         # scrollbar gutter so the rule never wraps onto a second line.
         fill = max(2, width - len(left) - len(right) - 1)
@@ -121,6 +134,9 @@ class TimelineRow(ListItem):
     DEFAULT_CSS = """
     TimelineRow { height: 2; padding: 0 1; }
     TimelineRow Label { width: 1fr; }
+    /* The duration sits at the right of the title line; docked, it takes its
+       width off the title (which then ends in an ellipsis), never overlaps. */
+    TimelineRow .row-dur { dock: right; width: auto; height: 1; padding-left: 2; }
     TimelineRow.-next .row-title { text-style: bold; }
     TimelineRow.-next .row-meta { color: $qobit-muted; }
     TimelineRow.-history .row-title { color: $qobit-muted; }
@@ -181,6 +197,10 @@ class TimelineRow(ListItem):
             "next": f"{self._number}.",
         }[self.role]
         text = f"{t.artist} — {t.display_title}"
+        if self.role == "next":  # the number recedes behind the title
+            return Content.assemble(
+                (gutter(lead, _GUTTER), "$qobit-muted"), text, heart_suffix(self._favorite)
+            )
         return playing_content(
             lead, text, False, False, heart_suffix(self._favorite), width=_GUTTER
         )
@@ -197,6 +217,7 @@ class TimelineRow(ListItem):
             self._refresh_title()
 
     def compose(self) -> ComposeResult:
+        yield Label(self.track.duration_str, classes="row-meta row-dur", markup=False)
         yield Label(self._primary(), classes="row-title")
         yield Label(_meta(self.track), classes="row-meta", markup=False)
 
@@ -466,13 +487,13 @@ class QueueView(Widget):
     }
     /* The right pane: the hero and the lyrics (see _relayout for which show).
        One above the other by default, side by side when -side. */
-    QueueView #side { width: 2fr; max-width: 66; height: 1fr; layout: vertical; }
-    /* Side by side: the list keeps ~40%; the lyrics get a little more than the
-       hero (their lines are long), the hero never less than its cover needs. */
+    QueueView #side { width: 2fr; height: 1fr; layout: vertical; }
+    /* Two columns: list 60%, right pane 40%. Three: sized in cells by
+       _proportion (list 40 / hero 30 / lyrics 30, the hero growing with width). */
     QueueView.-side #queue-list { width: 4fr; }
-    QueueView.-side #side { width: 6fr; max-width: 132; layout: horizontal; }
-    QueueView.-side #now-hero { width: 4fr; min-width: 38; }
-    QueueView.-side #lyrics-panel { width: 5fr; }
+    QueueView.-side #side { width: 6fr; layout: horizontal; }
+    QueueView.-side #now-hero { width: 1fr; min-width: 38; }
+    QueueView.-side #lyrics-panel { width: 1fr; }
     QueueView #lyrics-panel { width: 1fr; height: 1fr; display: none; }
     QueueView.-lyrics #lyrics-panel { display: block; }
     QueueView.-hero-off #now-hero { display: none; }
@@ -534,6 +555,26 @@ class QueueView(Widget):
 
     def on_resize(self, event: Resize) -> None:
         self._relayout(event.size)
+        self.call_after_refresh(self._proportion)
+
+    def _proportion(self) -> None:
+        """Side by side, the three panes are sized in cells from the width.
+        Near _SIDE_MIN_W: list 40%, hero 30%, lyrics 30%. Wider, the list
+        shrinks (its rows are short) and the hero takes it, up to 30/40/30
+        at 200 columns; the lyrics stay at 30% (long lines read worse)."""
+        lst = self.query_one("#queue-list")
+        hero = self.query_one("#now-hero")
+        panel = self.query_one("#lyrics-panel")
+        if not self.has_class("-side"):
+            lst.styles.width = hero.styles.width = panel.styles.width = None
+            return
+        room = self.query_one("#queue-body").size.width - 2  # two gaps
+        t = min(1.0, max(0.0, (room + 2 - self._SIDE_MIN_W) / 60))
+        widths = {lst: round(room * (0.40 - 0.10 * t)), panel: round(room * 0.30)}
+        widths[hero] = max(38, room - widths[lst] - widths[panel])
+        for w, cells in widths.items():
+            if w.styles.width is None or w.styles.width.value != cells:
+                w.styles.width = cells
 
     def activate(self) -> None:
         """Called by QobitApp when this tab becomes active: first load, focus."""
@@ -637,7 +678,7 @@ class QueueView(Widget):
         now_row: TimelineRow | None = None
         if history:
             header = headers.get("Recently Played") or SectionHeader("Recently Played")
-            header.set_count(len(history), spaced=False)
+            header.set_count(len(history), spaced=False, total=_total(history))
             desired.append(header)
             for t in history:
                 row = row_for(t)
@@ -656,7 +697,7 @@ class QueueView(Widget):
             ti += 1
         if queue:
             header = headers.get("Up Next") or SectionHeader("Up Next")
-            header.set_count(len(queue), spaced=bool(history or now_playing))
+            header.set_count(len(queue), spaced=bool(history or now_playing), total=_total(queue))
             desired.append(header)
             for n, t in enumerate(queue, 1):
                 row = row_for(t)
@@ -684,12 +725,7 @@ class QueueView(Widget):
         lv._backlog = desired[limit:]  # type: ignore[attr-defined]
         await self._apply(lv, desired[:limit])
 
-        parts: list[str] = []
-        if history:
-            parts.append(f"{len(history)} played")
-        if queue:
-            parts.append(f"{len(queue)} queued")
-        lv.border_subtitle = "  ·  ".join(parts)
+        lv.border_subtitle = ""  # the section rules carry the counts and times
 
         target = now_row if follow or held not in desired else held
         self._place_cursor(lv, target, center=first_render)

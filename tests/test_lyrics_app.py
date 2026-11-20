@@ -575,7 +575,7 @@ def test_side_by_side_puts_the_hero_left_of_the_lyrics_on_the_same_rows(lyr):
             assert lst.region.right <= hero.region.x < hero.region.right <= panel.region.x
             assert hero.region.y == panel.region.y and hero.region.height == panel.region.height
             assert hero.region.width >= 38  # what its cover needs
-            assert panel.region.width >= hero.region.width  # lyrics lines are long
+            assert panel.region.width >= 38
             assert panel.region.right <= view.region.right
 
     _run(body)
@@ -734,3 +734,83 @@ def test_wrapped_rows_are_balanced_so_a_last_word_is_not_alone():
     rows = wrap("one two three four five six seven eight nine ten eleven twelve", 30)
     assert len(rows) == 3 and max(map(len, rows)) - min(map(len, rows)) <= 5
     assert wrap("fits", 30) == ["fits"]
+
+
+def _shares(view, hero, panel):
+    lst = view.query_one("#queue-list")
+    total = lst.region.width + hero.region.width + panel.region.width + 2
+    return [round(100 * w.region.width / total) for w in (lst, hero, panel)]
+
+
+@pytest.mark.parametrize(
+    ("width", "shares"),
+    [(142, [39, 30, 29]), (180, [33, 36, 30]), (200, [30, 39, 30]), (260, [30, 39, 30])],
+)
+def test_three_columns_start_at_40_30_30_and_the_hero_takes_the_extra_width(lyr, width, shares):
+    async def body():
+        async with lyr.app.run_test(size=(width, 40)) as pilot:
+            await pilot.pause(0.5)
+            view, hero, panel = _pane(lyr.app)
+            assert view.has_class("-side")
+            for got, want in zip(_shares(view, hero, panel), shares, strict=True):
+                assert abs(got - want) <= 1
+            assert panel.region.right == view.region.right  # no gap left over
+            await pilot.resize_terminal(width + 1, 40)  # odd and even space alike
+            await pilot.pause(0.5)
+            assert panel.region.right == view.region.right
+
+    _run(body)
+
+
+def test_two_columns_are_60_40(lyr):
+    async def body():
+        async with lyr.app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause(0.5)
+            view, _, _ = _pane(lyr.app)
+            lst, side = view.query_one("#queue-list"), view.query_one("#side")
+            share = lst.region.width / (lst.region.width + side.region.width)
+            assert share == pytest.approx(0.6, abs=0.02)
+
+    _run(body)
+
+
+# ── queue rows ───────────────────────────────────────────────────────────────
+
+
+def _queue_lines(lyr, size=(120, 36)):
+    """The Playback list's rendered text lines, with a past, a now and an Up Next."""
+    import dataclasses
+
+    out: list[str] = []
+
+    async def body():
+        async with lyr.app.run_test(size=size) as pilot:
+            ts = [
+                dataclasses.replace(_track(f"T{i}"), artist=f"Art{i}", album=f"Alb{i}", duration=d)
+                for i, d in enumerate((200, 247, 294, 341, 388))
+            ]
+            lyr.play(ts[2], ts[3:])
+            lyr.app._timeline, lyr.app._cursor = ts, 2
+            lyr.app.queue_version += 1
+            await pilot.pause(1.0)
+            out.extend(s.text for s in lyr.app.screen._compositor.render_strips())
+
+    _run(body)
+    return out
+
+
+def test_the_duration_is_at_the_right_edge_of_the_title_line(lyr):
+    lines = _queue_lines(lyr)
+    row = next(ln for ln in lines if "Art3" in ln)
+    left = row.index("│") + 1
+    right = row.index("│", left)  # the list's right border
+    assert row[:right].rstrip().endswith("5:41")
+    assert "5:41" not in next(ln for ln in lines if "Alb3" in ln)  # not on the album line
+    assert row[left:right].rindex("5:41") + 4 == right - left - 1  # one column of padding
+
+
+def test_each_section_rule_gives_the_count_and_the_playing_time(lyr):
+    lines = _queue_lines(lyr)
+    assert any("RECENTLY PLAYED" in ln and "2  ·  7:27" in ln for ln in lines)
+    assert any("UP NEXT" in ln and "2  ·  12:09" in ln for ln in lines)
+    assert not any("queued" in ln or "played" in ln.replace("RECENTLY PLAYED", "") for ln in lines)
