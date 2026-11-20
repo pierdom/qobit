@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
-from rich.markup import escape
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -17,7 +16,7 @@ from textual_image.widget import TGPImage
 from ...qobuz.models import Playlist
 from .._filter import TypeToFilter, filter_prompt
 from .._images import fetch_image
-from .._utils import focus_later, readout, status_line
+from .._utils import focus_later, markup_escape, readout, status_line
 from ..widgets.art import Art, square_width
 from .artist_detail import (
     GRID_CARD_IMG_H,
@@ -100,7 +99,9 @@ class PlaylistCard(Widget):
     def compose(self) -> ComposeResult:
         yield Art(self._playlist.name, rows=GRID_CARD_IMG_H)
         with Vertical(classes="card-info"):
-            yield Label(escape(self._playlist.name), classes="card-name card-primary", markup=True)
+            yield Label(
+                markup_escape(self._playlist.name), classes="card-name card-primary", markup=True
+            )
             # Plain text: the CSS gives the muted colour, or the selection's
             # text colour when selected ([dim] markup halved it there).
             yield Label(

@@ -82,6 +82,20 @@ def _run(body):
     asyncio.run(body())
 
 
+async def press_until(pilot, key: str, condition, tries: int = 3) -> None:
+    """Press ``key`` until ``condition()`` holds. On CI runners a key pressed
+    soon after the app starts is now and then not acted on (never seen
+    locally, whatever the load), so it is sent again when nothing happened;
+    the conditions here only hold after the key has been taken."""
+    for _ in range(tries):
+        await pilot.press(key)
+        for _ in range(40):  # 2 s
+            if condition():
+                return
+            await pilot.pause(0.05)
+    await wait_until(pilot, condition)  # fails with the usual message
+
+
 def _screen_text(app) -> str:
     return "\n".join(s.text for s in app.screen._compositor.render_strips())
 
@@ -355,12 +369,16 @@ def test_l_swaps_the_playback_panel_between_hero_and_lyrics_and_is_remembered(ly
             hero, panel = view.query_one("#now-hero"), view.query_one("#lyrics-panel")
             await pilot.pause(0.2)
             assert hero.display and not panel.display
-            await pilot.press("l")
-            await pilot.pause(0.2)
-            assert panel.display and not hero.display and config.get_lyrics_panel() is True
-            await pilot.press("l")
-            await pilot.pause(0.2)
-            assert hero.display and not panel.display and config.get_lyrics_panel() is False
+            await press_until(
+                pilot,
+                "l",
+                lambda: panel.display and not hero.display and config.get_lyrics_panel() is True,
+            )
+            await press_until(
+                pilot,
+                "l",
+                lambda: hero.display and not panel.display and config.get_lyrics_panel() is False,
+            )
 
     _run(body)
 
@@ -370,20 +388,14 @@ def test_l_on_a_narrow_terminal_or_another_tab_opens_the_page_and_escape_closes_
         async with lyr.app.run_test(size=(90, 30)) as pilot:  # narrower than the panel needs
             app = lyr.app
             await pilot.pause(0.2)
-            await pilot.press("l")
-            await pilot.pause(0.3)
-            assert isinstance(app.screen, LyricsScreen) and app.lyrics_panel is False
+            await press_until(pilot, "l", lambda: isinstance(app.screen, LyricsScreen))
+            assert app.lyrics_panel is False
             await pilot.press("escape")
-            await pilot.pause(0.3)
-            assert not isinstance(app.screen, LyricsScreen)
+            await wait_until(pilot, lambda: not isinstance(app.screen, LyricsScreen))
             app.action_switch_tab("tracks")
-            await pilot.pause(0.3)
-            await pilot.press("l")
-            await pilot.pause(0.3)
-            assert isinstance(app.screen, LyricsScreen)
-            await pilot.press("l")  # again: back
-            await pilot.pause(0.3)
-            assert not isinstance(app.screen, LyricsScreen)
+            await wait_until(pilot, lambda: app.base_tab() == "tracks")
+            await press_until(pilot, "l", lambda: isinstance(app.screen, LyricsScreen))
+            await press_until(pilot, "l", lambda: not isinstance(app.screen, LyricsScreen))
 
     _run(body)
 
@@ -393,12 +405,8 @@ def test_capital_l_opens_the_page_from_anywhere(lyr):
         async with lyr.app.run_test(size=(140, 36)) as pilot:
             app = lyr.app
             await pilot.pause(0.2)
-            await pilot.press("L")
-            await pilot.pause(0.3)
-            assert isinstance(app.screen, LyricsScreen)
-            await pilot.press("L")
-            await pilot.pause(0.3)
-            assert not isinstance(app.screen, LyricsScreen)
+            await press_until(pilot, "L", lambda: isinstance(app.screen, LyricsScreen))
+            await press_until(pilot, "L", lambda: not isinstance(app.screen, LyricsScreen))
 
     _run(body)
 
@@ -603,9 +611,8 @@ def test_taking_turns_shows_one_and_each_names_the_key_for_the_other(lyr):
             await pilot.pause(0.3)
             _, hero, panel = _pane(lyr.app)
             assert hero.display and not panel.display and "l" in hero.border_subtitle
-            await pilot.press("l")
-            await pilot.pause(0.3)
-            assert panel.display and not hero.display and "now playing" in panel.border_subtitle
+            await press_until(pilot, "l", lambda: panel.display and not hero.display)
+            assert "now playing" in panel.border_subtitle
 
     _run(body)
 
@@ -618,9 +625,7 @@ def test_l_opens_the_page_when_both_already_show(lyr, size):
             _, hero, panel = _pane(lyr.app)
             assert hero.display and panel.display
             assert not hero.border_subtitle and "now playing" not in panel.border_subtitle
-            await pilot.press("l")
-            await pilot.pause(0.3)
-            assert isinstance(lyr.app.screen, LyricsScreen)
+            await press_until(pilot, "l", lambda: isinstance(lyr.app.screen, LyricsScreen))
             assert config.get_lyrics_panel() is False  # nothing was swapped or saved
 
     _run(body)
@@ -667,16 +672,12 @@ def test_a_swapped_lyrics_choice_survives_a_resize_through_the_roomy_layouts(lyr
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
             await pilot.pause(0.3)
-            await pilot.press("l")
-            await pilot.pause(0.3)
             _view, hero, panel = _pane(lyr.app)
-            assert panel.display and not hero.display
+            await press_until(pilot, "l", lambda: panel.display and not hero.display)
             await pilot.resize_terminal(160, 40)  # room for both
-            await pilot.pause(0.3)
-            assert hero.display and panel.display
+            await wait_until(pilot, lambda: hero.display and panel.display)
             await pilot.resize_terminal(120, 30)  # back to taking turns: still the lyrics
-            await pilot.pause(0.3)
-            assert panel.display and not hero.display
+            await wait_until(pilot, lambda: panel.display and not hero.display)
 
     _run(body)
 
@@ -686,16 +687,15 @@ def test_with_lyrics_off_the_hero_has_the_pane_to_itself(lyr, size):
     async def body():
         async with lyr.app.run_test(size=size) as pilot:
             await pilot.pause(0.2)
-            lyr.app.action_toggle_lyrics()
-            await pilot.pause(0.3)
             _view, hero, panel = _pane(lyr.app)
-            assert hero.display and not panel.display and not hero.border_subtitle
+            lyr.app.action_toggle_lyrics()
+            await wait_until(pilot, lambda: hero.display and not panel.display)
+            assert not hero.border_subtitle
             await pilot.press("l")
-            await pilot.pause(0.3)
+            await pilot.pause(0.5)
             assert not isinstance(lyr.app.screen, LyricsScreen)  # says why instead
             lyr.app.action_toggle_lyrics()
-            await pilot.pause(0.3)
-            assert panel.display == (size != (120, 30))
+            await wait_until(pilot, lambda: panel.display == (size != (120, 30)))
 
     _run(body)
 
@@ -777,8 +777,9 @@ def test_two_columns_are_60_40(lyr):
 # ── queue rows ───────────────────────────────────────────────────────────────
 
 
-def _queue_lines(lyr, size=(120, 36)):
-    """The Playback list's rendered text lines, with a past, a now and an Up Next."""
+def _queue_lines(lyr, size=(120, 36), hires=()):
+    """The Playback list's rendered text lines, with a past, a now and an Up Next
+    (``hires``: the indexes of the tracks with better than CD quality)."""
     import dataclasses
 
     out: list[str] = []
@@ -786,7 +787,14 @@ def _queue_lines(lyr, size=(120, 36)):
     async def body():
         async with lyr.app.run_test(size=size) as pilot:
             ts = [
-                dataclasses.replace(_track(f"T{i}"), artist=f"Art{i}", album=f"Alb{i}", duration=d)
+                dataclasses.replace(
+                    _track(f"T{i}"),
+                    artist=f"Art{i}",
+                    album=f"Alb{i}",
+                    duration=d,
+                    bit_depth=24 if i in hires else 16,
+                    sampling_rate=96 if i in hires else 44.1,
+                )
                 for i, d in enumerate((200, 247, 294, 341, 388))
             ]
             lyr.play(ts[2], ts[3:])
@@ -830,3 +838,167 @@ def test_turning_lyrics_off_in_the_three_column_layout_gives_the_cells_back(lyr)
             assert hero.region.width == side.region.width  # the hero fills its pane
 
     _run(body)
+
+
+# ── a failed lookup is asked again ───────────────────────────────────────────
+
+
+def test_a_failed_lookup_is_asked_again_and_the_lyrics_arrive(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.2)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["wobbly"] = Result("failed")
+            lyr.play(_track("wobbly"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "failed")
+            lyr.service.answers["wobbly"] = Result("found", SYNCED)  # the network is back
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "found", timeout=3)
+            assert lyr.app.lyrics is SYNCED
+            asked = len(lyr.service.queries)
+            await pilot.pause(0.6)
+            assert len(lyr.service.queries) == asked  # and it stops asking
+
+    _run(body)
+
+
+def test_a_failing_lookup_is_retried_a_few_times_only(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.1)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["down"] = Result("failed")
+            lyr.play(_track("down"))
+            await pilot.pause(1.2)
+            assert [q.title for q in lyr.service.queries].count("down") == 1 + 3
+            assert lyr.app.lyrics_status == "failed"
+
+    _run(body)
+
+
+def test_a_retry_does_not_land_on_another_track(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.3)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["down"] = Result("failed")
+            lyr.play(_track("down"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "failed")
+            lyr.play(_track("A"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "found")
+            await pilot.pause(0.8)
+            assert lyr.app.lyrics is SYNCED
+            assert [q.title for q in lyr.service.queries].count("down") == 1
+
+    _run(body)
+
+
+def test_a_hires_track_shows_it_before_its_length_and_a_cd_one_does_not(lyr):
+    lines = _queue_lines(lyr, hires=(3,))
+    assert any("Art3" in ln and "HI-RES  5:41" in ln for ln in lines)
+    assert not any("HI-RES" in ln and "Art4" in ln for ln in lines)
+    row = next(ln for ln in lines if "Art3" in ln)
+    right = row.index("│", row.index("│") + 1)  # the list's right border
+    assert row[:right].rstrip().endswith("5:41")  # still at the edge
+
+
+def test_the_queue_border_says_where_you_are(lyr):
+    lines = _queue_lines(lyr)
+    assert any("3 of 5" in ln for ln in lines)
+
+
+def test_the_footer_keeps_lyrics_where_it_has_little_room(lyr):
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause(0.3)
+            assert "Lyrics" in _screen_text(lyr.app)
+
+    _run(body)
+
+
+def test_short_lyrics_sit_in_the_middle_of_the_panel(lyr):
+    async def body():
+        async with lyr.app.run_test(size=(180, 40)) as pilot:
+            lyr.play(_track("A"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "found")
+            await pilot.pause(0.3)
+            _, _, panel = _pane(lyr.app)
+            rows = [s.text for s in lyr.app.screen._compositor.render_strips()]
+            first = next(n for n, r in enumerate(rows) if "first line" in r)
+            assert first - panel.region.y > 3  # not hugging the top border
+            below = panel.region.bottom - 1 - max(n for n, r in enumerate(rows) if "line" in r)
+            assert abs(below - (first - panel.region.y - 1)) <= 2  # about even above and below
+
+    _run(body)
+
+
+def test_a_failed_early_fetch_is_asked_for_again_once(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.2)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["next"] = Result("failed")
+            lyr.app._lyrics_prefetched = "next"
+            lyr.app._prefetch_lyrics(_track("next"))
+            await wait_until(pilot, lambda: lyr.app._lyrics_prefetched is None, timeout=3)
+            lyr.app._lyrics_prefetched = "next"
+            lyr.app._prefetch_lyrics(_track("next"))
+            await pilot.pause(0.6)
+            assert lyr.app._lyrics_prefetched == "next"  # a second failure is left alone
+
+    _run(body)
+
+
+def test_a_long_favourite_title_keeps_its_heart_and_its_length(lyr):
+    import dataclasses
+
+    out: list[str] = []
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 36)) as pilot:
+            long = dataclasses.replace(
+                _track("L"), artist="Art", title="A very long title " * 6, album="Alb", duration=341
+            )
+            lyr.play(_track("T"), [long])
+            lyr.app._timeline = [_track("T"), long]
+            lyr.app._cursor = 0
+            lyr.app.queue_version += 1
+            lyr.app._fav_ids = {"L"}
+            await pilot.pause(1.0)
+            out.extend(s.text for s in lyr.app.screen._compositor.render_strips())
+
+    _run(body)
+    row = next(ln for ln in out if "Art — A very long" in ln)
+    assert "…" in row and "5:41" in row and "♥" in row
+    assert row.index("…") < row.index("♥") < row.index("5:41")
+
+
+def test_a_pending_retry_does_not_outlive_its_lookup(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.3)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["down"] = Result("failed")
+            lyr.play(_track("down"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "failed")
+            assert lyr.app._lyrics_retry_timer is not None
+            lyr.app.lyrics_enabled = False
+            lyr.app._lyrics_track_changed(lyr.app.now_playing)  # what the switch does
+            assert lyr.app._lyrics_retry_timer is None
+            await pilot.pause(0.6)
+            assert [q.title for q in lyr.service.queries].count("down") == 1
+
+    _run(body)
+
+
+def test_a_lookup_finishing_at_shutdown_does_not_raise():
+    """refresh_bindings() raises ScreenStackError with no screen left, and a
+    raising worker closes the app (CI saw it in a test's teardown)."""
+    from types import SimpleNamespace
+
+    from qobit.ui.app import QobitApp
+
+    def boom() -> None:
+        raise AssertionError("refreshed with no screen")
+
+    stopped = SimpleNamespace(screen_stack=[], refresh_bindings=boom)
+    QobitApp._refresh_bindings_if_shown(stopped)  # what both watchers call

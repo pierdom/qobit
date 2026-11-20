@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
-from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -23,7 +22,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import DETAIL_HEADER_CSS, readout, strip_html, within
+from .._utils import DETAIL_HEADER_CSS, markup_escape, readout, strip_html, within
 from ..nav import QobitFooter, page_header
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
@@ -166,7 +165,9 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             if self.is_attached:
                 try:
                     self.query_one("#playlist-panel").border_title = readout("Playlist")
-                    self.query_one(".detail-title", Label).update(f"[$error]{escape(str(e))}[/]")
+                    self.query_one(".detail-title", Label).update(
+                        f"[$error]{markup_escape(str(e))}[/]"
+                    )
                 except NoMatches:
                     pass
             return
@@ -184,9 +185,9 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             panel.border_subtitle = ""
             panel.border_title = readout("Playlist")  # the name is in bold right below
 
-            self.query_one(".detail-title", Label).update(escape(playlist.name))
+            self.query_one(".detail-title", Label).update(markup_escape(playlist.name))
 
-            sub_parts = [f"by {escape(playlist.owner)}", f"{playlist.tracks_count} tracks"]
+            sub_parts = [f"by {markup_escape(playlist.owner)}", f"{playlist.tracks_count} tracks"]
             if playlist.duration_str:
                 sub_parts.append(playlist.duration_str)
             if playlist.date_str:
@@ -194,7 +195,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             self.query_one(".detail-sub", Label).update("  ·  ".join(sub_parts))
 
             if playlist.description:
-                cleaned = escape(strip_html(playlist.description))
+                cleaned = markup_escape(strip_html(playlist.description))
                 self.query_one(".detail-desc", Label).update(cleaned)
         except NoMatches:
             return

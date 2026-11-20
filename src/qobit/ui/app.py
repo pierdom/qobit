@@ -17,6 +17,7 @@ from textual.css.query import NoMatches
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
+from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, ListView, Tab, Tabs
 from textual.worker import get_current_worker
@@ -245,6 +246,9 @@ _PREFETCH_SECS = 30.0
 # The next track's lyrics are fetched this many seconds before the end, so they
 # are there when it starts.
 _LYRICS_PREFETCH_SECS = 45.0
+# A lookup that failed (a network blip) is asked again after this, a few times.
+_LYRICS_RETRY_SECS = 20.0
+_LYRICS_RETRIES = 3
 # The poll reads the position every 0.5 s: the current lyric line is chosen
 # this far ahead, so it is never late by the poll's interval.
 _LYRICS_LEAD = 0.3
@@ -471,11 +475,13 @@ class QobitApp(App[None]):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("space", "pause", "Pause"),
-        Binding("[", "seek_back", "◀10s"),
-        Binding("]", "seek_fwd", "10s▶"),
+        # The footer hides keys from the end when it is short: the ones that
+        # matter most come first (the seek keys are on the mouse and `[` `]`).
+        Binding("l", "lyrics", "Lyrics"),
         Binding("R", "start_radio", "Radio"),
         Binding("S", "toggle_shuffle", "Shuffle"),
-        Binding("l", "lyrics", "Lyrics"),
+        Binding("[", "seek_back", "◀10s"),
+        Binding("]", "seek_fwd", "10s▶"),
         Binding("L", "lyrics_full", "Lyrics", show=False),
         # Listed in the footer only on the lyrics page (its own bindings): the
         # Playback footer has no room for three more keys.
@@ -654,6 +660,9 @@ class QobitApp(App[None]):
         self.lyrics_offset = 0.0
         self._lyrics_query: Query | None = None
         self._lyrics_prefetched: str | None = None
+        self._lyrics_retries = 0
+        self._lyrics_prefetch_retried: set[str] = set()
+        self._lyrics_retry_timer: Timer | None = None
         self._prefetch_failed: str | None = None
         self._prefetching = False
         self._flash_timer: object | None = None
@@ -1510,6 +1519,11 @@ class QobitApp(App[None]):
         self.lyrics_offset = 0.0
         self._lyrics_query = None
         self._lyrics_prefetched = None
+        self._lyrics_retries = 0
+        self._lyrics_prefetch_retried = set()
+        if self._lyrics_retry_timer is not None:
+            self._lyrics_retry_timer.stop()  # it belonged to the last lookup
+            self._lyrics_retry_timer = None
         self.lyrics_line = -1
         if track is None:
             self.lyrics_status = "idle"
@@ -1534,6 +1548,25 @@ class QobitApp(App[None]):
         self.lyrics_status = result.status
         self._update_lyrics_line()
         self.lyrics_version += 1
+        if result.status == "failed" and self._lyrics_retries < _LYRICS_RETRIES:
+            self._lyrics_retries += 1
+            self._lyrics_retry_timer = self.set_timer(
+                _LYRICS_RETRY_SECS, lambda: self._retry_lyrics(track)
+            )
+
+    def _retry_lyrics(self, track: Track) -> None:
+        """Ask again for the playing track whose lookup failed."""
+        now = self.now_playing
+        if (
+            now is None
+            or now.id != track.id
+            or not self.lyrics_enabled
+            or self.lyrics_status != "failed"
+        ):
+            return  # another track, or the reader turned them off, or it worked
+        self.lyrics_status = "loading"
+        self.lyrics_version += 1
+        self._load_lyrics(track)
 
     def _update_lyrics_line(self) -> None:
         ly = self.lyrics
@@ -1559,7 +1592,14 @@ class QobitApp(App[None]):
 
     @work(group="_prefetch_lyrics")
     async def _prefetch_lyrics(self, track: Track) -> None:
-        await self._lyrics.lookup(self._lyrics_query_for(track))  # fills the cache
+        result = await self._lyrics.lookup(self._lyrics_query_for(track))  # fills the cache
+        if result.status == "failed" and track.id not in self._lyrics_prefetch_retried:
+            self._lyrics_prefetch_retried.add(track.id)  # once: the position tick asks again
+            self.set_timer(_LYRICS_RETRY_SECS, lambda: self._forget_prefetch(track.id))
+
+    def _forget_prefetch(self, track_id: str) -> None:
+        if self._lyrics_prefetched == track_id:
+            self._lyrics_prefetched = None
 
     def _lyrics_screen_open(self) -> bool:
         from .screens.lyrics import LyricsScreen
@@ -1580,10 +1620,17 @@ class QobitApp(App[None]):
         return view is not None and view.has_class("-lyrics")
 
     def watch_lyrics_panel(self, _: bool) -> None:
-        self.refresh_bindings()
+        self._refresh_bindings_if_shown()
 
     def watch_lyrics_version(self, _: int) -> None:
-        self.refresh_bindings()
+        self._refresh_bindings_if_shown()
+
+    def _refresh_bindings_if_shown(self) -> None:
+        """A lookup finishing while the app shuts down finds no screen to
+        refresh: refresh_bindings() raises ScreenStackError, and a raising
+        worker closes the app (CI saw it in a test's teardown)."""
+        if self.screen_stack:
+            self.refresh_bindings()
 
     def action_lyrics(self) -> None:
         """`l`: where the Playback tab has room for the right pane but not for

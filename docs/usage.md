@@ -91,6 +91,9 @@ The **left** side is one list: **Recently Played** (`↺`), then the
 **now-playing** track (▶/⏸), then **Up Next**. Selecting a row moves playback
 there without removing anything. Tracks you skip stay under Recently Played; if
 you jump back, the tracks in between return to Up Next.
+Each row ends with its length (`HI-RES` before it above CD quality); the two
+section rules show the track count and playing time, and the border shows where
+you are (`3 of 59`).
 Playing an album or playlist from the library replaces Up Next and keeps your
 history. When a track ends, the cursor moves with playback only if it was on
 the playing track; if you've moved it, it stays where you put it. The same goes

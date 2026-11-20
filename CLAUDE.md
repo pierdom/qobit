@@ -92,6 +92,10 @@ matched by track id, reconfigured, moved; only new tracks mounted, leftovers
 removed last; one reconcile at a time under a lock). Never clear and remount
 it: that flickered and lost the scroll position. `tests/test_queue_reconcile.py`
 checks it against the timeline. `jump_to`/`play_track` are `@work`.
+A row's length (and HI-RES, from `Track.hires`: `bit_depth`/`sampling_rate`) is
+drawn into its title line (`TimelineRow._with_time`, on resize), not a docked
+widget: a dock took the width off the album line too. The list's border
+subtitle is `N of M` (cursor of timeline).
 
 **`queue_version`** is bumped on every timeline/cursor change; widgets watch it.
 Any new timeline mutator must bump it and exist in **both** play contexts.
@@ -156,7 +160,11 @@ and never cached, nothing found is cached as none for a week. `LrcLib` asks
 `SYNC_TOLERANCE` (2.5 s) of the length, text within `PLAIN_TOLERANCE`, the
 same "Part N"; never take a first search result. LRCLIB is user-submitted:
 its answers go through `sanitize.clean_json` like Qobuz's. A cache write that
-fails is swallowed (`service._remember`): a raising worker closes the app. `lyrics_line` is recomputed on each position tick
+fails is swallowed (`service._remember`): a raising worker closes the app. A
+failed lookup for the playing track is asked again after `_LYRICS_RETRY_SECS`,
+`_LYRICS_RETRIES` times. The cache key is the ISRC, else the folded name and
+length; `load` also tries the name key for a track whose ISRC arrived later
+(and `_write` then drops the name copy). `lyrics_line` is recomputed on each position tick
 but changes only with the line (`_LYRICS_LEAD` covers the 0.5 s poll), so
 `LyricsView` redraws once per line; it draws a window of centred rows itself
 (Textual drops Rich's `justify`; the SVG screenshot collapses unstyled
@@ -446,7 +454,10 @@ Textual sends every widget a Resize each time its tab is shown.
 
 **Labels.** Track rows build text with `Content.assemble(...)`, not markup
 (titles with `[`/`]` break markup); any Label fed API text (album, artist,
-breadcrumb, bio) is `markup=False`. `heart_suffix()` is the only place the ♥
+breadcrumb, bio) is `markup=False`; where a markup string is unavoidable (a
+mixed style, a border title) its API text goes through `_utils.markup_escape`,
+never rich's `escape` (it skips capitalised tags: `[PIAS]` vanished).
+`heart_suffix()` is the only place the ♥
 part is built. Row titles go through `playing_content(lead, text, …, width=)`:
 a fixed gutter (`GUTTER_ICON`/`GUTTER_NUM`/`GUTTER_NUM_LONG`) where ▶/⏸
 replaces the lead, and `meta_indent(width)` for the second line, one width per

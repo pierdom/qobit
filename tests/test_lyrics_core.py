@@ -459,3 +459,60 @@ def test_cache_an_offset_decided_before_an_erase_is_dropped():
     lyrics_cache.clear()
     lyrics_cache.update(Q, offset=1.0, since=since)
     assert lyrics_cache.load(Q) is None
+
+
+def test_cache_a_choice_kept_before_the_isrc_was_known_is_found_with_it():
+    """A queue restored from an older save has tracks without an ISRC; the same
+    track from a fresh answer has one. Its offset and "wrong lyrics" stay."""
+    bare = Query("Creep", "Radiohead", "Pablo Honey", 238)
+    full = Query("Creep", "Radiohead", "Pablo Honey", 238, "GBAYE9200070")
+    lyrics_cache.update(bare, offset=1.5)
+    assert lyrics_cache.load(full).offset == 1.5
+    lyrics_cache.update(full, reject=True)  # moves to the ISRC key
+    assert lyrics_cache.load(full).rejected and lyrics_cache.load(full).offset == 1.5
+    assert lyrics_cache.load(bare) is None  # no stale copy under the old key
+
+
+def test_a_track_knows_whether_it_is_better_than_cd_quality():
+    from qobit.qobuz.models import Track
+
+    def track(depth, rate) -> Track:
+        return Track.from_api(
+            {
+                "id": 1,
+                "title": "t",
+                "maximum_bit_depth": depth,
+                "maximum_sampling_rate": rate,
+                "performer": {"name": "a"},
+            }
+        )
+
+    assert not track(16, 44.1).hires and not track(16, 48).hires
+    assert track(24, 44.1).hires and track(16, 96).hires and track(24, 192).hires
+    assert not Track.from_api({"id": 1, "title": "t", "performer": {"name": "a"}}).hires
+
+
+def test_hires_follows_the_transports_rule():
+    from qobit.qobuz.models import Track
+
+    def track(depth, rate) -> Track:
+        return Track(
+            id="1", title="t", artist="a", album="b", album_id="1", duration=1,
+            bit_depth=depth, sampling_rate=rate,
+        )  # fmt: skip
+
+    assert not track(16, 44.1).hires and not track(16, 48).hires  # CD and 48 kHz are not
+    assert track(24, 44.1).hires and track(16, 96).hires
+    assert not track(None, None).hires
+
+
+def test_markup_escape_drops_a_trailing_backslash():
+    from textual.content import Content
+
+    from qobit.ui._utils import markup_escape
+
+    ending_in_backslash = "Remix " + chr(92)
+    assert (
+        Content.from_markup(f"[italic]{markup_escape(ending_in_backslash)}[/italic]").plain
+        == "Remix "
+    )

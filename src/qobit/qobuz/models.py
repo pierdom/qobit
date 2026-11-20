@@ -83,6 +83,10 @@ class Track:
     # The recording's ISRC: names the track across editions (lyrics are cached
     # by it). None in lists saved before it existed: they load unchanged.
     isrc: str | None = None
+    # The best Qobuz has for it (16 / 44.1 is CD quality). None in lists saved
+    # before they existed: no badge until the list is fetched again.
+    bit_depth: int | None = None
+    sampling_rate: float | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "Track":
@@ -115,7 +119,15 @@ class Track:
             album_artist_id=str(album_artist["id"]) if album_artist.get("id") else None,
             album_year=release_year(album),
             isrc=data.get("isrc") or None,
+            bit_depth=data.get("maximum_bit_depth") or None,
+            sampling_rate=data.get("maximum_sampling_rate") or None,
         )
+
+    @property
+    def hires(self) -> bool:
+        """Above CD quality, by the rule of the transport's HI-RES tag: more
+        than 16 bits or more than 48 kHz."""
+        return (self.bit_depth or 16) > 16 or (self.sampling_rate or 0) > 48
 
     def by_artist(self, artist_id: str) -> bool:
         return artist_id in (self.artist_id, self.album_artist_id)
