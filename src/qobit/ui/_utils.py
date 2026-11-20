@@ -7,6 +7,13 @@ _BLOCK_TAG = re.compile(r"</?(?:p|br|div|li|ul|ol|h[1-6]|tr|td|blockquote)\b[^>]
 _ANY_TAG = re.compile(r"<[^>]+>")
 
 
+def markup_escape(text: str) -> str:
+    """``text`` for a markup string, shown as it is. Textual reads any
+    ``[Word]`` as a style tag (``[PIAS] Recordings`` lost its label), and
+    rich's ``escape`` only covers lowercase ones: every ``[`` gets a ``\\``."""
+    return text.replace("[", "\\[")
+
+
 def within(widget: object, css_class: str) -> bool:
     """Whether ``widget`` (e.g. a click's) is, or sits inside, a widget with
     ``css_class``."""

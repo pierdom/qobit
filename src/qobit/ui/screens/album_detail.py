@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
-from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
@@ -25,12 +24,7 @@ from .._now_playing import (
     heart_suffix,
     playing_content,
 )
-from .._utils import (
-    DETAIL_HEADER_CSS,
-    readout,
-    strip_html,
-    within,
-)
+from .._utils import DETAIL_HEADER_CSS, markup_escape, readout, strip_html, within
 from ..nav import QobitFooter, page_header
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
@@ -226,9 +220,9 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         self.query_one(Art).placeholder = album.title
         self.border_title = readout("Album")  # the title is in bold right below
         year = str(album.year) if album.year else "—"
-        parts: list[str] = [escape(album.artist), year]
+        parts: list[str] = [markup_escape(album.artist), year]
         if album.genre:
-            parts.append(escape(album.genre))
+            parts.append(markup_escape(album.genre))
         self.refresh_heart()
         self._load_heart(album.id)
         # Plain: the CSS gives these lines the muted colour ([dim] on top
@@ -297,19 +291,19 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         try:
             self._set_optional(
                 ".ap-version",
-                f"[italic]{escape(full.version)}[/italic]" if full.version else "",
+                f"[italic]{markup_escape(full.version)}[/italic]" if full.version else "",
             )
             year = str(full.year) if full.year else "—"
-            sub_parts: list[str] = [escape(full.artist), year]
+            sub_parts: list[str] = [markup_escape(full.artist), year]
             if full.genre:
-                sub_parts.append(escape(full.genre))
+                sub_parts.append(markup_escape(full.genre))
             if dur := full.total_duration_str:
                 sub_parts.append(dur)
             self.query_one(".detail-sub", Label).update("  ·  ".join(sub_parts))
 
             badge_parts: list[str] = []
             if full.label:
-                badge_parts.append(escape(full.label))
+                badge_parts.append(markup_escape(full.label))
             if q := full.quality_badge:
                 # HI-RES in the theme's hi-res colour, like the transport.
                 badge_parts.append(q.replace("HI-RES ", "[b $qobit-hires]HI-RES[/] ", 1))
@@ -318,10 +312,12 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
             self._set_optional(".ap-badges", "  ·  ".join(badge_parts))
 
             self._set_optional(
-                ".ap-awards", "  ".join(escape(a) for a in full.awards) if full.awards else ""
+                ".ap-awards",
+                "  ".join(markup_escape(a) for a in full.awards) if full.awards else "",
             )
             self._set_optional(
-                ".detail-desc", escape(strip_html(full.description)) if full.description else ""
+                ".detail-desc",
+                markup_escape(strip_html(full.description)) if full.description else "",
             )
         except NoMatches:
             return

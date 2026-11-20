@@ -245,6 +245,9 @@ _PREFETCH_SECS = 30.0
 # The next track's lyrics are fetched this many seconds before the end, so they
 # are there when it starts.
 _LYRICS_PREFETCH_SECS = 45.0
+# A lookup that failed (a network blip) is asked again after this, a few times.
+_LYRICS_RETRY_SECS = 20.0
+_LYRICS_RETRIES = 3
 # The poll reads the position every 0.5 s: the current lyric line is chosen
 # this far ahead, so it is never late by the poll's interval.
 _LYRICS_LEAD = 0.3
@@ -654,6 +657,7 @@ class QobitApp(App[None]):
         self.lyrics_offset = 0.0
         self._lyrics_query: Query | None = None
         self._lyrics_prefetched: str | None = None
+        self._lyrics_retries = 0
         self._prefetch_failed: str | None = None
         self._prefetching = False
         self._flash_timer: object | None = None
@@ -1510,6 +1514,7 @@ class QobitApp(App[None]):
         self.lyrics_offset = 0.0
         self._lyrics_query = None
         self._lyrics_prefetched = None
+        self._lyrics_retries = 0
         self.lyrics_line = -1
         if track is None:
             self.lyrics_status = "idle"
@@ -1534,6 +1539,18 @@ class QobitApp(App[None]):
         self.lyrics_status = result.status
         self._update_lyrics_line()
         self.lyrics_version += 1
+        if result.status == "failed" and self._lyrics_retries < _LYRICS_RETRIES:
+            self._lyrics_retries += 1
+            self.set_timer(_LYRICS_RETRY_SECS, lambda: self._retry_lyrics(track))
+
+    def _retry_lyrics(self, track: Track) -> None:
+        """Ask again for the playing track whose lookup failed."""
+        now = self.now_playing
+        if now is None or now.id != track.id or self.lyrics_status != "failed":
+            return  # another track, or the reader turned them off, or it worked
+        self.lyrics_status = "loading"
+        self.lyrics_version += 1
+        self._load_lyrics(track)
 
     def _update_lyrics_line(self) -> None:
         ly = self.lyrics

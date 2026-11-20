@@ -459,3 +459,15 @@ def test_cache_an_offset_decided_before_an_erase_is_dropped():
     lyrics_cache.clear()
     lyrics_cache.update(Q, offset=1.0, since=since)
     assert lyrics_cache.load(Q) is None
+
+
+def test_cache_a_choice_kept_before_the_isrc_was_known_is_found_with_it():
+    """A queue restored from an older save has tracks without an ISRC; the same
+    track from a fresh answer has one. Its offset and "wrong lyrics" stay."""
+    bare = Query("Creep", "Radiohead", "Pablo Honey", 238)
+    full = Query("Creep", "Radiohead", "Pablo Honey", 238, "GBAYE9200070")
+    lyrics_cache.update(bare, offset=1.5)
+    assert lyrics_cache.load(full).offset == 1.5
+    lyrics_cache.update(full, reject=True)  # moves to the ISRC key
+    assert lyrics_cache.load(full).rejected and lyrics_cache.load(full).offset == 1.5
+    assert lyrics_cache.load(bare) is None  # no stale copy under the old key

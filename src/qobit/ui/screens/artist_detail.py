@@ -4,7 +4,6 @@ import contextlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from rich.markup import escape
 from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -30,7 +29,7 @@ from .._now_playing import (
     plain_if_highlighted,
     playing_content,
 )
-from .._utils import readout, strip_html
+from .._utils import markup_escape, readout, strip_html
 from ..nav import QobitFooter, page_header
 from ..themes import HEART, theme_color
 from ..widgets.art import Art, square_width
@@ -430,9 +429,13 @@ class AlbumCard(Widget):
     def compose(self) -> ComposeResult:
         yield Art(self._album.title, rows=GRID_CARD_IMG_H if self._show_artist else _CARD_IMG_H)
         with Vertical(classes="card-info"):
-            yield Label(escape(self._album.title), classes="card-title card-primary", markup=True)
             yield Label(
-                escape(self._album.artist or ""), classes="card-artist card-secondary", markup=True
+                markup_escape(self._album.title), classes="card-title card-primary", markup=True
+            )
+            yield Label(
+                markup_escape(self._album.artist or ""),
+                classes="card-artist card-secondary",
+                markup=True,
             )
             yield _YearLine(self._year_line(), classes="card-year card-secondary")
 
@@ -1164,7 +1167,7 @@ class ArtistHeader(Widget):
         self.artist = None
         self._similar_items = []
         self._layout_similar()
-        self.query_one(".ah-bio-section").border_title = escape(readout(name))
+        self.query_one(".ah-bio-section").border_title = markup_escape(readout(name))
         art = self.query_one(Art)
         art.image = None  # not the previous artist's photo under this name
         art.placeholder = name
@@ -1178,7 +1181,7 @@ class ArtistHeader(Widget):
         if artist.biography:
             # API HTML (<p>, <br/>, entities) as plain text, like the Now
             # Playing bio; then escaped, the Label takes markup.
-            self.query_one(".ah-bio", Label).update(escape(strip_html(artist.biography)))
+            self.query_one(".ah-bio", Label).update(markup_escape(strip_html(artist.biography)))
         if artist.image_url:
             self._fetch_image(artist.image_url)
         if self._similar:
@@ -1191,7 +1194,7 @@ class ArtistHeader(Widget):
         if self.artist is None:
             return
         app: QobitApp = self.app  # type: ignore[assignment]
-        title = escape(readout(self.artist.name))
+        title = markup_escape(readout(self.artist.name))
         if app.is_followed_artist(self.artist.id):
             title += f"  [{theme_color(self.app, HEART)}]{ICON_FAV}[/]"
         self.query_one(".ah-bio-section").border_title = title

@@ -830,3 +830,55 @@ def test_turning_lyrics_off_in_the_three_column_layout_gives_the_cells_back(lyr)
             assert hero.region.width == side.region.width  # the hero fills its pane
 
     _run(body)
+
+
+# ── a failed lookup is asked again ───────────────────────────────────────────
+
+
+def test_a_failed_lookup_is_asked_again_and_the_lyrics_arrive(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.2)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["wobbly"] = Result("failed")
+            lyr.play(_track("wobbly"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "failed")
+            lyr.service.answers["wobbly"] = Result("found", SYNCED)  # the network is back
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "found", timeout=3)
+            assert lyr.app.lyrics is SYNCED
+            asked = len(lyr.service.queries)
+            await pilot.pause(0.6)
+            assert len(lyr.service.queries) == asked  # and it stops asking
+
+    _run(body)
+
+
+def test_a_failing_lookup_is_retried_a_few_times_only(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.1)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["down"] = Result("failed")
+            lyr.play(_track("down"))
+            await pilot.pause(1.2)
+            assert [q.title for q in lyr.service.queries].count("down") == 1 + 3
+            assert lyr.app.lyrics_status == "failed"
+
+    _run(body)
+
+
+def test_a_retry_does_not_land_on_another_track(lyr, monkeypatch):
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.3)
+
+    async def body():
+        async with lyr.app.run_test(size=(120, 30)) as pilot:
+            lyr.service.answers["down"] = Result("failed")
+            lyr.play(_track("down"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "failed")
+            lyr.play(_track("A"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_status == "found")
+            await pilot.pause(0.8)
+            assert lyr.app.lyrics is SYNCED
+            assert [q.title for q in lyr.service.queries].count("down") == 1
+
+    _run(body)

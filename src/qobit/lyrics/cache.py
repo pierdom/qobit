@@ -46,14 +46,27 @@ def _dir() -> Path:
     return Path(base) / "qobit" / "lyrics"
 
 
-def key(query: Query) -> str:
-    ident = f"isrc:{query.isrc.upper()}" if query.isrc else None
-    ident = ident or f"{fold(query.artist)}|{fold(query.title)}|{query.duration}"
+def _digest(ident: str) -> str:
     return hashlib.sha1(ident.encode()).hexdigest()[:24]
+
+
+def _named(query: Query) -> str:
+    return _digest(f"{fold(query.artist)}|{fold(query.title)}|{query.duration}")
+
+
+def key(query: Query) -> str:
+    """The ISRC when there is one, else the folded name and length."""
+    return _digest(f"isrc:{query.isrc.upper()}") if query.isrc else _named(query)
 
 
 def _path(query: Query) -> Path:
     return _dir() / f"{key(query)}.json"
+
+
+def _named_path(query: Query) -> Path:
+    """Where this track was kept before it had an ISRC (a restored queue
+    holds tracks saved without one)."""
+    return _dir() / f"{_named(query)}.json"
 
 
 @dataclass
@@ -71,8 +84,15 @@ class Entry:
 
 
 def load(query: Query) -> Entry | None:
+    entry = _read(_path(query))
+    if entry is None and query.isrc:
+        entry = _read(_named_path(query))  # kept before the ISRC was known
+    return entry
+
+
+def _read(path: Path) -> Entry | None:
     try:
-        data = json.loads(_path(query).read_text())
+        data = json.loads(path.read_text())
         if data["version"] != VERSION:
             return None
         raw = data.get("lyrics")
@@ -104,6 +124,9 @@ def _write(query: Query, entry: Entry) -> None:
         }
     )
     write_private(_path(query), text)
+    if query.isrc:  # the ISRC copy is the one now: don't leave a stale named one
+        with contextlib.suppress(OSError):
+            _named_path(query).unlink()
 
 
 def save(query: Query, lyrics: Lyrics | None, since: int | None = None) -> None:

@@ -7,6 +7,20 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [0.14.1] - 2026-11-20
+
+### Fixed
+
+- Capitalised text in square brackets from Qobuz (`[PIAS] Recordings`,
+  `Abbey Road [Remastered]`) showed with the bracketed part missing on album
+  and playlist pages, album and playlist tiles and the artist header. It is
+  shown as it is now.
+- Lyrics: a lookup that failed (a network blip as the track started) is asked
+  again, up to three times, instead of staying "Couldn't reach the lyrics
+  service" for the whole track.
+- Lyrics: a timing shift or "remove lyrics" you made on a track restored from
+  an earlier session is kept when the same track comes back with its ISRC.
+
 ## [0.14.0] - 2026-11-20
 
 ### Added
