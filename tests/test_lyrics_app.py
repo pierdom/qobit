@@ -968,7 +968,7 @@ def test_a_long_favourite_title_keeps_its_heart_and_its_length(lyr):
 
 
 def test_a_pending_retry_does_not_outlive_its_lookup(lyr, monkeypatch):
-    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.3)
+    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 2.0)
 
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
@@ -979,7 +979,7 @@ def test_a_pending_retry_does_not_outlive_its_lookup(lyr, monkeypatch):
             lyr.app.lyrics_enabled = False
             lyr.app._lyrics_track_changed(lyr.app.now_playing)  # what the switch does
             assert lyr.app._lyrics_retry_timer is None
-            await pilot.pause(0.6)
+            await pilot.pause(2.6)  # past the retry it would have fired
             assert [q.title for q in lyr.service.queries].count("down") == 1
 
     _run(body)
