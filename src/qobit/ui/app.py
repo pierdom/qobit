@@ -1620,10 +1620,17 @@ class QobitApp(App[None]):
         return view is not None and view.has_class("-lyrics")
 
     def watch_lyrics_panel(self, _: bool) -> None:
-        self.refresh_bindings()
+        self._refresh_bindings_if_shown()
 
     def watch_lyrics_version(self, _: int) -> None:
-        self.refresh_bindings()
+        self._refresh_bindings_if_shown()
+
+    def _refresh_bindings_if_shown(self) -> None:
+        """A lookup finishing while the app shuts down finds no screen to
+        refresh: refresh_bindings() raises ScreenStackError, and a raising
+        worker closes the app (CI saw it in a test's teardown)."""
+        if self.screen_stack:
+            self.refresh_bindings()
 
     def action_lyrics(self) -> None:
         """`l`: where the Playback tab has room for the right pane but not for

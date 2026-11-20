@@ -988,3 +988,17 @@ def test_a_pending_retry_does_not_outlive_its_lookup(lyr, monkeypatch):
             assert [q.title for q in lyr.service.queries].count("down") == 1
 
     _run(body)
+
+
+def test_a_lookup_finishing_at_shutdown_does_not_raise():
+    """refresh_bindings() raises ScreenStackError with no screen left, and a
+    raising worker closes the app (CI saw it in a test's teardown)."""
+    from types import SimpleNamespace
+
+    from qobit.ui.app import QobitApp
+
+    def boom() -> None:
+        raise AssertionError("refreshed with no screen")
+
+    stopped = SimpleNamespace(screen_stack=[], refresh_bindings=boom)
+    QobitApp._refresh_bindings_if_shown(stopped)  # what both watchers call

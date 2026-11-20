@@ -18,6 +18,8 @@ workflow publishes to PyPI and creates the GitHub release from this entry.
 - Lyrics: a lookup that failed (a network blip as the track started) is asked
   again, up to three times, instead of staying "Couldn't reach the lyrics
   service" for the whole track.
+- A lyrics lookup that finished just as qobit was closing could end with an
+  error trace; it no longer does.
 - Lyrics: a timing shift or "remove lyrics" you made on a track restored from
   an earlier session is kept when the same track comes back with its ISRC.
 - Lyrics: the early fetch of the next track's lyrics is tried again once after

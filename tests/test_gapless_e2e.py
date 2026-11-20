@@ -59,14 +59,29 @@ def _track(name: str) -> Track:
     return Track(id=name, title=name, artist="X", album="Y", album_id="1", duration=2)
 
 
+LOG: list[str] = []  # what happened when, printed when an assertion fails
+
+
 async def _play_through(app, player, pilot, after_queued=None) -> list[tuple[str, int | None]]:
     """Play A (then B, C) to the end; the order of tracks and the mpv each
     was heard in."""
+    LOG.clear()
     app.play_track(_track("A"), queue=[_track("B"), _track("C")])
     seen: list[tuple[str, int | None]] = []
-    end = time.monotonic() + 25
+    start = time.monotonic()
+    end = start + 25
+    last = None
     while time.monotonic() < end:
         await pilot.pause(0.05)
+        state = (
+            app.now_playing.id if app.now_playing else None,
+            player._proc.pid if player._proc is not None else None,
+            app._next_up[0] if app._next_up else None,
+            app.is_playing,
+        )
+        if state != last:
+            last = state
+            LOG.append(f"{time.monotonic() - start:5.2f}s now/pid/next_up/playing={state}")
         if after_queued is not None and app._next_up is not None:
             after_queued()
             after_queued = None
@@ -88,7 +103,7 @@ def test_three_tracks_play_through_one_mpv(rig):
 
     seen = asyncio.run(run())
     assert [name for name, _ in seen] == ["A", "B", "C"]
-    assert len({pid for _, pid in seen}) == 1  # one mpv for all three
+    assert len({pid for _, pid in seen}) == 1, "\n".join(LOG)  # one mpv for all three
     assert app._cursor == 2 and not app.is_playing
 
 
