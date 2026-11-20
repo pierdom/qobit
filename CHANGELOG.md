@@ -7,7 +7,7 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
-## [Unreleased]
+## [0.14.0] - 2026-11-20
 
 ### Added
 
