@@ -47,7 +47,9 @@ class Probe:
     def run(self, cmd: list[str], timeout: float = 5.0) -> str | None:
         """stdout and stderr together; None if the command is missing or hangs."""
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            r = subprocess.run(
+                cmd, capture_output=True, text=True, errors="replace", timeout=timeout
+            )
         except (OSError, subprocess.TimeoutExpired):
             return None
         return r.stdout + r.stderr
@@ -60,6 +62,9 @@ class Probe:
 
     def glob(self, pattern: str) -> list[str]:
         return sorted(glob.glob(pattern))
+
+    def exists(self, path: str | Path) -> bool:
+        return os.path.exists(path)
 
     def writable(self, path: str | Path) -> bool:
         return os.access(path, os.W_OK)
@@ -81,14 +86,17 @@ def parse_mpv_version(text: str) -> tuple[int, int] | None:
 
 def parse_mpv_conf(text: str) -> list[tuple[int, str, str]]:
     """``(line, option, value)`` of the options mpv applies to everything: those
-    before the first ``[profile]`` header. ``--no-x`` and bare ``x`` mean yes/no."""
+    before the first ``[profile]`` header, and under ``[default]``. ``--no-x`` and
+    bare ``x`` mean no and yes."""
     out: list[tuple[int, str, str]] = []
     for n, raw in enumerate(text.splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("["):
-            break  # a profile: applied only when asked for
+            if line == "[default]":
+                continue  # mpv applies this profile to every run
+            break  # any other profile: applied only when asked for
         key, sep, value = line.partition("=")
         key = key.strip().removeprefix("--")
         value = value.strip().strip("\"'") if sep else "yes"
@@ -173,6 +181,11 @@ def device_kind(device_id: str | None) -> str:
 def alsa_card_name(device_id: str) -> str | None:
     m = re.search(r"CARD=([^,]+)", device_id)
     return m.group(1) if m else None
+
+
+def alsa_dev_number(device_id: str) -> int:
+    m = re.search(r"DEV=(\d+)", device_id)
+    return int(m.group(1)) if m else 0
 
 
 def _plain(text: str) -> str:
@@ -297,9 +310,9 @@ _BREAKS = {
     "audio-channels": "up- or down-mixes the channels",
     "audio-normalize-downmix": "scales the samples when mixing down",
     "replaygain": "applies gain to the samples",
-    "replaygain-preamp": "applies gain to the samples",
-    "replaygain-fallback": "applies gain to the samples",
 }
+_REPLAYGAIN_EXTRAS = ("replaygain-preamp", "replaygain-fallback")  # only matter with replaygain
+_NOTHING = ("no", "0", "auto", "auto-safe")  # values that leave the samples alone
 _OVERRIDDEN = {
     "af": "qobit clears audio filters (--af-clr)",
     "af-add": "qobit clears audio filters (--af-clr)",
@@ -309,21 +322,26 @@ _OVERRIDDEN = {
 }
 
 
+def _is_number(value: str, wanted: float) -> bool:
+    try:
+        return float(value) == wanted
+    except ValueError:
+        return False
+
+
 def _mpv_conf_paths(p: Probe) -> list[str]:
-    paths = []
-    for base in (
-        p.env("MPV_HOME"),
-        f"{p.env('XDG_CONFIG_HOME')}/mpv" if p.env("XDG_CONFIG_HOME") else None,
-        f"{p.home}/.config/mpv",
-        f"{p.home}/Library/Preferences/mpv" if p.system == "Darwin" else None,
-        f"{p.home}/.mpv",
-        "/etc/mpv" if p.system != "Darwin" else None,
-    ):
-        if base:
-            for name in ("mpv.conf", "config"):
-                if (path := f"{base}/{name}") not in paths:
-                    paths.append(path)
-    return paths
+    """The mpv.conf files mpv reads: the user's (MPV_HOME replaces the rest,
+    else XDG_CONFIG_HOME/mpv, else ~/.config/mpv) and, on Linux, /etc/mpv."""
+    if home := p.env("MPV_HOME"):
+        user = [home]
+    elif xdg := p.env("XDG_CONFIG_HOME"):
+        user = [f"{xdg}/mpv"]
+    else:
+        user = [f"{p.home}/.config/mpv"]
+        if p.system == "Darwin":
+            user.append(f"{p.home}/Library/Preferences/mpv")
+    system = ["/etc/mpv"] if p.system != "Darwin" else []
+    return [f"{d}/mpv.conf" for d in system + user]
 
 
 def check_mpv_conf(p: Probe) -> list[Check]:
@@ -334,9 +352,11 @@ def check_mpv_conf(p: Probe) -> list[Check]:
     out: list[Check] = []
     clean = True
     for path, text in found:
-        for n, key, value in parse_mpv_conf(text):
+        options = parse_mpv_conf(text)
+        gain_on = any(k == "replaygain" and v in ("track", "album") for _, k, v in options)
+        for n, key, value in options:
             where = f"{path.replace(str(p.home), '~')}:{n}  {key}={value}"
-            if key == "volume" and value not in ("100", "100.0"):
+            if key == "volume" and not _is_number(value, 100):
                 out.append(
                     Check(
                         "fail",
@@ -349,11 +369,21 @@ def check_mpv_conf(p: Probe) -> list[Check]:
             elif key == "mute" and value == "yes":
                 out.append(Check("fail", f"mpv.conf mutes mpv ({where})", fix="Remove the line."))
                 clean = False
-            elif key in _BREAKS and value not in ("no", "0", "auto"):
+            elif key in _BREAKS and value not in _NOTHING:
                 out.append(
                     Check(
                         "fail",
                         f"mpv.conf {_BREAKS[key]} ({where})",
+                        "qobit starts mpv with your config, so this applies.",
+                        "Remove the line.",
+                    )
+                )
+                clean = False
+            elif key in _REPLAYGAIN_EXTRAS and gain_on and not _is_number(value, 0):
+                out.append(
+                    Check(
+                        "fail",
+                        f"mpv.conf applies gain with ReplayGain ({where})",
                         "qobit starts mpv with your config, so this applies.",
                         "Remove the line.",
                     )
@@ -369,6 +399,14 @@ def check_mpv_conf(p: Probe) -> list[Check]:
                     )
                 )
                 clean = False
+            elif key == "profile" and value:
+                out.append(
+                    Check(
+                        "info",
+                        f"mpv.conf turns on a profile ({where})",
+                        "Its options are not checked here.",
+                    )
+                )
             elif key in _OVERRIDDEN:
                 out.append(Check("info", f"mpv.conf {key} is ignored ({where})", _OVERRIDDEN[key]))
     if clean and not any(c.status == "fail" for c in out):
@@ -412,13 +450,15 @@ def find_dac(p: Probe, device: str | None) -> Dac | None:
             (c for c in cards if len(_plain(c.id)) > 3 and _plain(c.id) in plain),
             None,
         )
-    if card is None:
+    if card is None and device in (None, "auto"):  # nothing names a card: the only USB one
         usb = [c for c in cards if _capabilities(p, c) is not None]
         card = usb[0] if len(usb) == 1 else None
     return Dac(card, _capabilities(p, card)) if card else None
 
 
-def check_alsa(p: Probe, device: str | None, dac: Dac | None) -> list[Check]:
+def check_alsa(
+    p: Probe, device: str | None, dac: Dac | None, device_listed: bool = True
+) -> list[Check]:
     if dac is None:
         return [
             Check(
@@ -436,10 +476,10 @@ def check_alsa(p: Probe, device: str | None, dac: Dac | None) -> list[Check]:
         )
     else:
         out.append(Check("info", f"Sound card: {dac.card.name}"))
-    if device_kind(device) != "alsa-hw":
-        return out
-    node = f"/dev/snd/pcmC{dac.card.num}D0p"
-    if p.read("/proc/asound/cards") is not None and not p.writable(node):
+    if device_kind(device) != "alsa-hw" or not device_listed:
+        return out  # (a device mpv doesn't list is already a failure: no more noise)
+    node = f"/dev/snd/pcmC{dac.card.num}D{alsa_dev_number(device or '')}p"
+    if p.exists(node) and not p.writable(node):
         out.append(
             Check(
                 "fail",
@@ -455,7 +495,8 @@ def check_alsa(p: Probe, device: str | None, dac: Dac | None) -> list[Check]:
             out.append(
                 Check(
                     "warn",
-                    f"The DAC is in use{f' by {who}' if who else ''}",
+                    f"The DAC is in use{f' by {who}' if who else ''}"
+                    + (" (qobit itself, if it is playing)" if who == "mpv" else ""),
                     "A raw hw: device is exclusive: qobit cannot open it while another "
                     "program plays on it (or PipeWire holds it).",
                     "Stop that program, or use the PipeWire device with rate following "
@@ -500,12 +541,11 @@ def check_pipewire(p: Probe, device: str | None, dac: Dac | None) -> list[Check]
             )
         ]
     wanted = [r for r in (dac.caps.rates if dac and dac.caps else RATE_LADDER) if r in RATE_LADDER]
-    missing = [r for r in wanted if r not in allowed] if allowed else []
-    if not allowed or (len(allowed) == 1 and allowed[0] == base):
-        allowed_text = _rates_text(allowed) if allowed else f"only {_khz(base)} kHz"
-        missing = missing or wanted
-    else:
-        allowed_text = _rates_text(allowed)
+    effective = allowed or ([base] if base else [])  # no list: the one base rate
+    if not effective:
+        return [Check("info", "PipeWire's sample rates could not be read")]
+    missing = [r for r in wanted if r not in effective]
+    allowed_text = _rates_text(effective) if allowed else f"only {_khz(base)} kHz"
     if missing:
         what = "your DAC" if dac and dac.caps else "a typical DAC"
         out.append(
@@ -519,7 +559,7 @@ def check_pipewire(p: Probe, device: str | None, dac: Dac | None) -> list[Check]
             )
         )
     else:
-        out.append(Check("ok", f"PipeWire follows the rate ({_rates_text(allowed)})"))
+        out.append(Check("ok", f"PipeWire follows the rate ({_rates_text(effective)})"))
     return out
 
 
@@ -529,7 +569,7 @@ def check_pipewire(p: Probe, device: str | None, dac: Dac | None) -> list[Check]
 def check_macos(device: str | None, listed: list[DeviceInfo]) -> list[Check]:
     """Exclusive mode (no system mixer) only exists on coreaudio/ devices."""
     has_coreaudio = any(d.id.startswith("coreaudio/") for d in listed)
-    if has_coreaudio and device_kind(device) != "coreaudio":
+    if device and has_coreaudio and device_kind(device) != "coreaudio":  # no device: said already
         return [
             Check(
                 "warn",
@@ -544,7 +584,7 @@ def check_macos(device: str | None, listed: list[DeviceInfo]) -> list[Check]:
 # ── the terminal ─────────────────────────────────────────────────────────────
 
 
-def check_terminal(p: Probe) -> list[Check]:
+def check_terminal(p: Probe, images: str = "auto") -> list[Check]:
     out: list[Check] = []
     colour = (p.env("COLORTERM") or "").lower()
     if colour in ("truecolor", "24bit"):
@@ -561,7 +601,11 @@ def check_terminal(p: Probe) -> list[Check]:
     term = (p.env("TERM") or "").lower()
     program = (p.env("TERM_PROGRAM") or "").lower()
     kitty = "kitty" in term or p.env("KITTY_WINDOW_ID") or "ghostty" in (term + program)
-    if p.env("TMUX"):
+    if images == "off":
+        out.append(Check("info", "Cover art is off (the images setting)"))
+    elif images == "blocks":
+        out.append(Check("info", "Cover art: coloured blocks (the images setting)"))
+    elif p.env("TMUX"):
         passthrough = (p.run(["tmux", "show", "-gv", "allow-passthrough"]) or "").strip()
         if kitty and passthrough not in ("on", "all"):
             out.append(
@@ -585,7 +629,10 @@ def check_terminal(p: Probe) -> list[Check]:
 
 
 def run_checks(
-    p: Probe | None = None, device: str | None = None, software_volume: bool = False
+    p: Probe | None = None,
+    device: str | None = None,
+    software_volume: bool = False,
+    images: str = "auto",
 ) -> list[tuple[str, list[Check]]]:
     """The report's sections: (heading, checks)."""
     p = p or Probe()
@@ -599,12 +646,16 @@ def run_checks(
     sections.append(("mpv config", check_mpv_conf(p)))
     if p.system == "Linux":
         dac = find_dac(p, device)
+        listed_ok = not (listed and device and not any(d.id == device for d in listed))
         sections.append(
-            ("DAC and sound server", check_alsa(p, device, dac) + check_pipewire(p, device, dac))
+            (
+                "DAC and sound server",
+                check_alsa(p, device, dac, listed_ok) + check_pipewire(p, device, dac),
+            )
         )
     elif p.system == "Darwin":
         sections.append(("DAC", check_macos(device, listed)))
-    sections.append(("Terminal", check_terminal(p)))
+    sections.append(("Terminal", check_terminal(p, images)))
     return [(h, c) for h, c in sections if c]
 
 

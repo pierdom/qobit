@@ -72,8 +72,9 @@ nothing and needs no login:
   rates to paste (see A above).
 - The terminal: true colour, Kitty graphics, tmux passthrough.
 
-It exits with 1 if it found a problem, so it works in a script, and its output
-is safe to paste into an issue.
+It exits with 1 if it found a problem, so it works in a script. Its output names
+your `mpv.conf` lines, the sound card and the program using it: read it before
+pasting it into an issue.
 
 ## Quality
 

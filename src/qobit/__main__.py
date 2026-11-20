@@ -202,10 +202,14 @@ def cmd_devices(_args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(_args: argparse.Namespace) -> int:
-    from .config import get_software_volume_enabled
+    from .config import get_image_mode, get_software_volume_enabled
     from .doctor import exit_code, render, run_checks
 
-    sections = run_checks(device=get_audio_device(), software_volume=get_software_volume_enabled())
+    sections = run_checks(
+        device=get_audio_device(),
+        software_volume=get_software_volume_enabled(),
+        images=get_image_mode(),
+    )
     print(render(sections), end="")
     return exit_code(sections)
 
@@ -472,6 +476,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    if args.command == "doctor":  # before the clean-ups below: it must change nothing
+        sys.exit(cmd_doctor(args))
+
     if purge_legacy_credentials():
         print(
             "Removed the Qobuz password an older qobit saved in config.json: "
@@ -480,8 +487,6 @@ def main() -> None:
         )
     move_token_to_keyring()  # a token still in config.json, now that a keyring is here
 
-    if args.command == "doctor":
-        sys.exit(cmd_doctor(args))
     if args.command == "play":
         sys.exit(asyncio.run(cmd_play(args)))
     elif args.command == "devices":
