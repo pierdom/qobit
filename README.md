@@ -46,6 +46,9 @@ and mixes with the keyboard, and see cover art in the terminal.
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
 - Shuffle (`S`).
+- Lyrics from LRCLIB, line by line (`l`). Each lookup sends the track's artist,
+  title, album and length to lrclib.net; `--no-lyrics` or the command palette
+  turns it off.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
 - Artist pages with top tracks, your favourites by that artist, albums and
   similar artists.
@@ -123,6 +126,7 @@ command palette (`Ctrl+P`, then "Images", saved):
 | `1`–`7` | switch tab | `Space` | pause / resume |
 | `/` | filter | `[` `]` | seek 10 s |
 | `s` `r` | sort, reverse | `R` `S` | song radio, shuffle |
+| `l` `L` | lyrics (panel, full screen) | | |
 | `i` | menu: queue, favourite, follow | `g` | go to artist / album |
 | `f` | favourite | `Ctrl+P` | command palette |
 
@@ -135,6 +139,7 @@ qobit devices               # list audio outputs
 qobit --connect-on          # start with Qobuz Connect enabled for this run
 qobit --shuffle             # shuffle for this run
 qobit --no-gapless          # no gapless playback for this run
+qobit --no-lyrics           # no lyrics (and no lookups) for this run
 ```
 
 ## Documentation

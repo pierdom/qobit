@@ -9,10 +9,11 @@ from rich.text import Text
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Container, Horizontal, VerticalScroll
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.events import Resize
+from textual.geometry import Size
 from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView, Static
 from textual_image.widget import TGPImage
@@ -31,6 +32,7 @@ from .._now_playing import (
 from .._utils import focus_later, readout, status_line, strip_html
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
+from ..widgets.lyrics import LyricsView
 from ..widgets.transport import signal_parts
 
 if TYPE_CHECKING:
@@ -238,8 +240,7 @@ class NowPlayingHero(Widget):
 
     DEFAULT_CSS = """
     NowPlayingHero {
-        width: 2fr;
-        max-width: 66;
+        width: 1fr;
         height: 1fr;
         /* Round like every other panel in qobit. */
         border: round $accent 40%;
@@ -249,6 +250,11 @@ class NowPlayingHero(Widget):
     }
     NowPlayingHero:focus {
         border: round $accent;
+        border-subtitle-color: $qobit-accent-text;
+    }
+    NowPlayingHero {
+        border-subtitle-color: $qobit-muted;
+        border-subtitle-align: right;
     }
     NowPlayingHero #hero-art-row {
         width: 1fr;
@@ -434,6 +440,12 @@ class QueueView(Widget):
 
     # Below this width the right pane is dropped and the list goes full-width.
     _NARROW_BELOW: int = 100
+    # The right pane holds the hero and the lyrics. From _SIDE_MIN_W columns
+    # they sit side by side; else from _STACK_MIN_H rows, one above the other;
+    # else only one shows and `l` swaps them. Measured on this view, never on
+    # the terminal: the chrome around it differs per screen.
+    _SIDE_MIN_W: int = 140
+    _STACK_MIN_H: int = 26
 
     DEFAULT_CSS = """
     QueueView { height: 1fr; layout: vertical; }
@@ -452,8 +464,21 @@ class QueueView(Widget):
         border-title-color: $qobit-accent-text;
         border-subtitle-color: $qobit-accent-text;
     }
-    /* Narrow terminals: hide the hero, list takes the full width. */
-    QueueView.-narrow #now-hero { display: none; }
+    /* The right pane: the hero and the lyrics (see _relayout for which show).
+       One above the other by default, side by side when -side. */
+    QueueView #side { width: 2fr; max-width: 66; height: 1fr; layout: vertical; }
+    /* Side by side: the list keeps ~40%; the lyrics get a little more than the
+       hero (their lines are long), the hero never less than its cover needs. */
+    QueueView.-side #queue-list { width: 4fr; }
+    QueueView.-side #side { width: 6fr; max-width: 132; layout: horizontal; }
+    QueueView.-side #now-hero { width: 4fr; min-width: 38; }
+    QueueView.-side #lyrics-panel { width: 5fr; }
+    QueueView #lyrics-panel { width: 1fr; height: 1fr; display: none; }
+    QueueView.-lyrics #lyrics-panel { display: block; }
+    QueueView.-hero-off #now-hero { display: none; }
+    QueueView.-side #now-hero { margin-right: 1; }
+    /* Narrow terminals: the list takes the full width. */
+    QueueView.-narrow #side { display: none; }
     QueueView.-narrow #queue-list { width: 1fr; margin-right: 0; }
     """
 
@@ -464,17 +489,51 @@ class QueueView(Widget):
     def compose(self) -> ComposeResult:
         with Horizontal(id="queue-body"):
             yield TrackListView(id="queue-list")
-            yield NowPlayingHero(id="now-hero")
+            with Container(id="side"):
+                yield NowPlayingHero(id="now-hero")
+                yield LyricsView(id="lyrics-panel")
 
     def on_mount(self) -> None:
         self.query_one("#queue-list", ListView).border_title = readout("Queue")
         app: QobitApp = self.app  # type: ignore[assignment]
         self.watch(app, "queue_version", self._on_queue_changed, init=True)
+        self.watch(app, "lyrics_panel", lambda _: self._relayout(), init=False)
+        self.watch(app, "lyrics_enabled", lambda _: self._relayout(), init=False)
         self.watch(app, "now_playing", self._on_now_playing_changed, init=False)
         self.watch(app, "is_paused", self._on_paused_changed, init=False)
 
+    def _relayout(self, size: Size | None = None) -> None:
+        """Which of the hero and the lyrics show, and how (see _SIDE_MIN_W)."""
+        app: QobitApp = self.app  # type: ignore[assignment]
+        width, height = size or self.size
+        narrow = width < self._NARROW_BELOW
+        on = app.lyrics_enabled
+        side = on and not narrow and width >= self._SIDE_MIN_W
+        stack = on and not narrow and not side and height >= self._STACK_MIN_H
+        swapped = on and not narrow and not side and not stack and app.lyrics_panel
+        self.set_class(narrow, "-narrow")
+        self.set_class(side, "-side")
+        self.set_class(stack, "-stack")
+        self.set_class(side or stack or swapped, "-lyrics")  # the lyrics show
+        self.set_class(swapped, "-hero-off")  # ... instead of the hero
+        # Where they take turns, each says which key brings the other.
+        turns = on and not narrow and not side and not stack
+        self.query_one("#now-hero").border_subtitle = "l  lyrics" if turns else ""
+        panel = self.query_one("#lyrics-panel", LyricsView)
+        panel.hint = "l  now playing" if turns else ""
+        panel.refresh_subtitle()
+        focused = self.app.focused
+        if swapped and focused is not None and focused.id == "now-hero":
+            self.query_one("#queue-list", ListView).focus()  # the hero just went
+
+    def lyrics_swap(self) -> bool:
+        """Whether the hero and the lyrics take turns here (`l` swaps them):
+        there is room for the right pane but not for both."""
+        on = self.app.lyrics_enabled  # type: ignore[attr-defined]
+        return on and not any(self.has_class(c) for c in ("-narrow", "-side", "-stack"))
+
     def on_resize(self, event: Resize) -> None:
-        self.set_class(event.size.width < self._NARROW_BELOW, "-narrow")
+        self._relayout(event.size)
 
     def activate(self) -> None:
         """Called by QobitApp when this tab becomes active: first load, focus."""

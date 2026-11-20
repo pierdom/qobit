@@ -7,6 +7,28 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Added
+
+- **Lyrics.** The lyrics of the playing track, with the line being sung
+  highlighted. The Playback tab shows them with the Now Playing details when
+  there is room: side by side on a wide terminal, one above the other on a
+  tall one, else `l` swaps the two. `L` opens the lyrics over the whole
+  screen (`l` does too when both already show, or on a narrow terminal). `,` and `.` shift the timing by half a second
+  for the track, `x` removes lyrics that are wrong, and both are remembered.
+  Lyrics come from [LRCLIB](https://lrclib.net); timed ones follow the music,
+  the rest show as scrollable text, and instrumentals say so. Lyrics are
+  checked against the track (title, artist, and length within 2.5 s for timed
+  ones) so another recording's don't show. They are looked up when a track
+  starts, and for the next one near the end of this one, and cached in
+  `~/.cache/qobit/lyrics`. Each lookup sends the track's artist, title, album
+  and length to LRCLIB: `qobit --no-lyrics` turns it off for one run, "Lyrics"
+  in the command palette saves the choice. Logout erases the cache and
+  `qobit clear-cache --lyrics` clears it.
+- The footer hides the keys that don't fit, last first, instead of cutting
+  one in half.
+
 ## [0.13.0] - 2026-11-19
 
 ### Added

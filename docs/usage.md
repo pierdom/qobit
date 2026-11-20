@@ -47,13 +47,15 @@ after a session expires, the previous account's data is erased the same way.
 | `f` | Favourite / unfavourite the highlighted track |
 | `R` | Song radio from the current track |
 | `S` | Shuffle on/off |
+| `l` `L` | Lyrics: `l` swaps the Playback panel between lyrics and Now Playing where they don't fit together, `L` opens them full screen |
+| `,` `.` `x` | While lyrics show: shift their timing 0.5 s earlier / later; remove wrong lyrics |
 | `Enter` | Open the selected item, or play the selected track |
 | `↑` `↓` `←` `→` | Move in lists and grids |
 | `PageUp` / `PageDown` | Move the selection a page at a time |
 | `Home` / `End` | First / last item |
 | `Escape` | Back one level: close an album inside an artist page, then the page; close a detail view; or clear the filter (the footer shows `esc Back` when there's somewhere to go back to). Otherwise focus the tab bar |
 | `-` / `=` | Software volume down / up, only once it's turned on from `Ctrl+P` (they appear in the footer then) |
-| `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Shuffle, Gapless playback, Qobuz Connect, software volume |
+| `Ctrl+P` | Command palette: theme, transparent background, Endless radio, Shuffle, Lyrics, Gapless playback, Qobuz Connect, software volume |
 | `q` | Quit |
 
 Albums, artists and playlists you open from Search, `g`, `i` or Similar
@@ -114,6 +116,19 @@ output reopens for the new rate, a short pause: qobit doesn't resample.
 `qobit --no-gapless` turns it off for one run; "Gapless playback" in `Ctrl+P`
 saves the choice. The transport title shows `[ ⇉ GAPLESS ]` while it is on.
 See [Audio setup](audio.md#gapless-playback).
+
+**Lyrics** come from [LRCLIB](https://lrclib.net) and follow the music line by
+line (untimed ones scroll with the arrow and page keys; instrumentals say so).
+The Playback tab shows them next to Now Playing: side by side from about 140
+columns, one above the other from about 36 rows, else `l` swaps the two
+(remembered; each panel's border names the key). `L`, or `l` where both
+already show, on a narrow terminal or on another tab, opens them full screen. `,` and `.`
+shift the timing of this track, and `x` removes wrong lyrics for it; both are
+remembered. They are looked up as a track starts (and the next one's near the
+end), checked against the track, and cached in `~/.cache/qobit/lyrics`.
+**Each lookup sends the track's artist, title, album and length to LRCLIB**:
+`qobit --no-lyrics` turns them off for one run and `Ctrl+P` → *Lyrics* saves the
+choice. Logout and `qobit clear-cache --lyrics` erase the cache.
 
 **Shuffle** (`S`, `Ctrl+P` → *Shuffle*, or `qobit --shuffle` for one run) puts
 Up Next in random order. A track you start from a list plays first and the

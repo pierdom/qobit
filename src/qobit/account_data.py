@@ -19,6 +19,7 @@ import fcntl
 from typing import IO
 
 from . import config, library_cache, store
+from .lyrics import cache as lyrics_cache
 
 # Every file in DATA_DIR that carries account activity.
 ACCOUNT_FILES = (
@@ -83,6 +84,8 @@ def erase_account_data() -> list[str]:
     # in a thread (it would write one back).
     if library_cache.clear():
         removed.append("the saved copy of the library")
+    if lyrics_cache.clear():  # a file per track played: a record of listening
+        removed.append("the cached lyrics")
     for name in _LEFTOVER_FILES:
         with contextlib.suppress(FileNotFoundError):
             (store.DATA_DIR / name).unlink()
