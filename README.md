@@ -32,7 +32,7 @@ It works best in Ghostty or kitty (see [Terminal](#terminal)).
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/queue_page.png" width="49%" alt="qobit, a Qobuz terminal client: the Playback tab with the queue and the now-playing panel"> <img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/artist_view.png" width="49%" alt="qobit, a Qobuz terminal client: an artist page with bio, top tracks and albums">
+<img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/queue_page.png" width="49%" alt="qobit, a Qobuz terminal client: the Playback tab with the queue, the now-playing panel and synced lyrics"> <img src="https://raw.githubusercontent.com/pierdom/qobit/main/screenshots/artist_view.png" width="49%" alt="qobit, a Qobuz terminal client: an artist page with bio, top tracks and albums">
 
 </div>
 
@@ -49,9 +49,10 @@ It works best in Ghostty or kitty (see [Terminal](#terminal)).
 - A queue you can move back and forth in without losing tracks. It's restored
   when you restart qobit.
 - Shuffle (`S`).
-- Lyrics from LRCLIB, line by line (`l`). Each lookup sends the track's artist,
-  title, album and length to lrclib.net; `--no-lyrics` or the command palette
-  turns it off.
+- Synced lyrics from LRCLIB, shown beside the now-playing panel when the
+  terminal is big enough (`l`). Each lookup sends the track's artist, title,
+  album and length to lrclib.net; `--no-lyrics` or the command palette turns
+  it off.
 - Song radio and personal DailyQ / WeeklyQ mixes from Qobuz recommendations.
 - Artist pages with top tracks, your favourites by that artist, albums and
   similar artists.

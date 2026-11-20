@@ -5,10 +5,12 @@ first: ``qobit auth``), and draws its screen to a PNG cell by cell, with the
 cover art pasted over the image cells at full resolution, as a Kitty-protocol
 terminal shows them. Not a terminal capture: no terminal is involved.
 
-What it shows: the cyberdeck theme, Mogwai's "Auto Rock" playing (no audio is
-started: the play state is set, the track, album and bio are the real ones), a
-progress bar past 75% so its gradient shows, and your real favourites in the
-library tabs. Ty Segall's page is opened from Artists (it must be one of your
+What it shows: the cyberdeck theme, The Verve's "Bitter Sweet Symphony" playing
+(no audio is started: the play state is set, the track, album, bio and lyrics
+are the real ones: the lyrics come from LRCLIB, the one request that isn't to
+Qobuz), a progress bar past 75% so its gradient shows, and your real favourites
+in the library tabs. The track must be one of your favourite tracks. Ty
+Segall's page is opened from Artists (it must be one of your
 followed artists; else the first one is used), and his album Possession from
 Albums (same rule).
 
@@ -41,9 +43,13 @@ COLS, ROWS = 132, 40  # wide enough for the artist page's two track lists + Simi
 CELL_W, CELL_H = 15, 32  # a 2x capture of a 7.5 x 16 px cell
 FONT_PX = 25  # DejaVu Sans Mono's advance at this size: 15 px
 
-NOW_PLAYING = ("Mogwai", "Mr. Beast", "Auto Rock")
+NOW_PLAYING = ("Hole", "Violet")  # timed lyrics running past 75% of the track
 ARTIST_PAGE = "Ty Segall"
 ALBUM_PAGE = ("Ty Segall", "Possession")  # an English bio, and a HI-RES readout
+# Scenes that need another size: the Playback tab is 160 wide so the queue, the
+# now-playing panel and the lyrics sit side by side (at 132 the last two stack
+# and the cover has no room); 48 rows keeps the picture's proportions.
+SCENE_SIZE = {"queue_page": (160, 48)}
 PLAYED_FRACTION = 0.8  # of the track: past 75%, where the bar's gradient shows
 
 RGB = tuple[int, int, int]
@@ -217,7 +223,9 @@ def draw_block_or_line(d: ImageDraw.ImageDraw, ch: str, x: int, y: int, fg: RGB,
 def paint(strips, background: RGB, foreground: RGB, fonts: Fonts, missing: set[str]) -> Image.Image:
     """The screen's strips as an image, one cell at a time. Characters no font
     has go into ``missing`` (they're left blank)."""
-    img = Image.new("RGB", (COLS * CELL_W, ROWS * CELL_H), background)
+    img = Image.new(
+        "RGB", (max(s.cell_length for s in strips) * CELL_W, len(strips) * CELL_H), background
+    )
     d = ImageDraw.Draw(img)
     for row, strip in enumerate(strips):
         y = row * CELL_H
@@ -281,6 +289,7 @@ def paste_covers(img: Image.Image, screen) -> None:
 def isolate(tmp: Path) -> None:
     """Point every qobit path at ``tmp`` (settings, queue, covers, library)."""
     from qobit import config, library_cache, store
+    from qobit.lyrics import cache as lyrics_cache
     from qobit.ui import _images
 
     config.CONFIG_DIR = tmp / "config"
@@ -288,6 +297,7 @@ def isolate(tmp: Path) -> None:
     store.DATA_DIR = tmp / "data"
     _images._CACHE_DIR = tmp / "cache"
     library_cache.DIR = tmp / "library"
+    lyrics_cache.DIR = tmp / "lyrics"
 
 
 def fix_cell_size() -> None:
@@ -326,26 +336,25 @@ async def settle(app, pilot: Pilot, quiet: float = 0.8, timeout: float = 60.0) -
 
 
 async def play(app, pilot: Pilot) -> None:
-    """Mogwai's "Auto Rock" as the playing track: the real album, queue and
-    bio; the play state is set by hand (no mpv, no audio)."""
+    """``NOW_PLAYING`` as the playing track: the real album, queue, bio and
+    lyrics; the play state is set by hand (no mpv, no audio)."""
     from qobit.audio.verify import Signal
     from qobit.qobuz.models import Album, StreamUrl
 
-    artist, album_title, title = NOW_PLAYING
-    favourites = await app.ensure_favorite_albums()
-    shelf = [a for a in favourites if a.artist == artist]
-    mine = next((a for a in shelf if a.title == album_title), None)
+    artist, title = NOW_PLAYING
+    tracks = await app.ensure_favorite_tracks()
+    mine = next((t for t in tracks if (t.artist, t.title) == (artist, title)), None)
     if mine is None:
-        sys.exit(f"{artist} - {album_title} isn't one of your favourite albums.")
-    album = Album.from_api(await app._client.get_album(mine.id))
-    now = next(t for t in album.tracks if t.title == title)
+        sys.exit(f"{artist} - {title} isn't one of your favourite tracks.")
+    album = Album.from_api(await app._client.get_album(mine.album_id))
+    now = next(t for t in album.tracks if t.id == mine.id)
     after = album.tracks[album.tracks.index(now) + 1 :]
+    shelf = [a for a in await app.ensure_favorite_albums() if a.artist == artist]
     for other in shelf:  # the artist's other favourite albums follow
         if other.id != album.id:
             after += Album.from_api(await app._client.get_album(other.id)).tracks[:5]
 
     # Before it: a few of your favourite tracks, one per artist.
-    tracks = await app.ensure_favorite_tracks()
     before, seen = [], {artist}
     for t in tracks:
         if t.artist not in seen and len(before) < 5:
@@ -473,6 +482,8 @@ async def run(out: Path, only: list[str], font_dir: Path) -> None:
             for name, scene in SCENES.items():
                 if only and name not in only:
                     continue
+                await pilot.resize_terminal(*SCENE_SIZE.get(name, (COLS, ROWS)))
+                await settle(app, pilot)
                 await scene(app, pilot, fonts)
                 await pilot.pause(0.3)
                 screen = app.screen

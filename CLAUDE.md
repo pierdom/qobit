@@ -668,8 +668,10 @@ uv run pytest
   scripts/screenshots.py` (log in first: `qobit auth`). It runs the real app
   headless on your session (paths in a temp dir), draws the screen cell by
   cell with DejaVu Sans Mono (block and box characters drawn, not typeset)
-  and pastes the covers over their cells: cyberdeck, Mogwai "playing" past
-  75% (play state set by hand, no audio), Ty Segall's page and album. Not a
+  and pastes the covers over their cells: cyberdeck, a favourite track with
+  timed lyrics ("playing" past 75%, play state set by hand, no audio; the
+  lyrics come from LRCLIB; the Playback shot is 160x48 so the queue, hero and
+  lyrics sit side by side), Ty Segall's page and album. Not a
   terminal capture. Re-run it after a UI change.
 - Verify UI headless: `app.save_screenshot()` → `rsvg-convert` → PNG (Kitty
   images show as garbage there; real captures need a Kitty-protocol terminal).
