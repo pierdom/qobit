@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 
-from album_pages import wait_until
+from album_pages import quiet, wait_until
 from textual.color import Color
 
 from qobit.ui.nav import QobitFooter
@@ -89,7 +89,7 @@ def test_the_highlighted_row_still_follows_the_focus(ui_app):
 def test_footer_rebuilds_once_and_only_on_a_change(ui_app, monkeypatch):
     async def run():
         async with ui_app.run_test(size=(130, 40)) as pilot:
-            await pilot.pause(0.3)
+            await quiet(pilot)  # start-up changes the footer a few times, late on a slow runner
             footer = ui_app.screen.query_one(QobitFooter)
             rebuilds = []
             recompose = footer.recompose
