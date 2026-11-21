@@ -105,7 +105,8 @@ def test_footer_rebuilds_once_and_only_on_a_change(ui_app, monkeypatch):
             assert rebuilds == []
 
             ui_app.action_switch_tab("tracks")  # other keys
-            await pilot.pause(0.5)
+            await wait_until(pilot, lambda: len(rebuilds) >= 1, timeout=10)
+            await quiet(pilot)  # the list takes the focus a little later: its keys follow
             assert len(rebuilds) >= 1
             n = len(rebuilds)
             for _ in range(5):
