@@ -71,6 +71,24 @@ def rig(ui_app, monkeypatch, tmp_path):
         real_stop()
 
     monkeypatch.setattr(player, "stop", stop)
+
+    real_advance = ui_app._advance_queue
+
+    def advance():
+        """Why the next track was asked for: what the player and the app were
+        doing then (running? a gapless entry queued? mpv's exit code?)."""
+        gen, running = player.snapshot()
+        proc = player._proc
+        queued = ui_app._next_up[0] if ui_app._next_up else None
+        code = proc.poll() if proc else "no proc"
+        LOG.append(
+            f"{time.monotonic() - _T0[0]:5.2f}s advance: gen={gen} running={running} "
+            f"returncode={code} next_up={queued} is_playing={ui_app.is_playing} "
+            f"pos={ui_app.playback_pos:.2f} dur={ui_app.playback_dur:.2f}"
+        )
+        return real_advance()
+
+    monkeypatch.setattr(ui_app, "_advance_queue", advance)
     LOG_SOURCES.clear()
     LOG_SOURCES.append(procs)
     ui_app._player = player

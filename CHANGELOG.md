@@ -7,6 +7,17 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Added
+
+- `qobit doctor` checks what could stop the output being bit-perfect and prints
+  how to fix it: mpv and its version, the saved device, software volume,
+  options in your `mpv.conf` that change the samples, the DAC's rates, whether
+  a raw `alsa/hw:` device can be opened or is busy, whether PipeWire follows
+  each track's rate (with the drop-in for your DAC to paste), and the terminal.
+  It changes nothing and needs no login; it exits with 1 on a problem.
+
 ## [0.14.2] - 2026-11-20
 
 ### Added
