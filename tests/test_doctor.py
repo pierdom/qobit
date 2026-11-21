@@ -231,8 +231,11 @@ def test_the_kind_of_device_decides_the_verdict(device, status):
     assert doctor.check_device(device, listed, "Linux")[0].status == status
 
 
-def test_software_volume_on_is_a_warning():
-    assert doctor.check_software_volume(True)[0].status == "warn"
+def test_software_volume_is_a_warning_only_below_100():
+    low = doctor.check_software_volume(True, 70)[0]
+    assert low.status == "warn" and "at 70%" in low.title and "= key" in low.fix
+    unity = doctor.check_software_volume(True, 100)[0]
+    assert unity.status == "info" and "at 100%" in unity.title and not unity.fix
     assert doctor.check_software_volume(False)[0].status == "ok"
 
 
@@ -373,10 +376,10 @@ def test_the_report_lists_the_fixes_and_counts_problems():
         env={"COLORTERM": "truecolor"},
     )
     device = "pipewire/alsa_output.usb-FiiO_FiiO_K13_R2R-00.analog-stereo"
-    sections = doctor.run_checks(p, device=device, software_volume=True)
+    sections = doctor.run_checks(p, device=device, software_volume=True, volume=60)
     text = doctor.render(sections)
     assert "To fix" in text and "1. " in text
-    assert "10-allowed-rates.conf" in text and "Software volume is on" in text
+    assert "10-allowed-rates.conf" in text and "Software volume is on, at 60%" in text
     assert "1 problem, 2 warnings." in text
     assert doctor.exit_code(sections) == 1
 

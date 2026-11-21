@@ -290,15 +290,25 @@ def check_device(device: str | None, listed: list[DeviceInfo], system: str) -> l
     return out
 
 
-def check_software_volume(enabled: bool) -> list[Check]:
+def check_software_volume(enabled: bool, volume: int = 100) -> list[Check]:
+    """Software volume scales every sample (DSP), but only below 100%."""
     if not enabled:
         return [Check("ok", "Software volume is off", "No gain is applied to the samples.")]
+    if volume >= 100:
+        return [
+            Check(
+                "info",
+                "Software volume is on, at 100%",
+                "No gain is applied now; lowering it (- key) changes the samples (DSP).",
+            )
+        ]
     return [
         Check(
             "warn",
-            "Software volume is on",
-            "Below 100% it changes the samples (DSP): not bit-perfect.",
-            "Turn it off: Ctrl+P → Software volume, and use the DAC's own knob.",
+            f"Software volume is on, at {volume}%",
+            "It scales every sample (DSP): not bit-perfect.",
+            "Raise it to 100% (= key), or turn it off (Ctrl+P → Software volume) and set "
+            "the volume on the system or the DAC.",
         )
     ]
 
@@ -632,6 +642,7 @@ def run_checks(
     p: Probe | None = None,
     device: str | None = None,
     software_volume: bool = False,
+    volume: int = 100,
     images: str = "auto",
 ) -> list[tuple[str, list[Check]]]:
     """The report's sections: (heading, checks)."""
@@ -641,7 +652,10 @@ def run_checks(
     if any(c.status == "fail" and "not installed" in c.title for c in mpv_checks):
         return sections
     sections.append(
-        ("Output", check_device(device, listed, p.system) + check_software_volume(software_volume))
+        (
+            "Output",
+            check_device(device, listed, p.system) + check_software_volume(software_volume, volume),
+        )
     )
     sections.append(("mpv config", check_mpv_conf(p)))
     if p.system == "Linux":

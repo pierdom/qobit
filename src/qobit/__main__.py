@@ -202,12 +202,13 @@ def cmd_devices(_args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(_args: argparse.Namespace) -> int:
-    from .config import get_image_mode, get_software_volume_enabled
+    from .config import get_image_mode, get_saved_volume, get_software_volume_enabled
     from .doctor import exit_code, render, run_checks
 
     sections = run_checks(
         device=get_audio_device(),
         software_volume=get_software_volume_enabled(),
+        volume=get_saved_volume(),
         images=get_image_mode(),
     )
     print(render(sections), end="")
