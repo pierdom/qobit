@@ -445,6 +445,55 @@ def _capabilities(p: Probe, card: Card) -> Capabilities | None:
     return None
 
 
+# Words in sound-card and PipeWire node names that say nothing about which card.
+_GENERIC = frozenset(
+    [
+        "usb",
+        "audio",
+        "alsa",
+        "output",
+        "input",
+        "analog",
+        "stereo",
+        "digital",
+        "surround",
+        "pro",
+        "co",
+        "ltd",
+        "inc",
+        "electronics",
+        "pci",
+        "device",
+        "default",
+        "pipewire",
+        "pulse",
+        "sink",
+    ]
+)
+
+
+def _tokens(text: str) -> set[str]:
+    return {
+        t
+        for t in re.split(r"[^a-z0-9]+", text.lower())
+        if t and t not in _GENERIC and not t.isdigit()
+    }
+
+
+def _card_by_name(cards: list[Card], device: str) -> Card | None:
+    """The card whose name shares the most words with a PipeWire/Pulse node
+    name (``alsa_output.usb-GuangZhou_FiiO_..._FIIO_K13_R2R-00.analog-stereo``
+    ↔ ``USB-Audio - FIIO K13 R2R``): two words at least, and one best card."""
+    wanted = _tokens(device)
+    scored = sorted(
+        ((len(wanted & _tokens(f"{c.id} {c.name}")), c) for c in cards),
+        key=lambda x: -x[0],
+    )
+    if scored and scored[0][0] >= 2 and (len(scored) == 1 or scored[1][0] < scored[0][0]):
+        return scored[0][1]
+    return None
+
+
 def find_dac(p: Probe, device: str | None) -> Dac | None:
     """The sound card the saved device plays on: named in an alsa/ id, else
     matched by name (PipeWire node names carry it), else the only USB card."""
@@ -459,7 +508,7 @@ def find_dac(p: Probe, device: str | None) -> Dac | None:
         card = next(
             (c for c in cards if len(_plain(c.id)) > 3 and _plain(c.id) in plain),
             None,
-        )
+        ) or _card_by_name(cards, device)
     if card is None and device in (None, "auto"):  # nothing names a card: the only USB one
         usb = [c for c in cards if _capabilities(p, c) is not None]
         card = usb[0] if len(usb) == 1 else None

@@ -550,3 +550,32 @@ def test_pipewire_with_no_allowed_rates_key_means_its_base_rate_only():
     )
     (c,) = doctor.check_pipewire(nothing, device, doctor.find_dac(nothing, device))
     assert c.status == "info" and "could not be read" in c.title
+
+
+def test_a_pipewire_node_is_matched_to_its_card_by_the_words_in_the_names():
+    """The node name carries the vendor and product, not the card's short id."""
+    cards = CARDS.replace("[K13R2R         ]", "[R2R            ]")
+    p = machine(files={"/proc/asound/cards": cards})
+    device = (
+        "pipewire/alsa_output.usb-GuangZhou_FiiO_Electronics_Co._Ltd_FIIO_K13_R2R-00.analog-stereo"
+    )
+    dac = doctor.find_dac(p, device)
+    assert dac is not None and dac.card.id == "R2R" and dac.caps.rates[-1] == 384000
+    # the onboard card shares nothing with it, and one shared word is too little
+    assert doctor.find_dac(p, "pipewire/alsa_output.pci-0000_00_1f.3.analog-stereo") is None
+    assert doctor.find_dac(p, "pipewire/alsa_output.usb-Some_Other_Vendor-00.analog-stereo") is None
+
+
+def test_two_cards_that_match_equally_are_not_guessed():
+    twins = (
+        " 1 [AAAA            ]: USB-Audio - FiiO K13 R2R\n                      x\n"
+        " 2 [BBBB            ]: USB-Audio - FiiO K13 R2R\n                      y\n"
+    )
+    p = machine(
+        files={
+            "/proc/asound/cards": twins,
+            "/proc/asound/card1/stream0": STREAM,
+            "/proc/asound/card2/stream0": STREAM,
+        }
+    )
+    assert doctor.find_dac(p, "pipewire/alsa_output.usb-FiiO_K13_R2R-00.analog-stereo") is None
