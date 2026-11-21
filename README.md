@@ -92,6 +92,7 @@ Then:
 uv tool install qobit   # or: pipx install qobit
 qobit auth              # log in once; opens the browser, prints the link
 qobit set-device        # choose the audio output
+qobit doctor            # check the audio setup (optional, changes nothing)
 qobit                   # start the TUI
 ```
 
@@ -100,6 +101,8 @@ instead: `uv tool install git+https://github.com/pierdom/qobit`.
 
 For bit-perfect output, choose the device as described in
 [docs/audio.md](https://github.com/pierdom/qobit/blob/main/docs/audio.md).
+If you are not sure the output is bit-perfect, `qobit doctor` says what is in
+the way and how to fix it.
 
 ## Terminal
 
