@@ -89,6 +89,28 @@ def rig(ui_app, monkeypatch, tmp_path):
         return real_advance()
 
     monkeypatch.setattr(ui_app, "_advance_queue", advance)
+
+    real_get = player.get_property
+    last_entry = [object()]
+
+    def get_property(prop):
+        """What the poll sees as the playlist position, each time it changes."""
+        value = real_get(prop)
+        if prop == "playlist-pos" and value != last_entry[0]:
+            last_entry[0] = value
+            LOG.append(f"{time.monotonic() - _T0[0]:5.2f}s playlist-pos reads {value!r}")
+        return value
+
+    monkeypatch.setattr(player, "get_property", get_property)
+
+    real_transition = ui_app._on_gapless_transition
+
+    def transition():
+        queued = ui_app._next_up[0] if ui_app._next_up else None
+        LOG.append(f"{time.monotonic() - _T0[0]:5.2f}s gapless transition, next_up={queued}")
+        return real_transition()
+
+    monkeypatch.setattr(ui_app, "_on_gapless_transition", transition)
     LOG_SOURCES.clear()
     LOG_SOURCES.append(procs)
     ui_app._player = player
