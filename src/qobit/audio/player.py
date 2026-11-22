@@ -16,8 +16,9 @@ _SYSTEM = platform.system()
 
 class EntryWatch:
     """Sees mpv go on to the next playlist entry by itself (a gapless move):
-    its ``playlist-pos`` rises within one process. The poll feeds it each
-    tick; a new process (another stop generation) starts afresh."""
+    its ``playlist-pos`` rises from one entry to another within one process.
+    The poll feeds it each tick; a new process (another stop generation) starts
+    afresh."""
 
     def __init__(self) -> None:
         self._gen: int | None = None
@@ -26,7 +27,9 @@ class EntryWatch:
     def moved_on(self, gen: int, entry: object) -> bool:
         if gen != self._gen:
             self._gen, self._entry = gen, None
-        if not isinstance(entry, int):
+        # A playlist-pos below 0 means no entry is current: while mpv starts up
+        # (-1, then 0: not a move on, though 0 > -1) and between entries.
+        if not isinstance(entry, int) or entry < 0:
             return False
         moved = self._entry is not None and entry > self._entry
         self._entry = entry

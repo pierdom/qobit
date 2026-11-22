@@ -7,6 +7,15 @@ Releasing: bump `version` in `pyproject.toml` (the only place it lives), add
 an entry here, `uv lock`, commit, then push the tag `vX.Y.Z`: the release
 workflow publishes to PyPI and creates the GitHub release from this entry.
 
+## [Unreleased]
+
+### Fixed
+
+- On a slow or busy machine a track could be skipped right after it started.
+  While mpv was starting, qobit took the first track becoming current for mpv
+  moving on to the next one, and started the next track over it. This came
+  with gapless playback (0.13.0).
+
 ## [0.15.0] - 2026-11-22
 
 ### Added

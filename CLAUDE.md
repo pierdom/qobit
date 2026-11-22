@@ -209,7 +209,9 @@ new mpv (`_play_stream`), Connect becoming active, and turning gapless off.
 `append`/`clear_next` carry the stop generation they mean (`_ipc(only_gen=)`):
 the socket path is the same for every mpv, so a late append would land in the
 next process. mpv moving on by itself shows as `playlist-pos` rising
-(`EntryWatch`, fed by the poll) → `_on_gapless_transition` moves the cursor and
+(`EntryWatch`, fed by the poll; a `playlist-pos` below 0, which mpv reports while
+it starts and between entries, is no entry and never a move: -1 then 0 skipped
+the starting track on slow machines) → `_on_gapless_transition` moves the cursor and
 runs `_begin_track` (what `_play_stream` does after `player.play`). Nothing
 queued (last track, unplayable, offline) = mpv exits and the natural-end path
 (`_advance_queue`) is unchanged; endless radio refills ~30 s early. Tests:

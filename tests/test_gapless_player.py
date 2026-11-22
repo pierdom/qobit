@@ -89,6 +89,19 @@ def test_entry_watch_sees_mpv_move_on_within_one_process():
     assert w.moved_on(1, 2) is True
 
 
+def test_entry_watch_does_not_take_mpvs_start_up_for_a_move():
+    """While mpv starts, playlist-pos reads -1 and then 0 (seen on a loaded CI
+    runner and on slow machines): that is the first entry becoming current, not
+    mpv going on to the next track. It used to skip the track that was starting."""
+    w = EntryWatch()
+    assert w.moved_on(1, -1) is False
+    assert w.moved_on(1, 0) is False
+    assert w.moved_on(1, 0) is False
+    assert w.moved_on(1, 1) is True  # a real move
+    assert w.moved_on(1, -1) is False  # between entries
+    assert w.moved_on(1, 2) is True  # and on from the entry before the gap
+
+
 def test_entry_watch_starts_afresh_for_a_new_process():
     w = EntryWatch()
     w.moved_on(1, 0)
