@@ -272,11 +272,11 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
         """A background refresh brought a different list: redraw it, the
         cursor on the track it was on."""
         app: QobitApp = self.app  # type: ignore[assignment]
-        if not self._loaded or app._fav_tracks is None:
+        if not self._loaded or app.favorite_tracks is None:
             return  # the first load reads the app's list anyway
         row = self.query_one("#fav-tracks", ListView).highlighted_child
         self._reselect = row.track.id if isinstance(row, FavTrackRow) else None
-        self._tracks = list(app._fav_tracks)
+        self._tracks = list(app.favorite_tracks)
         self._update_subtitle()
         self._render_list()
 
@@ -289,7 +289,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         if is_fav:
             if not any(t.id == track_id for t in self._tracks):
-                self._tracks = list(app._fav_tracks or [])
+                self._tracks = list(app.favorite_tracks or [])
                 self._render_list()
         elif any(t.id == track_id for t in self._tracks):
             # Surgical removal preserves scroll/selection when unfavouriting here.

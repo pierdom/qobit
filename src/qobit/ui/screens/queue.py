@@ -640,7 +640,7 @@ class QueueView(Widget):
             # The list doesn't wait for the favourites: fetching a whole
             # library kept the queue blank for seconds at startup. Rows show
             # no hearts until they arrive, then one more reconcile adds them.
-            fav_ids = app._fav_ids
+            fav_ids = app.favorite_ids
             if fav_ids is None:
                 self._hearts_when_loaded()
             # Gone mid-way: logout rebuilds every view (App.recompose) while
@@ -653,7 +653,7 @@ class QueueView(Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         await app.ensure_favorite_ids()
         # Not loaded (the fetch failed): no retry loop; the next change retries.
-        if app._fav_ids is not None and self.is_attached:
+        if app.favorite_ids is not None and self.is_attached:
             self._on_queue_changed(app.queue_version)
 
     async def _reconcile(self, app: QobitApp, fav_ids: set[str]) -> None:
@@ -671,10 +671,9 @@ class QueueView(Widget):
         # now_playing changes only once the stream URL resolves. Reading it
         # in between showed the old track twice and the next one missing, then
         # moved the rows back a moment later.
-        timeline, cursor = app._timeline, app._cursor
-        now_playing = timeline[cursor] if 0 <= cursor < len(timeline) else app.now_playing
-        history = list(app._history)
-        queue = list(app._play_queue)
+        now_playing = app.current_track or app.now_playing
+        history = app.history  # a fresh list each time
+        queue = app.up_next
 
         # Where the user was: a row other than the playing one keeps the cursor
         # (a track ending shouldn't lose your place in Up Next); on the playing
@@ -750,9 +749,8 @@ class QueueView(Widget):
         await self._apply(lv, desired[:limit])
 
         # Where you are in the timeline (the section rules carry counts and times).
-        lv.border_subtitle = (
-            f"{app._cursor + 1} of {len(app._timeline)}" if now_playing and app._cursor >= 0 else ""
-        )
+        position = app.queue_position
+        lv.border_subtitle = f"{position[0]} of {position[1]}" if now_playing and position else ""
 
         target = now_row if follow or held not in desired else held
         self._place_cursor(lv, target, center=first_render)

@@ -267,10 +267,10 @@ class AlbumsView(TypeToFilter, Widget):
         cache, the cursor on the album it was on. Before the first load
         there's nothing to redraw; the load reads the cache anyway."""
         app: QobitApp = self.app  # type: ignore[assignment]
-        if self._loaded and app._fav_albums is not None:
+        if self._loaded and app.favorite_albums is not None:
             card = self.query_one("#fav-albums-grid", AlbumGrid).selected_card()
             self._reselect = card._album.id if isinstance(card, AlbumCard) else None
-            self._albums = list(app._fav_albums)
+            self._albums = list(app.favorite_albums)
             self._update_subtitle()
             self._render_grid()
 

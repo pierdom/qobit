@@ -293,10 +293,10 @@ class ArtistsView(TypeToFilter, Widget):
         cache, the cursor on the artist it was on. Before the first load
         there's nothing to redraw; the load reads the cache anyway."""
         app: QobitApp = self.app  # type: ignore[assignment]
-        if self._loaded and app._fav_artists is not None:
+        if self._loaded and app.favorite_artists is not None:
             card = self.query_one("#fav-artists-grid", ArtistGrid).selected_card()
             self._reselect = card.artist.id if isinstance(card, ArtistCard) else None
-            self._artists = list(app._fav_artists)
+            self._artists = list(app.favorite_artists)
             self._update_subtitle()
             self._render_grid()
 

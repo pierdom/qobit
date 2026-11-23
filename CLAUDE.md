@@ -84,7 +84,7 @@ src/qobit/
 
 **Timeline + cursor.** `QobitApp` holds one `_timeline: list[Track]` and
 `_cursor` (index of the now-playing track, -1 if none). History and Up Next are
-read-only slices (`_history`, `_play_queue`). Invariant: `now_playing ==
+read-only slices (`history`, `up_next`). Invariant: `now_playing ==
 _timeline[_cursor]`. `_advance_queue` moves the cursor (radio refill extends
 the end); `action_previous` and selecting any Playback row call
 `jump_to(index)`, which only moves the cursor, so skipping never drops tracks.
@@ -384,6 +384,15 @@ once; with the token still set they fetched and saved it again). Models
 round-trip through `dataclasses.asdict`: a model field change that old
 entries can't fill needs a `VERSION` bump. `qobit clear-cache` leaves the
 library alone while a TUI runs (it would write it back).
+
+**What screens and widgets may read from the app.** Its reactives and its public
+read-only names (`history`, `up_next`, `current_track`, `queue_position`,
+`favorite_tracks/ids/albums/artists`, `user_playlists`, `last_stream`), plus
+`_client` (every screen asks it for data). Never the underscore state:
+`tests/test_ui_boundary.py` fails on `app._something` in `screens/`, `widgets/`
+and the shared UI modules. The play contexts and `app.py` are the app's
+collaborators and are not checked. A new read a screen needs gets a public
+property in the block of that name in `app.py`.
 
 **Self-wiring widgets.** TransportBar and NowPlayingHero `watch()` the app's
 reactives on mount, so any instance anywhere is live. Now-playing art shows

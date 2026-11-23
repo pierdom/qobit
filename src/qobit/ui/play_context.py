@@ -100,14 +100,14 @@ class LocalPlayContext:
 
     def clear_queue(self) -> bool:
         app = self.app
-        if app._play_queue:
+        if app.up_next:
             del app._timeline[app._cursor + 1 :]
             app.queue_version += 1
         return True
 
     def clear_history(self) -> bool:
         app = self.app
-        if app._history:
+        if app.history:
             del app._timeline[: app._cursor]
             app._cursor = 0
             app.queue_version += 1
@@ -122,8 +122,8 @@ class LocalPlayContext:
     def shuffle_upcoming(self) -> None:
         """Put Up Next in random order (shuffle turned on)."""
         app = self.app
-        if len(app._play_queue) > 1:
-            upcoming = app._play_queue
+        if len(app.up_next) > 1:
+            upcoming = app.up_next
             random.shuffle(upcoming)
             app._timeline[app._cursor + 1 :] = upcoming
             app.queue_version += 1

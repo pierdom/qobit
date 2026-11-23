@@ -193,7 +193,7 @@ def signal_parts(app: QobitApp) -> tuple[Content | None, Content | None]:
     """(lamp, ``HI-RES 24-BIT · 96 kHz``) for the playing stream, either None.
     Colours are the theme's actual values (border titles don't resolve
     $variables), so watchers redraw them on a theme change."""
-    stream = app._last_stream if app.now_playing else None
+    stream = app.last_stream if app.now_playing else None
     if stream is None:
         return None, None
     lamp = _lamp(app)
