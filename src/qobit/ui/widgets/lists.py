@@ -43,7 +43,7 @@ class PagedListView(ListView):
         Textual restyles every row and label in the list (600 widgets for
         200 rows), twice per tab switch (the list left and the one
         entered): most of a tab switch's time. Only the highlighted row's
-        look depends on the list's focus (QobitApp.CSS, ``ListView:focus >
+        look depends on the list's focus (app_css.py, ``ListView:focus >
         ListItem.-highlight``)."""
         nodes: list[Widget] = [self]
         if (row := self.highlighted_child) is not None:

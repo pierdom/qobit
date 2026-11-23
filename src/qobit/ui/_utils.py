@@ -98,7 +98,7 @@ DETAIL_HEADER_CSS = """
 
 def status_line(text: str, *, error: bool = False, id: str | None = None):  # -> Label
     """The one look for an empty or failed list/grid: a muted line (``$error``
-    for failures; styled in QobitApp.CSS). Plain text, never markup: an
+    for failures; styled in app_css.py). Plain text, never markup: an
     exception message or a search query may contain ``[``."""
     from textual.widgets import Label
 

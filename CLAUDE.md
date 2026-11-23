@@ -47,6 +47,8 @@ src/qobit/
 │                        over a PlayerPort; proto/ is generated (ruff-excluded)
 └── ui/
     ├── app.py           QobitApp: reactive state, transport, tabs, restore
+    ├── app_css.py       the app stylesheet: BASE_CSS (the look, names no qobit
+    │                    widget) + QOBIT_CSS (what only qobit's widgets need)
     ├── nav.py           TABS, breadcrumb trail (Breadcrumb), a page's tab bar
     ├── play_context.py  LocalPlayContext / ConnectPlayContext: the only
     │                    writers of _timeline/_cursor
@@ -466,7 +468,7 @@ part is built. Row titles go through `playing_content(lead, text, …, width=)`:
 a fixed gutter (`GUTTER_ICON`/`GUTTER_NUM`/`GUTTER_NUM_LONG`) where ▶/⏸
 replaces the lead, and `meta_indent(width)` for the second line, one width per
 list (the Playback timeline uses `GUTTER_NUM` for all its rows). `.row-title`
-and `.row-meta` never wrap (ellipsis, in `QobitApp.CSS`). Empty and failed
+and `.row-meta` never wrap (ellipsis, in `app_css.py`). Empty and failed
 lists/grids use `_utils.status_line()`; a loading tab sets its border subtitle
 to `loading…`. Resolution is `models.quality_text()` (`24-BIT · 96 kHz`).
 
@@ -504,7 +506,7 @@ computed styles: they misled three times):
   off) shows through and both modes look alike. The only fills: state (the
   selection `$qobit-select`, the now-playing row, a focused mix card) and
   floating layers (the `i`/`g` menu, the command palette). A new fill needs a
-  matching `Screen.-transparent` rule in `QobitApp.CSS` (and its Labels
+  matching `Screen.-transparent` rule in `app_css.py` (and its Labels
   `transparent`), or it shows in one mode only. Check with a background audit
   of rendered strips in both modes, not by reading CSS.
 - Lists are `background: transparent` (Textual's `$surface` boxes them).
@@ -533,7 +535,7 @@ computed styles: they misled three times):
   is recomputed. Footer text sits on the page (no bar): keys
   `$qobit-readout`, descriptions `$foreground`, whatever the theme sets for
   its own bar. The list highlight targets Textual 8's `-highlight` class. Grid
-  cards share `.grid-card` in `QobitApp.CSS`; never add per-card
+  cards share `.grid-card` in `app_css.py`; never add per-card
   `.-selected` rules. `tests/test_themes.py` holds every theme, Textual's
   included, to 4.5:1.
 - Never give a Label the classes `primary`, `secondary`, `accent`, `success`,
@@ -702,6 +704,9 @@ uv run pytest
   lyrics come from LRCLIB; the Playback shot is 160x48 so the queue, hero and
   lyrics sit side by side), Ty Segall's page and album. Not a
   terminal capture. Re-run it after a UI change.
+- A refactor that must not change the look: `tests/render_dump.py` dumps what the
+  app renders (text and style of every cell, 16 scenes); run it before and after
+  and `diff -rq` (its docstring has the commands).
 - Verify UI headless: `app.save_screenshot()` → `rsvg-convert` → PNG (Kitty
   images show as garbage there; real captures need a Kitty-protocol terminal).
   The PNG collapses or widens spaces between differently styled runs

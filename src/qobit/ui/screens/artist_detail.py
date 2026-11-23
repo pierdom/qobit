@@ -413,7 +413,7 @@ class AlbumCard(Widget):
         overflow: hidden hidden;
     }
     /* Selected state: shared by every grid card (.grid-card) and defined
-       once in QobitApp.CSS — see the "Grid card selection" block there. */
+       once in app_css.py — see the "Grid card selection" block there. */
     """
 
     def __init__(self, album: Album, show_artist: bool = False) -> None:
@@ -524,7 +524,7 @@ class _GridNav:
 
     def watch_has_focus(self, _has_focus: bool) -> None:
         """Restyle the grid alone on focus (its border): no card's look
-        depends on it (``.grid-card.-selected`` in QobitApp.CSS). Textual
+        depends on it (``.grid-card.-selected`` in app_css.py). Textual
         restyled every widget of every card, on each tab switch."""
         self.app.stylesheet.update_nodes([self], animate=True)  # type: ignore[attr-defined]
 
@@ -812,7 +812,7 @@ class ArtistCard(Widget):
         text-style: bold;
         overflow: hidden hidden;
     }
-    /* Selected state: shared .grid-card rules in QobitApp.CSS. */
+    /* Selected state: shared .grid-card rules in app_css.py. */
     """
 
     def __init__(self, artist: Artist, followed: bool = False) -> None:

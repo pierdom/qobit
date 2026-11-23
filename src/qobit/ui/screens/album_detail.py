@@ -365,7 +365,7 @@ class AlbumScreen(Screen):
     DEFAULT_CSS = """
     AlbumScreen { layout: vertical; }
     /* Bottom margin only: the app's horizontal inset is the Screen's padding
-       (see QobitApp.CSS). A left/right margin here put the panel one column
+       (see app_css.py). A left/right margin here put the panel one column
        inside the header and transport bar above and below it. */
     AlbumScreen AlbumDetailPanel { height: 1fr; margin: 0 0 1 0; }
     """
