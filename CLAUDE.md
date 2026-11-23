@@ -385,6 +385,15 @@ round-trip through `dataclasses.asdict`: a model field change that old
 entries can't fill needs a `VERSION` bump. `qobit clear-cache` leaves the
 library alone while a TUI runs (it would write it back).
 
+**What screens and widgets may read from the app.** Its reactives and its public
+read-only names (`history`, `up_next`, `current_track`, `queue_position`,
+`favorite_tracks/ids/albums/artists`, `user_playlists`, `last_stream`), plus
+`_client` (every screen asks it for data). Never the underscore state:
+`tests/test_ui_boundary.py` fails on `app._something` in `screens/`, `widgets/`
+and the shared UI modules. The play contexts and `app.py` are the app's
+collaborators and are not checked. A new read a screen needs gets a public
+property in the block of that name in `app.py`.
+
 **Self-wiring widgets.** TransportBar and NowPlayingHero `watch()` the app's
 reactives on mount, so any instance anywhere is live. Now-playing art shows
 whenever a track is loaded (`-has-track`), not only while playing.

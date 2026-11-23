@@ -22,7 +22,7 @@ POOL = [
 
 def _expected(app):
     out = []
-    history, queue = app._history, app._play_queue
+    history, queue = app.history, app.up_next
     now = app._timeline[app._cursor] if app._cursor >= 0 else None
     if history:
         out.append(("H", "Recently Played", len(history)))

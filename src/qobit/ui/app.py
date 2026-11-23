@@ -1138,17 +1138,62 @@ class QobitApp(App[None]):
                     self.call_from_thread(self._advance_queue)
             time.sleep(0.5)
 
-    # ── timeline slices (read-only views onto _timeline for the Queue UI) ────
+    # ── what screens and widgets read (public, read-only) ────────────────────
+    #
+    # Screens and widgets read the app through these names and the reactives,
+    # never through its underscore state (tests/test_ui_boundary.py). The play
+    # contexts are the app's collaborators: they own the writes.
 
     @property
-    def _history(self) -> list[Track]:
+    def history(self) -> list[Track]:
         """Recently Played: everything behind the cursor."""
         return self._timeline[: self._cursor] if self._cursor >= 0 else []
 
     @property
-    def _play_queue(self) -> list[Track]:
+    def up_next(self) -> list[Track]:
         """Up Next: everything ahead of the cursor."""
         return self._timeline[self._cursor + 1 :] if self._cursor >= 0 else []
+
+    @property
+    def current_track(self) -> Track | None:
+        """The timeline's track at the cursor. advance/jump move the cursor at
+        once; ``now_playing`` changes only once the stream URL resolves."""
+        return self._timeline[self._cursor] if 0 <= self._cursor < len(self._timeline) else None
+
+    @property
+    def queue_position(self) -> tuple[int, int] | None:
+        """(1-based place of the cursor, timeline length), None with no cursor."""
+        return (self._cursor + 1, len(self._timeline)) if self._cursor >= 0 else None
+
+    @property
+    def favorite_tracks(self) -> list[Track] | None:
+        """The cached favourites: None until ensure_favorite_tracks has fetched them."""
+        return self._fav_tracks
+
+    @property
+    def favorite_ids(self) -> set[str] | None:
+        """The cached favourite track ids: None until ensure_favorite_ids has them."""
+        return self._fav_ids
+
+    @property
+    def favorite_albums(self) -> list[Album] | None:
+        """The cached favourite albums: None until ensure_favorite_albums has them."""
+        return self._fav_albums
+
+    @property
+    def favorite_artists(self) -> list[Artist] | None:
+        """The cached followed artists: None until ensure_favorite_artists has them."""
+        return self._fav_artists
+
+    @property
+    def user_playlists(self) -> list[Playlist] | None:
+        """The cached playlists: None until ensure_user_playlists has them."""
+        return self._user_playlists
+
+    @property
+    def last_stream(self) -> StreamUrl | None:
+        """The stream of the playing (or last played) track."""
+        return self._last_stream
 
     def _trim_history(self) -> None:
         """Bound the past to _HISTORY_MAX tracks by dropping the oldest and
@@ -1620,7 +1665,7 @@ class QobitApp(App[None]):
         Returns parsed Tracks with the seed window de-duplicated out. Best-effort:
         any failure yields an empty list and the caller leaves the queue intact."""
         listened: list[int] = []
-        for track in [seed, *reversed(self._history)]:
+        for track in [seed, *reversed(self.history)]:
             tid = self._as_int(track.id)
             if tid is not None and tid not in listened:
                 listened.append(tid)
@@ -1661,7 +1706,7 @@ class QobitApp(App[None]):
 
         seen: set[str] = set()
         seeds: list[Track] = []
-        for t in [*reversed(self._history), *fav_tracks]:
+        for t in [*reversed(self.history), *fav_tracks]:
             if t.id not in seen:
                 seen.add(t.id)
                 seeds.append(t)

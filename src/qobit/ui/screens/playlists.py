@@ -360,11 +360,11 @@ class PlaylistsView(TypeToFilter, Widget):
         """A background refresh brought different playlists: redraw, the
         cursor on the playlist it was on."""
         app: QobitApp = self.app  # type: ignore[assignment]
-        if not self._loaded or app._user_playlists is None:
+        if not self._loaded or app.user_playlists is None:
             return
         card = self.query_one("#user-playlists-grid", PlaylistGrid).selected_card()
         self._reselect = card.playlist.id if isinstance(card, PlaylistCard) else None
-        self._playlists = list(app._user_playlists)
+        self._playlists = list(app.user_playlists)
         self._update_subtitle()
         self._render_grid()
 

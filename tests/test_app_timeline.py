@@ -1,6 +1,6 @@
 """QobitApp's timeline+cursor play context (CLAUDE.md: "Timeline + cursor").
 
-This is the trickiest piece of app.py: _history and _play_queue are derived
+This is the trickiest piece of app.py: history and up_next are derived
 slice-properties around a single _timeline list + _cursor index, specifically
 so that skipping back and forth through the Queue view never drops tracks.
 These tests build a QobitApp directly (no Textual run loop) and manipulate
@@ -51,41 +51,41 @@ def _ids(tracks: list[Track]) -> list[str]:
     return [t.id for t in tracks]
 
 
-# ── _history / _play_queue slices ───────────────────────────────────────────
+# ── history / up_next slices ───────────────────────────────────────────
 
 
 def test_history_and_queue_empty_when_nothing_loaded(app):
     assert app._cursor == -1
-    assert app._history == []
-    assert app._play_queue == []
+    assert app.history == []
+    assert app.up_next == []
 
 
 def test_history_is_everything_behind_cursor_queue_is_everything_ahead(app):
     tracks = [_track(str(i)) for i in range(5)]
     app._timeline = tracks
     app._cursor = 2
-    assert _ids(app._history) == ["0", "1"]
-    assert _ids(app._play_queue) == ["3", "4"]
+    assert _ids(app.history) == ["0", "1"]
+    assert _ids(app.up_next) == ["3", "4"]
     # the now-playing track itself is in neither slice
     now_playing_id = tracks[app._cursor].id
-    assert now_playing_id not in _ids(app._history)
-    assert now_playing_id not in _ids(app._play_queue)
+    assert now_playing_id not in _ids(app.history)
+    assert now_playing_id not in _ids(app.up_next)
 
 
 def test_history_empty_at_start_of_timeline(app):
     tracks = [_track(str(i)) for i in range(3)]
     app._timeline = tracks
     app._cursor = 0
-    assert app._history == []
-    assert _ids(app._play_queue) == ["1", "2"]
+    assert app.history == []
+    assert _ids(app.up_next) == ["1", "2"]
 
 
 def test_play_queue_empty_at_end_of_timeline(app):
     tracks = [_track(str(i)) for i in range(3)]
     app._timeline = tracks
     app._cursor = 2
-    assert _ids(app._history) == ["0", "1"]
-    assert app._play_queue == []
+    assert _ids(app.history) == ["0", "1"]
+    assert app.up_next == []
 
 
 # ── _trim_history ────────────────────────────────────────────────────────────
@@ -110,8 +110,8 @@ def test_trim_history_drops_oldest_past_the_cap_and_shifts_cursor(app, monkeypat
     # cursor stays pointed at the *same* now-playing track...
     assert app._timeline[app._cursor].id == "9"
     # ...and history is bounded to the cap.
-    assert len(app._history) == 5
-    assert _ids(app._history) == ["4", "5", "6", "7", "8"]
+    assert len(app.history) == 5
+    assert _ids(app.history) == ["4", "5", "6", "7", "8"]
 
 
 def test_trim_history_preserves_up_next_untouched(app, monkeypatch):
@@ -120,7 +120,7 @@ def test_trim_history_preserves_up_next_untouched(app, monkeypatch):
     app._timeline = tracks
     app._cursor = 4  # history=[0,1,2,3], now=4, up next=[5]
     app._trim_history()
-    assert _ids(app._play_queue) == ["5"]
+    assert _ids(app.up_next) == ["5"]
 
 
 # ── queue_next / queue_last ──────────────────────────────────────────────────
@@ -134,7 +134,7 @@ def test_queue_next_inserts_immediately_after_now_playing(app):
 
     app.queue_next(new_track)
 
-    assert _ids(app._play_queue) == ["new", "2"]
+    assert _ids(app.up_next) == ["new", "2"]
 
 
 def test_queue_last_appends_to_the_tail_of_up_next(app):
@@ -145,7 +145,7 @@ def test_queue_last_appends_to_the_tail_of_up_next(app):
 
     app.queue_last(new_track)
 
-    assert _ids(app._play_queue) == ["2", "new"]
+    assert _ids(app.up_next) == ["2", "new"]
 
 
 def test_queue_next_and_queue_last_bump_queue_version(app):
@@ -173,7 +173,7 @@ def test_remove_from_queue_removes_the_exact_queued_instance(app):
     removed = app.remove_from_queue(dup_b)
 
     assert removed is True
-    assert app._play_queue == [dup_a]  # dup_a (not dup_b) survives, by identity
+    assert app.up_next == [dup_a]  # dup_a (not dup_b) survives, by identity
 
 
 def test_remove_from_queue_falls_back_to_id_match_if_identity_lost(app):
@@ -187,7 +187,7 @@ def test_remove_from_queue_falls_back_to_id_match_if_identity_lost(app):
     removed = app.remove_from_queue(lookalike)
 
     assert removed is True
-    assert app._play_queue == []
+    assert app.up_next == []
 
 
 def test_remove_from_queue_cannot_remove_a_history_track(app):
@@ -219,8 +219,8 @@ def test_clear_queue_drops_only_up_next(app):
 
     app.clear_queue()
 
-    assert _ids(app._history) == ["0"]
-    assert app._play_queue == []
+    assert _ids(app.history) == ["0"]
+    assert app.up_next == []
     assert app._timeline[app._cursor].id == "1"
 
 
@@ -241,7 +241,7 @@ def test_clear_history_drops_only_the_past_and_resets_cursor_to_head(app):
 
     assert app._cursor == 0
     assert app._timeline[app._cursor].id == "2"  # now-playing track unchanged
-    assert _ids(app._play_queue) == ["3"]
+    assert _ids(app.up_next) == ["3"]
 
 
 def test_clear_history_noop_when_already_at_head(app):
@@ -433,7 +433,7 @@ def test_queue_round_trips_across_restart(app, monkeypatch):
     restored._restore_player_state()
     assert _ids(restored._timeline) == ["a", "b", "c", "d"]
     assert restored._cursor == 1
-    assert _ids(restored._history) == ["a"] and _ids(restored._play_queue) == ["c", "d"]
+    assert _ids(restored.history) == ["a"] and _ids(restored.up_next) == ["c", "d"]
     assert restored.now_playing.id == "b" and restored.is_paused
     assert restored._pending_resume == (restored._timeline[1], 42.0)
 

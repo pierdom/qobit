@@ -243,7 +243,7 @@ class ArtistTracks(_TitleSwitch, Widget):
         app: QobitApp = self.app  # type: ignore[assignment]
         if self._artist_id is None:
             return []
-        tracks = [t for t in (app._fav_tracks or []) if t.by_artist(self._artist_id)]
+        tracks = [t for t in (app.favorite_tracks or []) if t.by_artist(self._artist_id)]
         return sorted(tracks, key=lambda t: t.favorited_at or 0, reverse=True)
 
     async def _refresh_favs(self) -> None:
@@ -264,7 +264,7 @@ class ArtistTracks(_TitleSwitch, Widget):
         if self._artist_id is None or not self.is_attached:
             return
         app: QobitApp = self.app  # type: ignore[assignment]
-        ids = app._fav_ids or set()
+        ids = app.favorite_ids or set()
         for row in self.query_one("#top-tracks", TrackListView).query(ArtistTrackRow):
             row.set_favorite(str(row.track.id) in ids)
         if tuple(t.id for t in self._favourites()) != self._fav_ids:
@@ -1075,7 +1075,7 @@ class ArtistReleases(_TitleSwitch, Widget):
             return
         if not self.is_attached or artist_id != self._artist_id:
             return
-        followed = {a.id for a in (app._fav_artists or [])}
+        followed = {a.id for a in (app.favorite_artists or [])}
         artists = [Artist.from_api(raw) for raw in items]
         self._similar_count = len(artists)
         await grid.set_cards([ArtistCard(a, followed=a.id in followed) for a in artists])
