@@ -18,6 +18,7 @@ src/qobit/
 ├── __main__.py          CLI + TUI launcher (qobit with no args)
 ├── config.py            session + device/settings config (env → file)
 ├── token_store.py       the session token in the system keyring (else config.json)
+├── formatting.py        text helpers shared by models and UI (quality_text)
 ├── _fs.py               private_dir (0700) / write_private (atomic, 0600)
 ├── store.py             JSON runtime state in DATA_DIR (player/queue state)
 ├── doctor.py            qobit doctor: checks over a Probe (the machine, or canned in
@@ -393,6 +394,13 @@ read-only names (`history`, `up_next`, `current_track`, `queue_position`,
 and the shared UI modules. The play contexts and `app.py` are the app's
 collaborators and are not checked. A new read a screen needs gets a public
 property in the block of that name in `app.py`.
+
+**Shared UI layer.** `themes`, `nav`, `_now_playing`, `_filter`, `_utils`,
+`_images` and `widgets/{transport,art,lists}` import only Textual, the standard
+library and each other at run time; a `QobitApp` hint goes under
+`TYPE_CHECKING`. `tests/test_ui_boundary.py` fails on an import of the app,
+`screens/`, `qobuz/`, config or state modules there. `ICON_FAV` lives in
+`_now_playing`, `quality_text` in `formatting`.
 
 **Self-wiring widgets.** TransportBar and NowPlayingHero `watch()` the app's
 reactives on mount, so any instance anywhere is live. Now-playing art shows

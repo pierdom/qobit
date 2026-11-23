@@ -10,7 +10,7 @@ from album_pages import ALBUM, ARTIST, open_album, stub_album_client
 from textual.widgets import Label
 
 from qobit.qobuz.models import Album, Artist
-from qobit.ui.screens.search import ICON_FAV
+from qobit.ui._now_playing import ICON_FAV
 
 
 def _favourites(app, albums: bool, artists: bool) -> list:

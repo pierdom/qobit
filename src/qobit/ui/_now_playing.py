@@ -7,6 +7,8 @@ from textual.content import Content
 from textual.css.query import NoMatches
 from textual.widgets import Label, ListView
 
+ICON_FAV = "♥"  # appended to a track row when it's in the user's favourites
+
 # Every track row is a fixed-width gutter, then the text: ``  ♪  title`` or
 # `` 12.  title``, with the second (meta) line indented to the text column.
 # The gutter holds the row's lead mark (♪, ↺ or its number) right-aligned in
@@ -109,8 +111,6 @@ def plain_if_highlighted(row: object, content: Content) -> Content:
 def heart_suffix(favorite: bool, pad: str = "  ") -> tuple[str, str] | str:
     """The trailing ``♥`` Content.assemble part every favourite-aware track
     row appends to its primary label — "" when not favourited."""
-    from .screens.search import ICON_FAV
-
     return (f"{pad}{ICON_FAV}", "$qobit-heart") if favorite else ""
 
 
