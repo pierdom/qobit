@@ -17,7 +17,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual_image.widget import TGPImage
 
-from ...qobuz.models import quality_text
+from ...formatting import quality_text
 from .._images import fetch_image
 from ..themes import BAR_END, BAR_START, HIRES, MUTED, READOUT, theme_color, theme_text_color
 from .art import Art, square_width

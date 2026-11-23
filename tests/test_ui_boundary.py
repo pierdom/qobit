@@ -64,3 +64,88 @@ def test_the_check_sees_a_private_read(tmp_path):
     path = tmp_path / "probe.py"
     path.write_text(src)
     assert [attr for _, attr in _private_reads(path)] == ["_cursor", "_timeline"]
+
+
+# ── the shared UI layer imports nothing app- or Qobuz-specific ──────────────
+#
+# These modules are what another app on the same look would reuse: themes,
+# nav (tabs, breadcrumb, wordmark, footer), the transport bar, cover art and
+# image fetching, the list widgets and the now-playing/filter mixins. At run
+# time they import only Textual, the standard library and each other. A hint
+# for the type checker (under TYPE_CHECKING) may name the app.
+
+SHARED = [
+    UI / "themes.py",
+    UI / "nav.py",
+    UI / "_now_playing.py",
+    UI / "_filter.py",
+    UI / "_utils.py",
+    UI / "_images.py",
+    UI / "widgets" / "transport.py",
+    UI / "widgets" / "art.py",
+    UI / "widgets" / "lists.py",
+]
+APP_SPECIFIC = (
+    "qobit.qobuz",
+    "qobit.connect",
+    "qobit.lyrics",
+    "qobit.ui.app",
+    "qobit.ui.screens",
+    "qobit.ui.play_context",
+    "qobit.config",
+    "qobit.store",
+    "qobit.library_cache",
+    "qobit.account_data",
+    "qobit.token_store",
+)
+
+
+def _runtime_imports(path: Path, package: list[str] | None = None) -> list[tuple[int, str]]:
+    """(line, absolute module) of every import not under ``if TYPE_CHECKING``.
+    ``package`` is the file's package (default: from its place under ``src/qobit``)."""
+    package = package or ["qobit", *path.relative_to(UI.parent).parent.parts]
+    tree = ast.parse(path.read_text())
+    skip = {
+        id(child)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.If) and "TYPE_CHECKING" in ast.unparse(node.test)
+        for child in ast.walk(node)
+    }
+    found = []
+    for node in ast.walk(tree):
+        if id(node) in skip:
+            continue
+        if isinstance(node, ast.Import):
+            found.extend((node.lineno, a.name) for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            base = package[: len(package) - node.level + 1] if node.level else []
+            module = ".".join([*base, *(node.module.split(".") if node.module else [])])
+            found.append((node.lineno, module))
+            found.extend((node.lineno, f"{module}.{a.name}") for a in node.names)
+    return found
+
+
+@pytest.mark.parametrize("path", SHARED, ids=lambda p: str(p.relative_to(UI)))
+def test_the_shared_ui_modules_import_nothing_app_specific(path):
+    bad = [
+        (line, mod)
+        for line, mod in _runtime_imports(path)
+        if any(mod == p or mod.startswith(p + ".") for p in APP_SPECIFIC)
+    ]
+    assert bad == [], f"{path.name} imports app-specific code at run time: {bad}"
+
+
+def test_the_import_check_sees_a_runtime_import_and_skips_type_checking(tmp_path):
+    src = (
+        "from typing import TYPE_CHECKING\n"
+        "from ..qobuz.models import Track\n"
+        "if TYPE_CHECKING:\n"
+        "    from .app import QobitApp\n"
+        "def f():\n"
+        "    from .screens.search import X\n"
+    )
+    probe = tmp_path / "probe.py"
+    probe.write_text(src)
+    mods = [m for _, m in _runtime_imports(probe, ["qobit", "ui"])]
+    assert "qobit.qobuz.models" in mods and "qobit.ui.screens.search" in mods
+    assert not any(m.startswith("qobit.ui.app") for m in mods)

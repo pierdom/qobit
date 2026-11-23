@@ -23,6 +23,7 @@ from .._images import fetch_image
 from .._now_playing import (
     GUTTER_ICON,
     GUTTER_NUM,
+    ICON_FAV,
     NowPlayingRowMixin,
     heart_suffix,
     meta_indent,
@@ -36,7 +37,7 @@ from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 from .album_detail import AlbumDetailPanel
-from .search import ICON_FAV, ICON_TRACK
+from .search import ICON_TRACK
 
 if TYPE_CHECKING:
     from ..app import QobitApp
