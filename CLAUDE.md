@@ -84,7 +84,7 @@ src/qobit/
 
 **Timeline + cursor.** `QobitApp` holds one `_timeline: list[Track]` and
 `_cursor` (index of the now-playing track, -1 if none). History and Up Next are
-read-only slices (`_history`, `_play_queue`). Invariant: `now_playing ==
+read-only slices (`history`, `up_next`). Invariant: `now_playing ==
 _timeline[_cursor]`. `_advance_queue` moves the cursor (radio refill extends
 the end); `action_previous` and selecting any Playback row call
 `jump_to(index)`, which only moves the cursor, so skipping never drops tracks.

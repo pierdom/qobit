@@ -35,7 +35,7 @@ past, current and upcoming items, plus a current item. That's exactly
 |---|---|
 | `_timeline[i]` | `tracks[i]` → `(queue_item_id, track_id)` |
 | `_cursor` | index of `current_queue_item_id` |
-| `_history` / `_play_queue` slices | items before / after current |
+| `history` / `up_next` slices | items before / after current |
 | `queue_version` (UI refresh counter) | `queue_version{major, minor}` (server-authoritative) |
 | `jump_to(i)` | play `tracks[i]` and report it |
 

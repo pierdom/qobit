@@ -672,8 +672,8 @@ class QueueView(Widget):
         # in between showed the old track twice and the next one missing, then
         # moved the rows back a moment later.
         now_playing = app.current_track or app.now_playing
-        history = list(app.history)
-        queue = list(app.up_next)
+        history = app.history  # a fresh list each time
+        queue = app.up_next
 
         # Where the user was: a row other than the playing one keeps the cursor
         # (a track ending shouldn't lose your place in Up Next); on the playing

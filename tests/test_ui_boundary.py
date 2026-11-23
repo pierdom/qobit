@@ -58,12 +58,9 @@ def test_screens_and_widgets_do_not_read_the_apps_private_state(path):
     )
 
 
-def test_the_check_sees_a_private_read():
+def test_the_check_sees_a_private_read(tmp_path):
     """The test must be able to fail: a made-up widget that reads app._cursor."""
     src = "class W:\n    def f(self):\n        return self.app._cursor + app._timeline\n"
-    path = Path("/tmp/_boundary_probe.py")
+    path = tmp_path / "probe.py"
     path.write_text(src)
-    try:
-        assert [attr for _, attr in _private_reads(path)] == ["_cursor", "_timeline"]
-    finally:
-        path.unlink()
+    assert [attr for _, attr in _private_reads(path)] == ["_cursor", "_timeline"]
