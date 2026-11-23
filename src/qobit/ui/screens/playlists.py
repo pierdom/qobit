@@ -84,7 +84,7 @@ class PlaylistCard(Widget):
         color: $qobit-muted;
         overflow: hidden hidden;
     }
-    /* Selected state: shared .grid-card rules in QobitApp.CSS. */
+    /* Selected state: shared .grid-card rules in app_css.py. */
     """
 
     def __init__(self, playlist: Playlist) -> None:

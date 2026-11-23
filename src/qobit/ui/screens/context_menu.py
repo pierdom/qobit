@@ -120,7 +120,7 @@ class ContextMenu(ModalScreen[str | None]):
     DEFAULT_CSS = """
     ContextMenu {
         align: center middle;
-        /* No tint behind: see ModalScreen in QobitApp.CSS (Kitty images). */
+        /* No tint behind: see ModalScreen in app_css.py (Kitty images). */
     }
     ContextMenu #menu {
         width: 42;

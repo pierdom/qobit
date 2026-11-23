@@ -61,7 +61,7 @@ class LoginScreen(ModalScreen[bool]):
     DEFAULT_CSS = """
     LoginScreen {
         align: center middle;
-        /* No tint behind: see ModalScreen in QobitApp.CSS (Kitty images). */
+        /* No tint behind: see ModalScreen in app_css.py (Kitty images). */
     }
     LoginScreen #login {
         width: 78;

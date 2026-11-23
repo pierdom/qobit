@@ -204,7 +204,7 @@ def wordmark_colours(start: Color, end: Color, phase: float, n: int) -> list[str
 
 class Wordmark(Widget):
     """``◢◤ qobit`` at the right end of the tab bar, on every screen. It sits
-    on the ``overlay`` layer (QobitApp.CSS), docked right with a height of 1,
+    on the ``overlay`` layer (app_css.py), docked right with a height of 1,
     so it shares the tab bar's row instead of taking one of its own.
 
     While a track plays, its colours cycle through the theme's progress-bar

@@ -24,7 +24,7 @@ class LyricsScreen(Screen):
     DEFAULT_CSS = """
     LyricsScreen { layout: vertical; }
     /* Bottom margin only: the app's horizontal inset is the Screen's padding
-       (see QobitApp.CSS), like AlbumScreen. */
+       (see app_css.py), like AlbumScreen. */
     LyricsScreen LyricsView { margin: 0 0 1 0; }
     """
 
