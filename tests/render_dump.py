@@ -69,7 +69,7 @@ def _stub(app) -> None:
     app._client.get_all_favorite_albums = albums
     album_pages.stub_album_client(app)
     app._poll_player = lambda: None  # no mpv: the play state is set by hand
-    app._maybe_prefetch = lambda: None
+    app.gapless_queue.maybe_prefetch = lambda: None
 
 
 async def _scene(app, pilot, name: str) -> None:

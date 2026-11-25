@@ -17,7 +17,8 @@ refactor moves a responsibility, update the table below in the same PR.
         │                   the wiring between the parts below
         ├── play_context.py     timeline/cursor writers (local or Connect)
         ├── lyrics_controller.py lyrics lookup, line, prefetch, retry, offset
-        └── (playback engine: being extracted from app.py, see below)
+        ├── gapless.py           the next track queued in mpv, mpv moving on to it
+        └── (poll loop, play/stop, transport: still in app.py, see below)
         │
  no Textual below this line (importable and testable on their own)
    audio/      mpv process + IPC, device list, bit-perfect check, media keys
@@ -39,6 +40,7 @@ of the app, `screens/`, `qobuz/`, `config` or the state modules there.
 | Playing track, position, pause, quality, signal lamp | reactives on `QobitApp` | every widget (self-wiring `watch()`) |
 | mpv process, stop generation | `audio/player.py` `MpvPlayer` | the poll loop via `snapshot()` |
 | Stream URL resolution and the quality memory | `qobuz/streams.py` `StreamResolver` (`app.streams`) | `_play_stream`, gapless prefetch |
+| The track queued in mpv behind the playing one, prefetch state | `gapless.py` `GaplessQueue` (`app.gapless_queue`) | the app (`watch_queue_version`, `_play_stream`, the poll) |
 | Lyrics, offset, lookup/retry/prefetch state | `lyrics_controller.py` | widgets via `app.lyrics`, `lyrics_offset`; reactives `lyrics_status/line/version` stay on the app |
 | Favourites, playlists | caches on `QobitApp` (`ensure_*`), disk copy in `library_cache` | screens via `app.favorite_*`, `user_playlists` |
 | Session token | `token_store` (keyring, else `config.json`) | `QobuzClient` |
@@ -75,9 +77,10 @@ each can be tested without the UI. Done, in merge order:
 | Shared-layer imports | `formatting.py`, `ICON_FAV` in `_now_playing.py` | nothing |
 | Lyrics | `ui/lyrics_controller.py` | reactives, keys, panel/page switching |
 | Stream resolution | `qobuz/streams.py` | `_play_stream` (what starting a track means) |
+| Gapless state and logic | `ui/gapless.py` | `step_to_next` (cursor + transport), `next_track`, `is_local`, `extend_timeline` |
 
-Next: the end-of-track and gapless state machine, then the poll loop and
-transport actions. A step is done when the app only wires the collaborator and
+Next: the poll loop (end of track, the stop generation) and the transport
+actions (pause, seek, previous, volume). A step is done when the app only wires the collaborator and
 its tests run without a `QobitApp`.
 
 ## How a refactor is checked
