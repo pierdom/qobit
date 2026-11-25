@@ -76,7 +76,7 @@ def gapless(ui_app, monkeypatch):
         resolved.append(track_id)
         return _stream(track_id, sample=track_id in unplayable)
 
-    monkeypatch.setattr(ui_app, "_resolve_stream", resolve)
+    monkeypatch.setattr(ui_app.streams, "resolve", resolve)
     verified: list[int] = []
     monkeypatch.setattr(ui_app, "_verify_signal", lambda gen, stream: verified.append(gen))
     monkeypatch.setattr(ui_app, "_fetch_now_playing_album", lambda track: None)
@@ -283,7 +283,7 @@ def test_a_player_restarted_while_the_stream_resolved_gets_nothing(gapless, monk
         await gate["ev"].wait()
         return _stream(track_id)
 
-    monkeypatch.setattr(gapless.app, "_resolve_stream", slow)
+    monkeypatch.setattr(gapless.app.streams, "resolve", slow)
 
     async def body():
         async with gapless.app.run_test(size=(120, 30)) as pilot:

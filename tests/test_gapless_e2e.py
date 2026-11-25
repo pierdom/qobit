@@ -118,7 +118,7 @@ def rig(ui_app, monkeypatch, tmp_path):
     async def resolve(track_id: str):
         return StreamUrl(str(files[track_id]), 6, 44100.0, 16)
 
-    monkeypatch.setattr(ui_app, "_resolve_stream", resolve)
+    monkeypatch.setattr(ui_app.streams, "resolve", resolve)
     monkeypatch.setattr(ui_app, "_verify_signal", lambda gen, stream: None)
     monkeypatch.setattr(ui_app, "_fetch_now_playing_album", lambda track: None)
     return ui_app, player
