@@ -26,6 +26,7 @@ from textual.widget import Widget
 from textual.widgets import Footer, Tab, Tabs
 from textual.widgets._footer import FooterKey
 
+from ._utils import qapp
 from .themes import ACCENT_TEXT, BAR_END, BAR_START, HIRES, text_color
 
 if TYPE_CHECKING:
@@ -98,7 +99,7 @@ class Breadcrumb(Widget):
         self.watch(self.app, "nav_version", lambda _: self.refresh_trail(), init=True)
 
     def refresh_trail(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         crumbs = app.nav_trail(self.screen)
         self.display = len(crumbs) > 1 or self.screen is not app.screen_stack[0]
         parts: list[tuple[str, str] | str] = []
@@ -147,7 +148,7 @@ class PageTabs(Tabs):
     def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
         event.stop()
         if self._armed and event.tab is not None and event.tab.id:
-            app: QobitApp = self.app  # type: ignore[assignment]
+            app = qapp(self)
             app.action_switch_tab(event.tab.id.removeprefix(PAGE_TAB_PREFIX))
 
 
@@ -238,7 +239,7 @@ class Wordmark(Widget):
         self.display = width >= self.MIN_WIDTH
 
     def _live(self) -> bool:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         return app.animations and app.is_playing and not app.is_paused
 
     def _sync(self, *_: object) -> None:

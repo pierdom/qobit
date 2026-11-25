@@ -21,11 +21,11 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import readout, status_line
+from .._utils import qapp, readout, status_line
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
-    from ..app import QobitApp
+    pass
 
 ICON_TRACK = "♪"
 ICON_ARTIST = "⊙"
@@ -197,7 +197,7 @@ class SearchView(NowPlayingViewMixin, Widget):
 
     @work
     async def _search(self, query: str, version: int) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         lv_artists = self.query_one("#artists-results", ListView)
         lv_tracks = self.query_one("#tracks-results", ListView)
         lv_albums = self.query_one("#albums-results", ListView)
@@ -252,7 +252,7 @@ class SearchView(NowPlayingViewMixin, Widget):
         from .artist_detail import ArtistScreen
         from .playlist_detail import PlaylistScreen
 
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         item = event.item
         if isinstance(item, TrackItem):
             lv = self.query_one("#tracks-results", ListView)

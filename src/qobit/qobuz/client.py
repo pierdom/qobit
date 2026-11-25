@@ -121,7 +121,7 @@ class QobuzClient:
         # Called (no arguments, on the event loop) when Qobuz answers 401 to a
         # request made with a session token: the session expired or was
         # revoked. The TUI opens its login dialog from it.
-        self.on_auth_expired: Callable[[], None] | None = None
+        self.on_auth_expired: Callable[[], object] | None = None
         # Who logged in, from the login response: {"name", "plan"} (either may
         # be ""). Saved with the session for `qobit auth status`.
         self.account: dict[str, str] | None = None

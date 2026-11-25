@@ -194,7 +194,9 @@ def _normalize(img: PILImage.Image) -> PILImage.Image:
     longest = max(w, h)
     if longest > _MAX_EDGE:
         scale = _MAX_EDGE / longest
-        img = img.resize((max(1, round(w * scale)), max(1, round(h * scale))), PILImage.LANCZOS)
+        img = img.resize(
+            (max(1, round(w * scale)), max(1, round(h * scale))), PILImage.Resampling.LANCZOS
+        )
     img.load()
     return img
 

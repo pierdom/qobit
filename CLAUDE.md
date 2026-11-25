@@ -713,9 +713,21 @@ to 600 px JPEG, cached in memory and in `~/.cache/qobit/images/`.
 uv sync --group dev
 uv run qobit auth / devices / play "test" / qobit
 uv run ruff check . && uv run ruff format .   # rules in pyproject.toml
+uv run mypy                                   # config in pyproject.toml; CI runs it
 uv run pytest
 ```
 
+- Types: `mypy` is clean and part of CI (`[tool.mypy]`; the generated protobuf
+  code is excluded and seen as `Any`). Fix a type error by typing, not by
+  ignoring: `# type: ignore[code]` needs the code and a reason (26 remain, each
+  at a library boundary: dbus-fast's property/setter pair, textual-image,
+  Optional Connect state). A widget gets the app with `qapp(self)`
+  (`ui/_utils.py`; a cast, no import), never `self.app` + an ignore. A mixin
+  that calls widget methods derives from `_utils.WidgetBase` (a `Widget` for the
+  checker, `object` at run time) and declares what its host provides as stubs.
+  A name that shadows a Textual member breaks silently (`set_loading(name)` on
+  `ArtistHeader` overrode `Widget.set_loading(bool)`: now `show_loading`);
+  mypy's override check finds these.
 - Tests: `conftest.py` redirects config/store/image paths to a tmp dir; never
   touch those modules' path constants outside it. UI rendering isn't in CI.
   Never assert after a fixed `pilot.pause` on CI's slow runners: poll

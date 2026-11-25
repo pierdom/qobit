@@ -4,11 +4,14 @@ import asyncio
 import contextlib
 import dataclasses
 import time
+from collections.abc import Callable
 from functools import lru_cache, partial
+from typing import IO, Any, cast
 
 from rich.color import Color as _RichColor
 from rich.color import ColorType as _ColorType
 from rich.style import Style as _RichStyle
+from rich.terminal_theme import TerminalTheme
 from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -17,6 +20,7 @@ from textual.css.query import NoMatches
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
+from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, ListView, Tab, Tabs
 from textual.worker import get_current_worker
@@ -130,10 +134,15 @@ class _TransparentANSIToTruecolor(_ANSIToTruecolor):
         return style + _RichStyle.from_color(color, bgcolor) if changed else style
 
 
+# A palette entry: (label, callback, help[, other names to search by]).
+Command = tuple[str, Callable[[], Any], str] | tuple[str, Callable[[], Any], str, str]
+
+
 class QobitCommands(Provider):
-    def _commands(self) -> list[tuple[str, ...] | tuple[str, object, str]]:
+    def _commands(self) -> list[Command]:
         """(label, callback, help[, other names to search by])."""
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = cast("QobitApp", self.app)
+        account: Command
         if app._client.user_auth_token:
             name = get_account().get("name")
             account = (
@@ -374,7 +383,7 @@ class QobitApp(App[None]):
             self.theme = CYBERDECK_THEME.name
         self._connect_wanted = get_connect_enabled() if connect is None else connect
         self._connect: ConnectPlayContext | None = None
-        self._connect_lock: object | None = None  # flock'd file while Connect is on
+        self._connect_lock: IO[str] | None = None  # flock'd file while Connect is on
         self._local_ctx = LocalPlayContext(self)
         self._client = QobuzClient()
         self.streams = StreamResolver(self._client)
@@ -440,8 +449,8 @@ class QobitApp(App[None]):
             next_track=lambda: self.next_track() if self.is_local else None,
             flash=self._flash_status,
         )
-        self._flash_timer: object | None = None
-        self._queue_save_timer: object | None = None
+        self._flash_timer: Timer | None = None
+        self._queue_save_timer: Timer | None = None
         self._media_keys = MediaKeys(
             on_play_pause=lambda: self.call_from_thread(self.action_pause),
             on_next=lambda: self.call_from_thread(self._advance_queue),
@@ -555,12 +564,12 @@ class QobitApp(App[None]):
         self._fav_tracks = self._fav_ids = None
         self._fav_albums = self._fav_artists = None
         self._user_playlists = None
-        for view in self.screen_stack[0].query("ContentSwitcher > *"):
-            if hasattr(view, "_loaded"):
-                view._loaded = False
-        view = self._base_view()
-        if view is not None and hasattr(view, "activate"):
-            view.activate()
+        for tab_view in self.screen_stack[0].query("ContentSwitcher > *"):
+            if hasattr(tab_view, "_loaded"):
+                tab_view._loaded = False
+        current = self._base_view()
+        if current is not None and hasattr(current, "activate"):
+            current.activate()
         self._go_online()
 
     def action_login(self) -> None:
@@ -598,7 +607,7 @@ class QobitApp(App[None]):
         finally:
             self._restoring = False
         if self._queue_save_timer is not None:
-            self._queue_save_timer.stop()  # type: ignore[union-attr]
+            self._queue_save_timer.stop()
             self._queue_save_timer = None
         self._fav_tracks = self._fav_ids = None
         self._fav_albums = self._fav_artists = None
@@ -764,7 +773,7 @@ class QobitApp(App[None]):
         view = self._active_view()
         return bool(view is not None and getattr(view, "can_navigate_back", lambda: False)())
 
-    def action_back(self) -> None:
+    def action_back(self) -> None:  # type: ignore[override]  # sync: Textual's is a coroutine
         """Escape: up one level of the trail. On a page with an inner level
         (an artist page showing an album) that's the page's previous level;
         else close the page (or menu). On the main screen, the tab's view."""
@@ -775,7 +784,7 @@ class QobitApp(App[None]):
             if getattr(screen, "action_navigate_back", lambda: False)():
                 self.nav_changed()
                 return
-            levels = getattr(screen, "nav_levels", list)()
+            levels: list = getattr(screen, "nav_levels", list)()
             if len(levels) > 1 and hasattr(screen, "nav_to"):
                 screen.nav_to(len(levels) - 2)
             else:
@@ -895,7 +904,7 @@ class QobitApp(App[None]):
     # Each list shows from the disk copy at once, then is fetched again in the
     # background (_refresh_library); a fetch only replaces it if it differs.
 
-    _LIBRARY = {  # kind → (app attribute, model, client method)
+    _LIBRARY: dict[str, tuple[str, Any, str]] = {  # kind → (app attribute, model, client method)
         "tracks": ("_fav_tracks", Track, "get_all_favorite_tracks"),
         "albums": ("_fav_albums", Album, "get_all_favorite_albums"),
         "artists": ("_fav_artists", Artist, "get_all_favorite_artists"),
@@ -1250,7 +1259,7 @@ class QobitApp(App[None]):
         message would hide the artist — title until the next track loads. Auto-
         clearing lets the player fall back to the now-playing track."""
         if self._flash_timer is not None:
-            self._flash_timer.stop()  # type: ignore[union-attr]
+            self._flash_timer.stop()
         self.status_msg = msg
         self._flash_timer = self.set_timer(secs, lambda: self._clear_flash(msg))
 
@@ -1296,7 +1305,7 @@ class QobitApp(App[None]):
         "off": "off",
     }
 
-    def image_mode_commands(self) -> list[tuple[str, object, str, str]]:
+    def image_mode_commands(self) -> list[Command]:
         """Palette entries for the cover art modes other than the current one
         ("Images", as `qobit --images`; "cover" and "art" find them too)."""
         current = self._IMAGE_MODE_NAMES[self._image_setting]
@@ -1474,9 +1483,9 @@ class QobitApp(App[None]):
             self._player._volume = self.volume
 
     @staticmethod
-    def _as_int(value: object) -> int | None:
+    def _as_int(value: Any) -> int | None:
         try:
-            return int(value)  # type: ignore[arg-type]
+            return int(value)
         except (TypeError, ValueError):
             return None
 
@@ -1484,7 +1493,9 @@ class QobitApp(App[None]):
         """Build one `track_to_analysed` entry (artist/label/genre ids) for the
         seed. Reuses the already-fetched now_playing_album when it matches;
         otherwise pulls the ids from a single track/get."""
-        artist_id = label_id = genre_id = None
+        artist_id: Any = None
+        label_id: Any = None
+        genre_id: Any = None
         album = self.now_playing_album
         if album is not None and self.now_playing is not None and self.now_playing.id == seed.id:
             artist_id, label_id, genre_id = album.artist_id, album.label_id, album.genre_id
@@ -1858,7 +1869,7 @@ class QobitApp(App[None]):
         if self._restoring or not self.is_running:
             return
         if self._queue_save_timer is not None:
-            self._queue_save_timer.stop()  # type: ignore[union-attr]
+            self._queue_save_timer.stop()
         self._queue_save_timer = self.set_timer(_QUEUE_SAVE_DELAY, self._save_queue_state)
 
     @work(exclusive=True, group="_fetch_media_key_art")  # a newer request cancels a stale one
@@ -2169,9 +2180,9 @@ class QobitApp(App[None]):
         if ctx is not None and ctx.active and self.is_playing and not self.is_paused:
             ctx.renderer.report()
 
-    def _refresh_truecolor_filter(self, theme: object) -> None:
+    def _refresh_truecolor_filter(self, theme: TerminalTheme) -> None:
         if not getattr(self, "_transparent", False) or self.native_ansi_color:
-            super()._refresh_truecolor_filter(theme)  # type: ignore[misc]
+            super()._refresh_truecolor_filter(theme)
             return
         for index, flt in enumerate(self._filters):
             if isinstance(flt, _ANSIToTruecolor):

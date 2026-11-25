@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING
 _SYSTEM = platform.system()
 
 if TYPE_CHECKING:
+    from PIL import Image as PILImage
+
     from ..qobuz.models import Track
     from .mpris import MPRISBackend
 
@@ -30,7 +32,7 @@ class MediaKeys:
     def __init__(
         self,
         on_play_pause: Callable[[], None],
-        on_next: Callable[[], None],
+        on_next: Callable[[], object],
         on_previous: Callable[[], None],
     ) -> None:
         self._backend: _MacOSBackend | MPRISBackend | None = None
@@ -56,7 +58,7 @@ class MediaKeys:
             with contextlib.suppress(Exception):
                 self._backend.update(track, is_playing, is_paused, position, duration)
 
-    def set_artwork(self, image: object) -> None:
+    def set_artwork(self, image: PILImage.Image) -> None:
         """Pass a PIL.Image.Image once it has been fetched."""
         if self._backend is not None:
             with contextlib.suppress(Exception):
@@ -76,10 +78,10 @@ class _MacOSBackend:
     def __init__(
         self,
         on_play_pause: Callable[[], None],
-        on_next: Callable[[], None],
+        on_next: Callable[[], object],
         on_previous: Callable[[], None],
     ) -> None:
-        from MediaPlayer import (  # type: ignore[import]
+        from MediaPlayer import (
             MPMediaItemPropertyAlbumTitle,
             MPMediaItemPropertyArtist,
             MPMediaItemPropertyArtwork,
@@ -162,15 +164,15 @@ class _MacOSBackend:
         self._current_info = info
         self._np_center.setNowPlayingInfo_(info)
 
-    def set_artwork(self, image: object) -> None:
+    def set_artwork(self, image: PILImage.Image) -> None:
         import io
 
-        from AppKit import NSImage  # type: ignore[import]
-        from Foundation import NSData, NSMakeSize  # type: ignore[import]
-        from MediaPlayer import MPMediaItemArtwork  # type: ignore[import]
+        from AppKit import NSImage
+        from Foundation import NSData, NSMakeSize
+        from MediaPlayer import MPMediaItemArtwork
 
         buf = io.BytesIO()
-        image.save(buf, format="PNG")  # type: ignore[union-attr]
+        image.save(buf, format="PNG")
         raw = buf.getvalue()
         ns_data = NSData.dataWithBytes_length_(raw, len(raw))
         ns_image = NSImage.alloc().initWithData_(ns_data)

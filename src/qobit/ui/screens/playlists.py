@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from textual import on, work
 from textual.app import ComposeResult
@@ -9,6 +9,7 @@ from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
+from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import Label
 from textual_image.widget import TGPImage
@@ -16,7 +17,7 @@ from textual_image.widget import TGPImage
 from ...qobuz.models import Playlist
 from .._filter import TypeToFilter, filter_prompt
 from .._images import fetch_image
-from .._utils import focus_later, markup_escape, readout, status_line
+from .._utils import focus_later, markup_escape, qapp, readout, status_line
 from ..widgets.art import Art, square_width
 from .artist_detail import (
     GRID_CARD_IMG_H,
@@ -25,7 +26,7 @@ from .artist_detail import (
 )
 
 if TYPE_CHECKING:
-    from ..app import QobitApp
+    pass
 
 _SORT_OPTIONS: list[tuple[str, str]] = [
     ("updated_at", "Updated"),
@@ -164,7 +165,7 @@ class PlaylistGrid(_GridNav, ScrollableContainer):
     _cols: int = 2
     _cursor: int = -1
 
-    def __init__(self, *args: object, tile_min_width: int = 50, **kwargs: object) -> None:
+    def __init__(self, *args: Any, tile_min_width: int = 50, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._tile_min_width = tile_min_width
 
@@ -223,10 +224,10 @@ class PlaylistsView(TypeToFilter, Widget):
     _sort_key: str = "updated_at"
     _sort_reverse: bool = True
     _render_version: int = 0
-    _filter_timer: object | None = None
+    _filter_timer: Timer | None = None
     _playlists: list[Playlist]
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._playlists = []
 
@@ -262,7 +263,7 @@ class PlaylistsView(TypeToFilter, Widget):
 
     def _schedule_filter(self) -> None:
         if self._filter_timer is not None:
-            self._filter_timer.stop()  # type: ignore[union-attr]
+            self._filter_timer.stop()
         self._filter_timer = self.set_timer(0.15, self._render_grid)
 
     # ── sort ─────────────────────────────────────────────────────────────────
@@ -300,7 +301,7 @@ class PlaylistsView(TypeToFilter, Widget):
     # ── data ─────────────────────────────────────────────────────────────────
 
     def _sorted_playlists(self) -> list[Playlist]:
-        def key(p: Playlist) -> object:
+        def key(p: Playlist) -> Any:
             if self._sort_key == "updated_at":
                 return p.updated_at or p.created_at or 0
             if self._sort_key == "created_at":
@@ -344,7 +345,7 @@ class PlaylistsView(TypeToFilter, Widget):
 
     @work
     async def _load(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
         grid.border_subtitle = "loading…"
         try:
@@ -359,7 +360,7 @@ class PlaylistsView(TypeToFilter, Widget):
     def library_changed(self) -> None:
         """A background refresh brought different playlists: redraw, the
         cursor on the playlist it was on."""
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         if not self._loaded or app.user_playlists is None:
             return
         card = self.query_one("#user-playlists-grid", PlaylistGrid).selected_card()

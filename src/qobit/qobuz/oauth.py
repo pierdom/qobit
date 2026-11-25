@@ -74,10 +74,10 @@ class LoginPrompt:
             return "done"
         if not secrets.compare_digest(path.encode(), self.path.encode()):
             return "wrong_login"
-        if error := (qs.get("error") or [None])[0]:
+        if error := (qs.get("error") or [""])[0]:
             self._code.set_exception(LoginError(f"Qobuz refused the login: {error}"))
             return "error"
-        code = (qs.get("code_autorisation") or qs.get("code") or [None])[0]
+        code = (qs.get("code_autorisation") or qs.get("code") or [""])[0]
         if not code or not _CODE_RE.fullmatch(code):
             return "no_code"
         self._code.set_result(Secret(code))

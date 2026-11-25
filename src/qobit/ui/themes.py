@@ -45,8 +45,8 @@ def contrast(a: Color, b: Color) -> float:
 
     def lum(c: Color) -> float:
         def channel(v: int) -> float:
-            v /= 255
-            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+            x = v / 255
+            return x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
 
         return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
 

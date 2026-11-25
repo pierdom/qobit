@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from textual import on, work
 from textual.app import ComposeResult
@@ -12,7 +12,7 @@ from textual.widgets import ContentSwitcher
 
 from ...qobuz.models import Album, Artist
 from .._filter import TypeToFilter, filter_prompt
-from .._utils import focus_later, readout, status_line
+from .._utils import focus_later, qapp, readout, status_line
 from ..nav import Breadcrumb
 from .album_detail import AlbumDetailPanel, fit_artist_header
 from .artist_detail import (
@@ -27,7 +27,7 @@ from .artist_detail import (
 )
 
 if TYPE_CHECKING:
-    from ..app import QobitApp
+    pass
 
 _SORT_OPTIONS: list[tuple[str, str]] = [
     ("favorited_at", "Date Added"),
@@ -93,7 +93,7 @@ class ArtistsView(TypeToFilter, Widget):
     _current_artist: Artist | None
     _filter_timer: Timer | None = None
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._artists = []
         self._current_artist = None
@@ -215,7 +215,7 @@ class ArtistsView(TypeToFilter, Widget):
     # ── data ─────────────────────────────────────────────────────────────────
 
     def _sorted_artists(self) -> list[Artist]:
-        def key(a: Artist) -> object:
+        def key(a: Artist) -> Any:
             if self._sort_key == "favorited_at":
                 return a.favorited_at or 0
             if self._sort_key == "name":
@@ -275,7 +275,7 @@ class ArtistsView(TypeToFilter, Widget):
 
     @work
     async def _load(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
         grid.border_subtitle = "loading…"
         try:
@@ -292,7 +292,7 @@ class ArtistsView(TypeToFilter, Widget):
         background refresh of the library): redraw the grid from the app's
         cache, the cursor on the artist it was on. Before the first load
         there's nothing to redraw; the load reads the cache anyway."""
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         if self._loaded and app.favorite_artists is not None:
             card = self.query_one("#fav-artists-grid", ArtistGrid).selected_card()
             self._reselect = card.artist.id if isinstance(card, ArtistCard) else None
@@ -306,7 +306,7 @@ class ArtistsView(TypeToFilter, Widget):
     async def _open_artist(self, artist: Artist) -> None:
         self._current_artist = artist
         self._filter_active = False  # exit typing mode; query persists for return
-        self.query_one(ArtistHeader).set_loading(artist.name)
+        self.query_one(ArtistHeader).show_loading(artist.name)
 
         grid = self.query_one("#artist-albums-grid", AlbumGrid)
         grid._cursor = -1
@@ -318,7 +318,7 @@ class ArtistsView(TypeToFilter, Widget):
         self.query_one("#artists-switcher", ContentSwitcher).current = "artist-detail-view"
         self._view = "artist"
         focus_later(self, grid.focus)
-        self.app.nav_changed()  # type: ignore[attr-defined]
+        qapp(self).nav_changed()
 
         self._load_artist_detail(artist.id)
         self.query_one(ArtistTracks).load(artist.id)
@@ -333,7 +333,7 @@ class ArtistsView(TypeToFilter, Widget):
         # ignored (not displayed yet) with the grid hidden, leaving nothing
         # focused on a busy machine.
         focus_later(self, panel.focus_tracklist)
-        self.app.nav_changed()  # type: ignore[attr-defined]
+        qapp(self).nav_changed()
 
     def on_album_detail_panel_resized(self, _: AlbumDetailPanel.Resized) -> None:
         # The artist's header may give its rows to an open album on a short
@@ -349,17 +349,17 @@ class ArtistsView(TypeToFilter, Widget):
         inner_cs.current = "artist-tracks-albums-view"
         self._view = "artist"
         self.query_one("#artist-albums-grid", AlbumGrid).focus()
-        self.app.nav_changed()  # type: ignore[attr-defined]
+        qapp(self).nav_changed()
 
     def _show_grid(self) -> None:
         self.query_one("#artists-switcher", ContentSwitcher).current = "artists-grid-view"
         self._view = "grid"
         self.query_one("#fav-artists-grid", ArtistGrid).focus()
-        self.app.nav_changed()  # type: ignore[attr-defined]
+        qapp(self).nav_changed()
 
     @work(exclusive=True, group="_load_artist_detail")  # a newer request cancels a stale one
     async def _load_artist_detail(self, artist_id: str) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         try:
             artist = Artist.from_api(await app._client.get_artist_detail(artist_id))
         except Exception:
@@ -384,5 +384,5 @@ class ArtistsView(TypeToFilter, Widget):
 
     @on(AlbumDetailPanel.TrackSelected)
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         app.play_track(event.track, queue=event.queue)

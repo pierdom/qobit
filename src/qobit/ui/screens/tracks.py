@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from textual import events, on, work
 from textual.app import ComposeResult
@@ -20,12 +20,12 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import focus_later, readout, set_own_class, status_line
+from .._utils import focus_later, qapp, readout, set_own_class, status_line
 from ..widgets.lists import TrackListView
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
-    from ..app import QobitApp
+    pass
 
 _SORT_OPTIONS: list[tuple[str, str]] = [
     ("favorited_at", "Date Added"),
@@ -104,7 +104,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
     _tracks: list[Track]
     _filter_timer: Timer | None = None
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._tracks = []
 
@@ -187,7 +187,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
     # ── data ─────────────────────────────────────────────────────────────────
 
     def _sorted_tracks(self) -> list[Track]:
-        def key(t: Track) -> object:
+        def key(t: Track) -> Any:
             if self._sort_key == "favorited_at":
                 return t.favorited_at or 0
             if self._sort_key == "artist":
@@ -228,7 +228,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
     async def _mount_rows(self, tracks: list[Track], version: int) -> None:
         if version != self._render_version:
             return
-        lv = self.query_one("#fav-tracks", ListView)
+        lv = self.query_one("#fav-tracks", TrackListView)
         # Only re-grab focus if this list already had it and is on-screen —
         # otherwise a rebuild triggered by favouriting a track from another tab
         # (e.g. f on the Queue hero) would yank focus onto this off-screen list.
@@ -244,18 +244,18 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
         # Mounts the first page; the rest follows as the cursor nears it.
         rows = [FavTrackRow(t) for t in tracks]
         self._apply_now_playing(rows)
-        await lv.set_rows(rows)  # type: ignore[attr-defined]
+        await lv.set_rows(rows)
         self._place_initial_cursor(lv)
         if (keep := self._reselect) is not None:
             self._reselect = None
-            await lv.select_where(lambda r: isinstance(r, FavTrackRow) and r.track.id == keep)  # type: ignore[attr-defined]
+            await lv.select_where(lambda r: isinstance(r, FavTrackRow) and r.track.id == keep)
         self._update_subtitle()  # the playing track's place in this order
         if keep_focus:
             focus_later(self, lv.focus)
 
     @work
     async def _load(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         lv = self.query_one("#fav-tracks", ListView)
         self.query_one("#tracks-container", Vertical).border_subtitle = "loading…"
         try:
@@ -271,7 +271,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
     def library_changed(self) -> None:
         """A background refresh brought a different list: redraw it, the
         cursor on the track it was on."""
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         if not self._loaded or app.favorite_tracks is None:
             return  # the first load reads the app's list anyway
         row = self.query_one("#fav-tracks", ListView).highlighted_child
@@ -286,7 +286,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
         if not self._loaded:
             return  # the first load will read the up-to-date app cache
         self.call_after_refresh(self._update_subtitle)  # the count changes
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         if is_fav:
             if not any(t.id == track_id for t in self._tracks):
                 self._tracks = list(app.favorite_tracks or [])
@@ -303,7 +303,7 @@ class TracksView(TypeToFilter, NowPlayingViewMixin, Widget):
     @on(ListView.Selected, "#fav-tracks")
     def _on_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, FavTrackRow):
-            app: QobitApp = self.app  # type: ignore[assignment]
+            app = qapp(self)
             lv = self.query_one("#fav-tracks", TrackListView)
             rows = [r for r in lv.rows if isinstance(r, FavTrackRow)]  # incl. not yet mounted
             idx = rows.index(event.item)

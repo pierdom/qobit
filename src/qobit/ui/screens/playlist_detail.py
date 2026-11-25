@@ -22,7 +22,7 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import DETAIL_HEADER_CSS, markup_escape, readout, strip_html, within
+from .._utils import DETAIL_HEADER_CSS, markup_escape, qapp, readout, strip_html, within
 from ..nav import QobitFooter, page_header
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
@@ -30,7 +30,7 @@ from ..widgets.transport import TransportBar
 from .album_detail import ART_MAX, fit_detail_panel
 
 if TYPE_CHECKING:
-    from ..app import QobitApp
+    pass
 
 
 class PlaylistTrackRow(NowPlayingRowMixin, ListItem):
@@ -130,7 +130,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         pass  # one level
 
     def compose(self) -> ComposeResult:
-        yield from page_header(self.app)  # type: ignore[arg-type]
+        yield from page_header(qapp(self))
         with PlaylistPanel(id="playlist-panel"):
             with Horizontal(classes="detail-header"):
                 yield Art(classes="detail-art")
@@ -158,7 +158,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
 
     @work
     async def _load(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         try:
             playlist = Playlist.from_api(await app._client.get_playlist(self._playlist_id))
         except Exception as e:
@@ -211,13 +211,13 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
             return
 
         try:
-            lv = self.query_one(".detail-tracklist", ListView)
+            lv = self.query_one(".detail-tracklist", TrackListView)
             rows = [
                 PlaylistTrackRow(t, i, str(t.id) in fav_ids)
                 for i, t in enumerate(playlist.tracks, 1)
             ]
             self._apply_now_playing(rows)
-            await lv.set_rows(rows)  # type: ignore[attr-defined]  # lazy: playlists can be long
+            await lv.set_rows(rows)  # lazy: playlists can be long
             self._place_initial_cursor(lv)
         except NoMatches:
             return
@@ -236,9 +236,9 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
     @on(ListView.Selected, ".detail-tracklist")
     def _on_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, PlaylistTrackRow):
-            app: QobitApp = self.app  # type: ignore[assignment]
-            lv = self.query_one(".detail-tracklist", ListView)
-            rows = [r for r in lv.rows if isinstance(r, PlaylistTrackRow)]  # type: ignore[attr-defined]
+            app = qapp(self)
+            lv = self.query_one(".detail-tracklist", TrackListView)
+            rows = [r for r in lv.rows if isinstance(r, PlaylistTrackRow)]
             idx = rows.index(event.item)
             queue = [r.track for r in rows[idx + 1 :]]
             app.play_track(event.item.track, queue=queue)

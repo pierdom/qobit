@@ -87,7 +87,21 @@ include = [
 exclude = ["__pycache__"]
 
 [dependency-groups]
-dev = ["ruff>=0.4", "textual-dev>=1.7", "pytest>=8.0"]
+dev = ["ruff>=0.4", "mypy>=1.10", "textual-dev>=1.7", "pytest>=8.0"]
+
+[tool.mypy]
+files = ["src/qobit"]
+exclude = ["src/qobit/connect/proto/"]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# Generated protobuf code: attributes are made at import time, so every use
+# would be an error. Treated as Any.
+[[tool.mypy.overrides]]
+module = ["qobit.connect.proto", "qobit.connect.proto.*"]
+follow_imports = "skip"
 
 [tool.ruff]
 line-length = 100

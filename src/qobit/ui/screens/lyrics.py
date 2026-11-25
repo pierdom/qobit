@@ -8,6 +8,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
 
+from .._utils import qapp
 from ..nav import QobitFooter, page_header
 from ..widgets.lyrics import LyricsView
 from ..widgets.transport import TransportBar
@@ -35,7 +36,7 @@ class LyricsScreen(Screen):
         pass  # one level
 
     def compose(self) -> ComposeResult:
-        yield from page_header(self.app)  # type: ignore[arg-type]
+        yield from page_header(qapp(self))
         yield LyricsView(id="lyrics-full")
         yield TransportBar()
         yield QobitFooter()

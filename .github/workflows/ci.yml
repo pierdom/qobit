@@ -21,6 +21,7 @@ jobs:
       - run: uv sync --group dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - run: uv run mypy
 
   test:
     # The oldest and newest supported Python on both platforms qobit claims.
