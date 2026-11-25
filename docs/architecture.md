@@ -38,7 +38,7 @@ of the app, `screens/`, `qobuz/`, `config` or the state modules there.
 |---|---|---|
 | Timeline (`_timeline`) and cursor | `LocalPlayContext` / `ConnectPlayContext` (the only writers) | screens via `app.history`, `up_next`, `current_track`, `queue_position` |
 | Playing track, position, pause, quality, signal lamp | reactives on `QobitApp` | every widget (self-wiring `watch()`) |
-| mpv process, stop generation | `audio/player.py` `MpvPlayer` | the poll loop via `snapshot()` |
+| mpv process, stop generation | `audio/player.py` `MpvPlayer` | `audio/watch.py` `PlayerWatch` (one poll tick: position, pause, moved on, natural end vs stop); the app's poll thread applies it |
 | Stream URL resolution and the quality memory | `qobuz/streams.py` `StreamResolver` (`app.streams`) | `_play_stream`, gapless prefetch |
 | The track queued in mpv behind the playing one, prefetch state | `gapless.py` `GaplessQueue` (`app.gapless_queue`) | the app (`watch_queue_version`, `_play_stream`, the poll) |
 | Lyrics, offset, lookup/retry/prefetch state | `lyrics_controller.py` | widgets via `app.lyrics`, `lyrics_offset`; reactives `lyrics_status/line/version` stay on the app |
@@ -53,9 +53,10 @@ of the app, `screens/`, `qobuz/`, `config` or the state modules there.
 2. `_play_stream` resolves the stream (`StreamResolver.resolve`: quality
    fallback, previews and restrictions told apart), starts mpv with the URL
    from a private playlist file, and `_begin_track` updates the reactives.
-3. The poll loop (a thread, 2 Hz) reads mpv over IPC and writes position,
-   pause and play state back through `call_from_thread`. End of track is "same
-   stop generation and mpv no longer running"; a bumped generation is a stop.
+3. The poll loop (a thread, 2 Hz) asks `PlayerWatch.read()` for a `Reading` of
+   mpv and writes position, pause and play state back through
+   `call_from_thread`. End of track is "same stop generation and mpv no longer
+   running"; a bumped generation is a stop.
 4. Late in a track the next stream is appended to mpv (gapless); mpv moving on
    by itself shows as `playlist-pos` rising and the cursor follows.
 5. Under Qobuz Connect the server owns the queue and the renderer owns
@@ -77,10 +78,11 @@ each can be tested without the UI. Done, in merge order:
 | Shared-layer imports | `formatting.py`, `ICON_FAV` in `_now_playing.py` | nothing |
 | Lyrics | `ui/lyrics_controller.py` | reactives, keys, panel/page switching |
 | Stream resolution | `qobuz/streams.py` | `_play_stream` (what starting a track means) |
+| Poll tick and end-of-track rule | `audio/watch.py` | the poll thread (`_poll_player`): applies a `Reading` to the reactives, the 5 s state save |
 | Gapless state and logic | `ui/gapless.py` | `step_to_next` (cursor + transport), `next_track`, `is_local`, `extend_timeline` |
 
-Next: the poll loop (end of track, the stop generation) and the transport
-actions (pause, seek, previous, volume). A step is done when the app only wires the collaborator and
+Next: the transport actions (pause, seek, previous, volume), then possibly
+`_play_stream` / `_begin_track`. A step is done when the app only wires the collaborator and
 its tests run without a `QobitApp`.
 
 ## How a refactor is checked

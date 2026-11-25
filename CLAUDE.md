@@ -41,6 +41,7 @@ src/qobit/
 │                        bit-perfect ones flagged and sorted first
 ├── audio/player.py      mpv subprocess + IPC, bit-perfect flags, _stop_gen,
 │                        append (gapless), EntryWatch
+├── audio/watch.py       PlayerWatch: one poll tick of mpv; natural end vs stop
 ├── audio/verify.py      bit-perfect check: mpv IPC + (Linux) ALSA hw_params
 ├── audio/media_keys.py  OS media keys: macOS Now Playing (pyobjc); degrades
 │                        silently without the optional deps
@@ -158,8 +159,9 @@ cursor). Connect treats "stale" as handled, not unplayable.
 
 **End of track (`_stop_gen`).** `stop()` bumps `_stop_gen` and drops `_proc`
 together under `_state_lock`. The poll loop reads both via
-`MpvPlayer.snapshot()`: same gen + not running = natural end (advance), new gen
-= stopped. Reading them separately raced and skipped tracks.
+`MpvPlayer.snapshot()`, inside `audio/watch.py` `PlayerWatch.read()`: same gen +
+not running = natural end (advance), new gen = stopped. Reading them separately
+raced and skipped tracks. `tests/test_player_watch.py` needs no app.
 
 **Lyrics** (`qobit/lyrics/`; `ui/lyrics_controller.py` holds the lookup, line,
 prefetch, retry, offset and reject, the app the reactives `lyrics_status/line/

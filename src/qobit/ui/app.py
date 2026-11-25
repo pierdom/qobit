@@ -23,8 +23,9 @@ from textual.worker import get_current_worker
 
 from .. import library_cache
 from ..audio.media_keys import MediaKeys
-from ..audio.player import EntryWatch, MpvPlayer
+from ..audio.player import MpvPlayer
 from ..audio.verify import Signal, check_signal
+from ..audio.watch import PlayerWatch
 from ..config import (
     get_account,
     get_animations,
@@ -1083,26 +1084,19 @@ class QobitApp(App[None]):
     @work(thread=True)
     def _poll_player(self) -> None:
         worker = get_current_worker()
-        _seen_gen: int = 0
-        entries = EntryWatch()
+        watch = PlayerWatch(self._player)
         while not worker.is_cancelled:
-            # One atomic read: a stop() racing this loop can't make a forced
-            # stop look like a natural end (see MpvPlayer.snapshot).
-            gen, running = self._player.snapshot()
-            if running:
-                _seen_gen = gen
-                if entries.moved_on(gen, self._player.get_property("playlist-pos")):
+            reading = watch.read(self.is_playing)
+            if reading.state == "playing":
+                if reading.moved_on:
                     # mpv went on to the track queued behind the last one.
                     self.call_from_thread(self.gapless_queue.on_transition)
-                pos = self._player.get_property("time-pos")
-                dur = self._player.get_property("duration")
-                paused = self._player.get_property("pause")
-                if pos is not None:
-                    self.call_from_thread(setattr, self, "playback_pos", float(pos))
-                if dur is not None:
-                    self.call_from_thread(setattr, self, "playback_dur", float(dur))
-                if paused is not None:
-                    self.call_from_thread(setattr, self, "is_paused", bool(paused))
+                if reading.pos is not None:
+                    self.call_from_thread(setattr, self, "playback_pos", reading.pos)
+                if reading.dur is not None:
+                    self.call_from_thread(setattr, self, "playback_dur", reading.dur)
+                if reading.paused is not None:
+                    self.call_from_thread(setattr, self, "is_paused", reading.paused)
                 if not self.is_playing:
                     self.call_from_thread(setattr, self, "is_playing", True)
                 # Persist position periodically so a crash/kill loses ≤5s.
@@ -1110,14 +1104,12 @@ class QobitApp(App[None]):
                 if now - self._last_state_save > 5.0:
                     self._last_state_save = now
                     self.call_from_thread(self._save_player_state)
-            elif self.is_playing:
-                entries.reset()
-                natural_end = gen == _seen_gen
+            elif reading.state == "stopped":
                 self.call_from_thread(setattr, self, "is_playing", False)
                 self.call_from_thread(setattr, self, "is_paused", False)
                 self.call_from_thread(setattr, self, "playback_pos", 0.0)
                 self.call_from_thread(setattr, self, "quality_label", "")
-                if natural_end:
+                if reading.natural_end:
                     self.call_from_thread(self._advance_queue)
             time.sleep(0.5)
 
