@@ -319,7 +319,7 @@ class MixesView(NowPlayingViewMixin, Widget):
 
         fav_ids: set[str] = set()
         with contextlib.suppress(Exception):
-            fav_ids = await qapp(self).ensure_favorite_ids()
+            fav_ids = await qapp(self).library.ensure_track_ids()
 
         if version != self._render_version or not self.is_attached:
             return

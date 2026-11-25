@@ -206,7 +206,7 @@ class PlaylistScreen(NowPlayingViewMixin, Screen):
         if not playlist.tracks:
             return
 
-        fav_ids = await app.ensure_favorite_ids()
+        fav_ids = await app.library.ensure_track_ids()
         if not self.is_attached:
             return
 

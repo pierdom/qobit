@@ -345,7 +345,7 @@ class PlaylistsView(TypeToFilter, Widget):
         grid = self.query_one("#user-playlists-grid", PlaylistGrid)
         grid.border_subtitle = "loading…"
         try:
-            self._playlists = list(await app.ensure_user_playlists())
+            self._playlists = list(await app.library.ensure_playlists())
         except Exception as e:
             grid.border_subtitle = ""
             await grid.mount(status_line(str(e), error=True))
@@ -357,11 +357,11 @@ class PlaylistsView(TypeToFilter, Widget):
         """A background refresh brought different playlists: redraw, the
         cursor on the playlist it was on."""
         app = qapp(self)
-        if not self._loaded or app.user_playlists is None:
+        if not self._loaded or app.library.playlists is None:
             return
         card = self.query_one("#user-playlists-grid", PlaylistGrid).selected_card()
         self._reselect = card.playlist.id if isinstance(card, PlaylistCard) else None
-        self._playlists = list(app.user_playlists)
+        self._playlists = list(app.library.playlists)
         self._update_subtitle()
         self._render_grid()
 
