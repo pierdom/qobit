@@ -48,6 +48,8 @@ src/qobit/
 │                        over a PlayerPort; proto/ is generated (ruff-excluded)
 └── ui/
     ├── app.py           QobitApp: reactive state, transport, tabs, restore
+    ├── lyrics_controller.py LyricsController: lookup, line, prefetch, retry,
+    │                    reader's offset, reject (the app keeps the reactives)
     ├── app_css.py       the app stylesheet: BASE_CSS (the look, names no qobit
     │                    widget) + QOBIT_CSS (what only qobit's widgets need)
     ├── nav.py           TABS, breadcrumb trail (Breadcrumb), a page's tab bar
@@ -154,9 +156,12 @@ together under `_state_lock`. The poll loop reads both via
 `MpvPlayer.snapshot()`: same gen + not running = natural end (advance), new gen
 = stopped. Reading them separately raced and skipped tracks.
 
-**Lyrics** (`qobit/lyrics/`, `app.lyrics*`; config `lyrics` on by default,
+**Lyrics** (`qobit/lyrics/`; `ui/lyrics_controller.py` holds the lookup, line,
+prefetch, retry, offset and reject, the app the reactives `lyrics_status/line/
+version`, the keys and `lyrics`/`lyrics_offset` read-only; tests in
+`tests/test_lyrics_controller.py` need no app; config `lyrics` on by default,
 `lyrics_panel`; `--[no-]lyrics`; palette "Lyrics"). `watch_now_playing` →
-`_lyrics_track_changed` starts `_load_lyrics` (exclusive worker; the answer is
+`lyrics_controller.track_changed` starts a lookup (exclusive worker; the answer is
 dropped if the track changed, lyrics went off or the app stopped). The service
 asks the disk cache, then each provider; a provider error is a `failed` result
 and never cached, nothing found is cached as none for a week. `LrcLib` asks
@@ -166,11 +171,11 @@ and never cached, nothing found is cached as none for a week. `LrcLib` asks
 same "Part N"; never take a first search result. LRCLIB is user-submitted:
 its answers go through `sanitize.clean_json` like Qobuz's. A cache write that
 fails is swallowed (`service._remember`): a raising worker closes the app. A
-failed lookup for the playing track is asked again after `_LYRICS_RETRY_SECS`,
-`_LYRICS_RETRIES` times. The cache key is the ISRC, else the folded name and
+failed lookup for the playing track is asked again after `RETRY_SECS`,
+`RETRIES` times. The cache key is the ISRC, else the folded name and
 length; `load` also tries the name key for a track whose ISRC arrived later
 (and `_write` then drops the name copy). `lyrics_line` is recomputed on each position tick
-but changes only with the line (`_LYRICS_LEAD` covers the 0.5 s poll), so
+but changes only with the line (`LEAD` covers the 0.5 s poll), so
 `LyricsView` redraws once per line; it draws a window of centred rows itself
 (Textual drops Rich's `justify`; the SVG screenshot collapses unstyled
 leading spaces, check `strip.text`). Rows are wrapped balanced (`wrap`: the
@@ -183,7 +188,7 @@ take turns, `l`, `lyrics_swap()`; below `_NARROW_BELOW` neither). Two columns ar
 its share to the hero up to 30/40/30 at 200 (lyrics stay at 30%). Classes
 `-side`/`-stack`/`-lyrics`/`-hero-off`; lyrics off = hero alone. The next
 track's lyrics are fetched
-`_LYRICS_PREFETCH_SECS` before the end. The reader's offset and "wrong lyrics"
+`PREFETCH_SECS` before the end. The reader's offset and "wrong lyrics"
 live in the cache file and survive new answers; the cache is erased at logout
 (`account_data`) and by `clear-cache --lyrics`. conftest points `lyrics.cache.DIR`
 at a temp dir and replaces `LyricsService.default` with one that asks nobody: a
