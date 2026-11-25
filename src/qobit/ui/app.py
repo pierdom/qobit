@@ -17,7 +17,6 @@ from textual.css.query import NoMatches
 from textual.filter import NO_DIM, dim_color
 from textual.filter import ANSIToTruecolor as _ANSIToTruecolor
 from textual.reactive import reactive
-from textual.timer import Timer
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, ListView, Tab, Tabs
 from textual.worker import get_current_worker
@@ -57,14 +56,16 @@ from ..config import (
     token_location,
 )
 from ..config import set_image_mode as save_image_mode
-from ..lyrics import Lyrics, LyricsService, Query
+from ..lyrics import Lyrics
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, NoStreamError, Playlist, StreamUrl, Track
 from ..store import load as load_state
 from ..store import save as save_state
+from . import lyrics_controller
 from ._images import IMAGE_MODES, image_mode, set_image_mode
 from ._now_playing import tick
 from .app_css import BASE_CSS, QOBIT_CSS
+from .lyrics_controller import LyricsController
 from .nav import (
     TAB_NAMES,
     TABBAR_FULL_WIDTH,
@@ -244,17 +245,6 @@ _PREV_RESTART_THRESHOLD = 3.0
 # The next track is queued in mpv (gapless) this many seconds before the
 # current one ends: a stream URL lasts ~10 minutes, so not at the start.
 _PREFETCH_SECS = 30.0
-# The next track's lyrics are fetched this many seconds before the end, so they
-# are there when it starts.
-_LYRICS_PREFETCH_SECS = 45.0
-# A lookup that failed (a network blip) is asked again after this, a few times.
-_LYRICS_RETRY_SECS = 20.0
-_LYRICS_RETRIES = 3
-# The poll reads the position every 0.5 s: the current lyric line is chosen
-# this far ahead, so it is never late by the poll's interval.
-_LYRICS_LEAD = 0.3
-# What a nudge of the lyrics' timing (`,` and `.`) moves them by.
-_LYRICS_STEP = 0.5
 
 
 class QobitApp(App[None]):
@@ -443,17 +433,11 @@ class QobitApp(App[None]):
         # playable (the natural end skips it with a notice); a prefetch under
         # way.
         self._next_up: tuple[str, StreamUrl] | None = None
-        # Lyrics of the playing track: the service (cache + providers), what it
-        # found, the reader's sync offset, and the next track whose lyrics are
-        # already being fetched.
-        self._lyrics = LyricsService.default()
-        self.lyrics: Lyrics | None = None
-        self.lyrics_offset = 0.0
-        self._lyrics_query: Query | None = None
-        self._lyrics_prefetched: str | None = None
-        self._lyrics_retries = 0
-        self._lyrics_prefetch_retried: set[str] = set()
-        self._lyrics_retry_timer: Timer | None = None
+        self.lyrics_controller = LyricsController(
+            self,  # type: ignore[arg-type]
+            next_track=lambda: self._next_track() if self._ctx is self._local_ctx else None,
+            flash=self._flash_status,
+        )
         self._prefetch_failed: str | None = None
         self._prefetching = False
         self._flash_timer: object | None = None
@@ -1191,6 +1175,16 @@ class QobitApp(App[None]):
         return self._user_playlists
 
     @property
+    def lyrics(self) -> Lyrics | None:
+        """The playing track's lyrics, None while there are none."""
+        return self.lyrics_controller.lyrics
+
+    @property
+    def lyrics_offset(self) -> float:
+        """The reader's timing nudge for the playing track, in seconds."""
+        return self.lyrics_controller.offset
+
+    @property
     def last_stream(self) -> StreamUrl | None:
         """The stream of the playing (or last played) track."""
         return self._last_stream
@@ -1349,110 +1343,7 @@ class QobitApp(App[None]):
         set_animations(self.animations)
         self._flash_status(f"Animations {'on' if self.animations else 'off'}")
 
-    # ── lyrics ───────────────────────────────────────────────────────────────
-    #
-    # A new now-playing track starts a lookup (disk cache, then LRCLIB: see
-    # qobit/lyrics). The current line is recomputed on each position tick and
-    # `lyrics_line` changes only when the line does, so the views redraw once
-    # per line, not once per tick. The next track's lyrics are fetched near the
-    # end of this one.
-
-    def _lyrics_query_for(self, track: Track) -> Query:
-        return Query(
-            title=track.title,
-            artist=track.artist,
-            album=track.album,
-            duration=track.duration,
-            isrc=track.isrc,
-            version=track.version or "",
-        )
-
-    def _lyrics_track_changed(self, track: Track | None) -> None:
-        self.lyrics = None
-        self.lyrics_offset = 0.0
-        self._lyrics_query = None
-        self._lyrics_prefetched = None
-        self._lyrics_retries = 0
-        self._lyrics_prefetch_retried = set()
-        if self._lyrics_retry_timer is not None:
-            self._lyrics_retry_timer.stop()  # it belonged to the last lookup
-            self._lyrics_retry_timer = None
-        self.lyrics_line = -1
-        if track is None:
-            self.lyrics_status = "idle"
-        elif not self.lyrics_enabled:
-            self.lyrics_status = "off"
-        elif not self.is_running:
-            self.lyrics_status = "idle"  # nothing to run a lookup on (yet)
-        else:
-            self._lyrics_query = self._lyrics_query_for(track)
-            self.lyrics_status = "loading"
-            self._load_lyrics(track)
-        self.lyrics_version += 1
-
-    @work(exclusive=True, group="_load_lyrics")  # a newer track cancels a stale lookup
-    async def _load_lyrics(self, track: Track) -> None:
-        result = await self._lyrics.lookup(self._lyrics_query_for(track))
-        now = self.now_playing
-        if not self.is_attached or now is None or now.id != track.id or not self.lyrics_enabled:
-            return
-        self.lyrics = result.lyrics
-        self.lyrics_offset = result.offset
-        self.lyrics_status = result.status
-        self._update_lyrics_line()
-        self.lyrics_version += 1
-        if result.status == "failed" and self._lyrics_retries < _LYRICS_RETRIES:
-            self._lyrics_retries += 1
-            self._lyrics_retry_timer = self.set_timer(
-                _LYRICS_RETRY_SECS, lambda: self._retry_lyrics(track)
-            )
-
-    def _retry_lyrics(self, track: Track) -> None:
-        """Ask again for the playing track whose lookup failed."""
-        now = self.now_playing
-        if (
-            now is None
-            or now.id != track.id
-            or not self.lyrics_enabled
-            or self.lyrics_status != "failed"
-        ):
-            return  # another track, or the reader turned them off, or it worked
-        self.lyrics_status = "loading"
-        self.lyrics_version += 1
-        self._load_lyrics(track)
-
-    def _update_lyrics_line(self) -> None:
-        ly = self.lyrics
-        if ly is None or not ly.synced:
-            return
-        self.lyrics_line = ly.line_at(self.playback_pos + _LYRICS_LEAD - self.lyrics_offset)
-
-    def _maybe_prefetch_lyrics(self) -> None:
-        if (
-            not self.lyrics_enabled
-            or self._ctx is not self._local_ctx
-            or not self.is_playing
-            or self.is_paused
-            or self.playback_dur <= 0
-            or self.playback_dur - self.playback_pos > _LYRICS_PREFETCH_SECS
-        ):
-            return
-        nxt = self._next_track()
-        if nxt is None or nxt.id == self._lyrics_prefetched:
-            return
-        self._lyrics_prefetched = nxt.id
-        self._prefetch_lyrics(nxt)
-
-    @work(group="_prefetch_lyrics")
-    async def _prefetch_lyrics(self, track: Track) -> None:
-        result = await self._lyrics.lookup(self._lyrics_query_for(track))  # fills the cache
-        if result.status == "failed" and track.id not in self._lyrics_prefetch_retried:
-            self._lyrics_prefetch_retried.add(track.id)  # once: the position tick asks again
-            self.set_timer(_LYRICS_RETRY_SECS, lambda: self._forget_prefetch(track.id))
-
-    def _forget_prefetch(self, track_id: str) -> None:
-        if self._lyrics_prefetched == track_id:
-            self._lyrics_prefetched = None
+    # ── lyrics (the lookup, the line, prefetch, retry: lyrics_controller.py) ──
 
     def _lyrics_screen_open(self) -> bool:
         from .screens.lyrics import LyricsScreen
@@ -1513,48 +1404,18 @@ class QobitApp(App[None]):
     def action_toggle_lyrics(self) -> None:
         self.lyrics_enabled = not self.lyrics_enabled
         set_lyrics(self.lyrics_enabled)
-        self._lyrics_track_changed(self.now_playing)  # looked up now, or cleared
+        self.lyrics_controller.track_changed(self.now_playing)  # looked up now, or cleared
         self._flash_status(f"Lyrics {'on' if self.lyrics_enabled else 'off'}")
 
     def action_lyrics_earlier(self) -> None:
-        self._nudge_lyrics(-_LYRICS_STEP)
+        self.lyrics_controller.nudge(-lyrics_controller.STEP)
 
     def action_lyrics_later(self) -> None:
-        self._nudge_lyrics(_LYRICS_STEP)
-
-    def _nudge_lyrics(self, delta: float) -> None:
-        """Shift the lyrics' timing for this track (remembered with them)."""
-        query = self._lyrics_query
-        if query is None or self.lyrics is None or not self.lyrics.synced:
-            return
-        self.lyrics_offset = round(self.lyrics_offset + delta, 3)
-        self._save_lyrics_offset(query, self.lyrics_offset)
-        self._update_lyrics_line()
-        self.lyrics_version += 1  # the subtitle shows the offset
-        self._flash_status(f"Lyrics {self.lyrics_offset:+.1f} s")
-
-    @work(group="_save_lyrics_offset", exclusive=True)
-    async def _save_lyrics_offset(self, query: Query, offset: float) -> None:
-        if query is self._lyrics_query:  # quick presses: the latest one is what is saved
-            offset = self.lyrics_offset
-        await self._lyrics.set_offset(query, offset)
+        self.lyrics_controller.nudge(lyrics_controller.STEP)
 
     def action_lyrics_reject(self) -> None:
-        """`x`: these lyrics are wrong for this track: gone, and not asked for
-        again."""
-        query = self._lyrics_query
-        if query is None or self.lyrics_status != "found":
-            return
-        self._reject_lyrics(query)
-        self.lyrics = None
-        self.lyrics_line = -1
-        self.lyrics_status = "none"
-        self.lyrics_version += 1
-        self._flash_status("Lyrics removed for this track")
-
-    @work(group="_reject_lyrics")
-    async def _reject_lyrics(self, query: Query) -> None:
-        await self._lyrics.reject(query)
+        """`x`: these lyrics are wrong for this track."""
+        self.lyrics_controller.reject()
 
     def action_toggle_shuffle(self) -> None:
         if self._ctx is not self._local_ctx:
@@ -1880,8 +1741,8 @@ class QobitApp(App[None]):
 
     def watch_playback_pos(self, _: float) -> None:
         self._maybe_prefetch()
-        self._update_lyrics_line()
-        self._maybe_prefetch_lyrics()
+        self.lyrics_controller.update_line()
+        self.lyrics_controller.maybe_prefetch()
 
     def _maybe_prefetch(self) -> None:
         if (
@@ -2024,7 +1885,7 @@ class QobitApp(App[None]):
         if track and track.image_url:
             self._fetch_media_key_art(track.image_url)
         self._save_player_state()
-        self._lyrics_track_changed(track)
+        self.lyrics_controller.track_changed(track)
 
     # ── player state persistence (survive restarts) ──────────────────────────
 
@@ -2469,5 +2330,5 @@ class QobitApp(App[None]):
         self._media_keys.close()
         self._player.stop()
         await self._client.close()
-        await self._lyrics.aclose()
+        await self.lyrics_controller.aclose()
         await close_client()

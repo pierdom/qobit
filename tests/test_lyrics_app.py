@@ -62,7 +62,7 @@ def lyr(ui_app, monkeypatch):
     service = FakeService()
     # The poll sees no mpv: it would end the track, advance and reset the position.
     monkeypatch.setattr(ui_app, "_poll_player", lambda: None)
-    ui_app._lyrics = service
+    ui_app.lyrics_controller.service = service
     ui_app._maybe_prefetch = lambda: None  # gapless's early fetch is tested in test_gapless
     service.answers["A"] = Result("found", SYNCED)
     service.answers["B"] = Result("found", PLAIN)
@@ -839,7 +839,7 @@ def test_turning_lyrics_off_in_the_three_column_layout_gives_the_cells_back(lyr)
 
 
 def test_a_failed_lookup_is_asked_again_and_the_lyrics_arrive(lyr, monkeypatch):
-    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.2)
+    monkeypatch.setattr("qobit.ui.lyrics_controller.RETRY_SECS", 0.2)
 
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
@@ -857,7 +857,7 @@ def test_a_failed_lookup_is_asked_again_and_the_lyrics_arrive(lyr, monkeypatch):
 
 
 def test_a_failing_lookup_is_retried_a_few_times_only(lyr, monkeypatch):
-    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.1)
+    monkeypatch.setattr("qobit.ui.lyrics_controller.RETRY_SECS", 0.1)
 
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
@@ -871,7 +871,7 @@ def test_a_failing_lookup_is_retried_a_few_times_only(lyr, monkeypatch):
 
 
 def test_a_retry_does_not_land_on_another_track(lyr, monkeypatch):
-    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.3)
+    monkeypatch.setattr("qobit.ui.lyrics_controller.RETRY_SECS", 0.3)
 
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
@@ -927,18 +927,18 @@ def test_short_lyrics_sit_in_the_middle_of_the_panel(lyr):
 
 
 def test_a_failed_early_fetch_is_asked_for_again_once(lyr, monkeypatch):
-    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 0.2)
+    monkeypatch.setattr("qobit.ui.lyrics_controller.RETRY_SECS", 0.2)
 
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
             lyr.service.answers["next"] = Result("failed")
-            lyr.app._lyrics_prefetched = "next"
-            lyr.app._prefetch_lyrics(_track("next"))
-            await wait_until(pilot, lambda: lyr.app._lyrics_prefetched is None, timeout=3)
-            lyr.app._lyrics_prefetched = "next"
-            lyr.app._prefetch_lyrics(_track("next"))
+            lyr.app.lyrics_controller.prefetched = "next"
+            lyr.app.lyrics_controller._prefetch(_track("next"))
+            await wait_until(pilot, lambda: lyr.app.lyrics_controller.prefetched is None, timeout=3)
+            lyr.app.lyrics_controller.prefetched = "next"
+            lyr.app.lyrics_controller._prefetch(_track("next"))
             await pilot.pause(0.6)
-            assert lyr.app._lyrics_prefetched == "next"  # a second failure is left alone
+            assert lyr.app.lyrics_controller.prefetched == "next"  # a second failure is left alone
 
     _run(body)
 
@@ -968,17 +968,17 @@ def test_a_long_favourite_title_keeps_its_heart_and_its_length(lyr):
 
 
 def test_a_pending_retry_does_not_outlive_its_lookup(lyr, monkeypatch):
-    monkeypatch.setattr("qobit.ui.app._LYRICS_RETRY_SECS", 2.0)
+    monkeypatch.setattr("qobit.ui.lyrics_controller.RETRY_SECS", 2.0)
 
     async def body():
         async with lyr.app.run_test(size=(120, 30)) as pilot:
             lyr.service.answers["down"] = Result("failed")
             lyr.play(_track("down"))
             await wait_until(pilot, lambda: lyr.app.lyrics_status == "failed")
-            assert lyr.app._lyrics_retry_timer is not None
+            assert lyr.app.lyrics_controller._retry_timer is not None
             lyr.app.lyrics_enabled = False
-            lyr.app._lyrics_track_changed(lyr.app.now_playing)  # what the switch does
-            assert lyr.app._lyrics_retry_timer is None
+            lyr.app.lyrics_controller.track_changed(lyr.app.now_playing)  # what the switch does
+            assert lyr.app.lyrics_controller._retry_timer is None
             await pilot.pause(2.6)  # past the retry it would have fired
             assert [q.title for q in lyr.service.queries].count("down") == 1
 
