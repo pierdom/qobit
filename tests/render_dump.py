@@ -8,8 +8,9 @@ refactor that must not change the look can be checked by a diff.
     CSSDUMP_OUT=/tmp/after uv run pytest tests/render_dump.py -q
     diff -rq /tmp/before /tmp/after
 
-16 files: Playback, Tracks, an Albums grid with a selected card and the Mixes
-tab, in cyberdeck, ayu-light and two transparent variants. Animations are off
+28 files: Playback, Tracks, the Albums, Artists and Playlists grids, the Mixes
+tab and an artist page (releases, top tracks, similar), in cyberdeck, ayu-light
+and two transparent variants. Animations are off
 (the wordmark and the meter move); two runs of the same code are identical.
 A scene not covered here (a new screen) belongs in this file before the refactor.
 """
@@ -58,6 +59,19 @@ def _dump(app) -> list:
     ]
 
 
+ARTISTS = [{"id": f"r{i}", "name": f"Artist {i}", "albums_count": i + 1} for i in range(10)]
+PLAYLISTS = [
+    {
+        "id": 100 + i,
+        "name": f"Playlist {i}",
+        "owner": {"name": "me"},
+        "tracks_count": 10 + i,
+        "duration": 3000 + i * 60,
+    }
+    for i in range(7)
+]
+
+
 def _stub(app) -> None:
     async def tracks():
         return FAVS
@@ -68,6 +82,27 @@ def _stub(app) -> None:
     app._client.get_all_favorite_tracks = tracks
     app._client.get_all_favorite_albums = albums
     album_pages.stub_album_client(app)
+
+    async def artists():
+        return ARTISTS
+
+    async def playlists():
+        return PLAYLISTS
+
+    async def artist_page(*_a, **_k):
+        albums = [
+            {**album_pages.ALBUM, "id": f"a{i}", "title": f"Album {i}", "hires_streamable": i % 2}
+            for i in range(6)
+        ]
+        return {**album_pages.ARTIST, "albums": {"items": albums}}
+
+    async def top_tracks(*_a, **_k):
+        return [{**FAVS[i], "performer": {"name": "Miles Davis", "id": "r1"}} for i in range(3)]
+
+    app._client.get_all_favorite_artists = artists
+    app._client.get_all_user_playlists = playlists
+    app._client.get_artist_detail = artist_page
+    app._client.get_artist_top_tracks = top_tracks
     app._poll_player = lambda: None  # no mpv: the play state is set by hand
     app.gapless_queue.maybe_prefetch = lambda: None
 
@@ -96,6 +131,18 @@ async def _scene(app, pilot, name: str) -> None:
     elif name == "albums":
         app.action_switch_tab("albums")
         await wait_until(pilot, lambda: len(list(app.screen.query(".grid-card"))) >= 6, timeout=15)
+    elif name == "artists":
+        app.action_switch_tab("artists")
+        await wait_until(pilot, lambda: len(list(app.screen.query(".grid-card"))) >= 6, timeout=15)
+    elif name == "playlists":
+        app.action_switch_tab("playlists")
+        await wait_until(pilot, lambda: len(list(app.screen.query(".grid-card"))) >= 6, timeout=15)
+    elif name == "artist-page":
+        from qobit.ui.screens.artist_detail import ArtistScreen
+        from qobit.ui.screens.cards import AlbumCard
+
+        await app.push_screen(ArtistScreen("r1"))
+        await wait_until(pilot, lambda: len(app.screen.query(AlbumCard)) == 6, timeout=15)
     elif name == "mixes":
         app.action_switch_tab("mixes")
         await wait_until(pilot, lambda: app.base_tab() == "mixes", timeout=10)
@@ -104,7 +151,9 @@ async def _scene(app, pilot, name: str) -> None:
     await quiet(pilot)
 
 
-@pytest.mark.parametrize("scene", ["playback", "tracks", "albums", "mixes"])
+@pytest.mark.parametrize(
+    "scene", ["playback", "tracks", "albums", "mixes", "artists", "playlists", "artist-page"]
+)
 @pytest.mark.parametrize(
     "variant", ["cyberdeck", "ayu-light", "transparent", "ayu-mirage-transparent"]
 )

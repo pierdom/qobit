@@ -1070,7 +1070,7 @@ class QobitApp(App[None]):
     def _refresh_followed_tiles(self) -> None:
         """The ♥ on artist tiles (Similar artists) after the followed artists
         changed: a toggle, or a background refresh of the library."""
-        from .screens.artist_detail import ArtistCard
+        from .screens.cards import ArtistCard
 
         followed = {a.id for a in self._fav_artists or ()}
         for screen in self.screen_stack:
@@ -1868,7 +1868,7 @@ class QobitApp(App[None]):
         card or row first, then the album panel and artist page the focus
         sits in."""
         from .screens.album_detail import AlbumDetailPanel
-        from .screens.artist_detail import AlbumGrid, ArtistGrid
+        from .screens.cards import AlbumGrid, ArtistGrid
 
         album: Album | None = None
         artist: Artist | None = None

@@ -81,10 +81,10 @@ each can be tested without the UI. Done, in merge order:
 | Stream resolution | `qobuz/streams.py` | `_play_stream` (what starting a track means) |
 | Radio and mixes | `qobuz/suggestions.py` | the two thin methods that gather history and favourites |
 | Poll tick and end-of-track rule | `audio/watch.py` | the poll thread (`_poll_player`): applies a `Reading` to the reactives, the 5 s state save |
+| Grid navigation and lazy cards | `ui/widgets/grid.py` (`GridNav`), cards in `screens/cards.py` | the Albums, Artists, Playlists tabs and the artist page |
 | Gapless state and logic | `ui/gapless.py` | `step_to_next` (cursor + transport), `next_track`, `is_local`, `extend_timeline` |
 
-Next: split `ui/screens/artist_detail.py` (the shared grid code lives in a
-screen file), then favourites and library, then the context menu. The transport
+Next: favourites and library, then the context menu. The transport
 actions and `_play_stream` stay in the app: they are thin glue over the player
 and the play contexts. A step is done when the app only wires the collaborator
 and its tests run without a `QobitApp`.

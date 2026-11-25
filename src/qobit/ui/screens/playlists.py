@@ -19,11 +19,7 @@ from .._filter import TypeToFilter, filter_prompt
 from .._images import fetch_image
 from .._utils import focus_later, markup_escape, qapp, readout, status_line
 from ..widgets.art import Art, square_width
-from .artist_detail import (
-    GRID_CARD_IMG_H,
-    LIBRARY_TILE_MIN_W,
-    _GridNav,
-)
+from ..widgets.grid import GRID_CARD_IMG_H, LIBRARY_TILE_MIN_W, GridNav
 
 if TYPE_CHECKING:
     pass
@@ -36,7 +32,7 @@ _SORT_OPTIONS: list[tuple[str, str]] = [
 ]
 _SORT_KEYS = [k for k, _ in _SORT_OPTIONS]
 
-# Same tile size as the Albums and Artists grids (artist_detail.GRID_CARD_IMG_H).
+# Same tile size as the Albums and Artists grids (widgets.grid.GRID_CARD_IMG_H).
 
 
 class PlaylistCard(Widget):
@@ -118,7 +114,7 @@ class PlaylistCard(Widget):
 
     def on_mount(self) -> None:
         square_width(self.query_one(TGPImage), GRID_CARD_IMG_H)
-        # See AlbumCard.on_mount (artist_detail.py) — art loads lazily via the
+        # See AlbumCard.on_mount (cards.py) — art loads lazily via the
         # grid's sync_visible_art(), not eagerly here.
 
     def maybe_fetch_art(self) -> None:
@@ -138,7 +134,7 @@ class PlaylistCard(Widget):
         self.post_message(PlaylistCard.Selected(self._playlist))
 
 
-class PlaylistGrid(_GridNav, ScrollableContainer):
+class PlaylistGrid(GridNav, ScrollableContainer):
     """Scrollable grid of PlaylistCards; column count adapts to available width."""
 
     BINDINGS = [
@@ -180,7 +176,7 @@ class PlaylistGrid(_GridNav, ScrollableContainer):
 
     def _visible_cards(self) -> list[PlaylistCard]:
         # PlaylistGrid has no hide/show filter (filtering remounts instead),
-        # so every mounted card is "visible" in the _GridNav sense.
+        # so every mounted card is "visible" in the GridNav sense.
         return [c for c in self.children if isinstance(c, PlaylistCard)]  # no query: see AlbumGrid
 
     def action_open_selected(self) -> None:

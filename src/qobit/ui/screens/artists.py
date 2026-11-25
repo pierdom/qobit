@@ -14,17 +14,14 @@ from ...qobuz.models import Album, Artist
 from .._filter import TypeToFilter, filter_prompt
 from .._utils import focus_later, qapp, readout, status_line
 from ..nav import Breadcrumb
+from ..widgets.grid import LIBRARY_TILE_MIN_W
 from .album_detail import AlbumDetailPanel, fit_artist_header
 from .artist_detail import (
-    LIBRARY_TILE_MIN_W,
-    AlbumCard,
-    AlbumGrid,
-    ArtistCard,
-    ArtistGrid,
     ArtistHeader,
     ArtistReleases,
     ArtistTracks,
 )
+from .cards import AlbumCard, AlbumGrid, ArtistCard, ArtistGrid
 
 if TYPE_CHECKING:
     pass

@@ -84,6 +84,7 @@ SHARED = [
     UI / "widgets" / "transport.py",
     UI / "widgets" / "art.py",
     UI / "widgets" / "lists.py",
+    UI / "widgets" / "grid.py",
 ]
 APP_SPECIFIC = (
     "qobit.qobuz",
