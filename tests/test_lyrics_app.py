@@ -63,7 +63,9 @@ def lyr(ui_app, monkeypatch):
     # The poll sees no mpv: it would end the track, advance and reset the position.
     monkeypatch.setattr(ui_app, "_poll_player", lambda: None)
     ui_app.lyrics_controller.service = service
-    ui_app._maybe_prefetch = lambda: None  # gapless's early fetch is tested in test_gapless
+    ui_app.gapless_queue.maybe_prefetch = lambda: (
+        None
+    )  # gapless's early fetch is tested in test_gapless
     service.answers["A"] = Result("found", SYNCED)
     service.answers["B"] = Result("found", PLAIN)
     service.answers["I"] = Result("instrumental", Lyrics(instrumental=True))

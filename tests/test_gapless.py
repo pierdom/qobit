@@ -1,6 +1,6 @@
 """Gapless playback in the app: late in a track the next one is queued in mpv
-(`_maybe_prefetch`), and when mpv goes on to it by itself the cursor and the
-transport follow (`_on_gapless_transition`) with nothing restarted.
+(`GaplessQueue.maybe_prefetch`), and when mpv goes on to it by itself the cursor and the
+transport follow (`GaplessQueue.on_transition`) with nothing restarted.
 
 Every way the queued track can stop being the right one is covered: the queue
 edited, a restart of mpv, an unplayable track, Qobuz Connect, a pause. Runs
@@ -124,7 +124,7 @@ def test_nothing_is_queued_until_late_in_the_track(gapless):
             assert gapless.player.appended == [] and gapless.resolved == []
             await _late(gapless, pilot, 175.0)  # 25 s left
             await wait_until(pilot, lambda: gapless.player.appended == ["url-B"])
-            assert gapless.app._next_up[0] == "B"
+            assert gapless.app.gapless_queue.next_up[0] == "B"
 
     _run(body)
 
@@ -169,7 +169,7 @@ def test_an_unplayable_next_track_is_left_to_the_natural_end(gapless):
                 await _late(gapless, pilot, pos)
             assert gapless.player.appended == []
             assert gapless.resolved == ["B"]
-            assert gapless.app._prefetch_failed == "B"
+            assert gapless.app.gapless_queue.failed == "B"
 
     _run(body)
 
@@ -181,7 +181,7 @@ def test_the_last_track_queues_nothing(gapless):
             gapless.app._cursor = 2
             gapless.app.now_playing = gapless.app._timeline[2]
             await _late(gapless, pilot)
-            assert gapless.player.appended == [] and gapless.app._next_up is None
+            assert gapless.player.appended == [] and gapless.app.gapless_queue.next_up is None
 
     _run(body)
 
@@ -235,12 +235,12 @@ def test_removing_the_queued_track_takes_it_out_of_mpv_and_queues_the_new_next(g
             await _queued(gapless, pilot)
             del app._timeline[1]  # B is removed from Up Next
             app.queue_version += 1
-            assert app._next_up is None
+            assert app.gapless_queue.next_up is None
             await wait_until(pilot, lambda: gapless.player.cleared == [gapless.player.gen])
             await _late(gapless, pilot, 176.0)
             await _late(gapless, pilot, 176.0)  # the poll's next tick
             await wait_until(pilot, lambda: gapless.player.appended == ["url-B", "url-C"])
-            assert app._next_up[0] == "C"
+            assert app.gapless_queue.next_up[0] == "C"
 
     _run(body)
 
@@ -254,7 +254,7 @@ def test_an_edit_that_leaves_the_next_track_alone_keeps_it_queued(gapless):
             app._timeline.append(_track("D"))  # added at the end
             app.queue_version += 1  # as does every heart toggle
             await pilot.pause(0.3)
-            assert app._next_up[0] == "B" and gapless.player.cleared == []
+            assert app.gapless_queue.next_up[0] == "B" and gapless.player.cleared == []
 
     _run(body)
 
@@ -267,7 +267,7 @@ def test_a_new_track_started_by_the_user_forgets_the_queued_one(gapless):
             await _queued(gapless, pilot)
             assert await app._play_stream(app._timeline[2]) == "ok"
             assert gapless.player.played == ["url-C"]
-            assert app._next_up is None  # a new mpv: nothing is queued in it
+            assert app.gapless_queue.next_up is None  # a new mpv: nothing is queued in it
 
     _run(body)
 
@@ -293,7 +293,7 @@ def test_a_player_restarted_while_the_stream_resolved_gets_nothing(gapless, monk
             gapless.player.gen += 1  # mpv stopped and started again
             gate["ev"].set()
             await pilot.pause(0.3)
-            assert gapless.player.appended == [] and gapless.app._next_up is None
+            assert gapless.player.appended == [] and gapless.app.gapless_queue.next_up is None
 
     _run(body)
 
@@ -308,13 +308,13 @@ def test_the_move_onto_the_queued_track_restarts_nothing(gapless):
             app = gapless.app
             await _queued(gapless, pilot)
             version = app.queue_version
-            app._on_gapless_transition()  # what the poll calls when mpv moves on
+            app.gapless_queue.on_transition()  # what the poll calls when mpv moves on
             assert app._cursor == 1 and app.now_playing.id == "B"
             assert app._last_stream.url == "url-B"
             assert app.quality_label == _stream("B").quality_badge
             assert app.queue_version == version + 1
             assert app.is_playing and not app.is_paused
-            assert app._next_up is None
+            assert app.gapless_queue.next_up is None
             assert gapless.player.played == []  # mpv was not restarted
             assert gapless.player.cleared == []
             assert len(gapless.verified) == 1  # the signal lamp checks the new stream
@@ -328,7 +328,7 @@ def test_the_next_track_is_queued_again_behind_the_one_now_playing(gapless):
             gapless.start()
             app = gapless.app
             await _queued(gapless, pilot)
-            app._on_gapless_transition()
+            app.gapless_queue.on_transition()
             app.playback_dur = 200.0
             await _late(gapless, pilot, 10.0)
             assert gapless.player.appended == ["url-B"]  # far from the end of B
@@ -349,9 +349,9 @@ def test_a_move_the_queue_no_longer_expects_plays_the_right_track_the_ordinary_w
         async with gapless.app.run_test(size=(120, 30)) as pilot:
             gapless.start()
             app = gapless.app
-            app._next_up = ("B", _stream("B"))
+            app.gapless_queue.next_up = ("B", _stream("B"))
             del app._timeline[1]  # the queue was edited just as mpv moved on
-            app._on_gapless_transition()
+            app.gapless_queue.on_transition()
             assert advanced == [1]
             assert app._cursor == 0 and app.now_playing.id == "A"  # left to the advance
             await pilot.pause(0)
@@ -364,9 +364,9 @@ def test_a_move_under_connect_changes_nothing(gapless):
         async with gapless.app.run_test(size=(120, 30)) as pilot:
             gapless.start()
             app = gapless.app
-            app._next_up = ("B", _stream("B"))
+            app.gapless_queue.next_up = ("B", _stream("B"))
             app._connect = _connect()
-            app._on_gapless_transition()
+            app.gapless_queue.on_transition()
             assert app._cursor == 0 and app.now_playing.id == "A"
             await pilot.pause(0)
 
@@ -392,7 +392,7 @@ def test_switching_off_takes_the_queued_track_out_again(gapless):
             await _late(gapless, pilot, 175.0)
             await wait_until(pilot, lambda: gapless.player.appended == ["url-B"])
             gapless.app.action_toggle_gapless()
-            assert gapless.app._next_up is None and gapless.app.gapless is False
+            assert gapless.app.gapless_queue.next_up is None and gapless.app.gapless is False
             await wait_until(pilot, lambda: gapless.player.cleared == [gapless.player.gen])
             await _late(gapless, pilot, 176.0)
             assert gapless.player.appended == ["url-B"]  # not queued again
@@ -442,6 +442,6 @@ def test_shuffling_while_a_track_is_lined_up_swaps_it(gapless, monkeypatch):
             await wait_until(pilot, lambda: gapless.player.cleared == [gapless.player.gen])
             await _late(gapless, pilot, 176.0)  # the poll's next tick
             await wait_until(pilot, lambda: gapless.player.appended == ["url-B", "url-C"])
-            assert gapless.app._next_up[0] == "C"
+            assert gapless.app.gapless_queue.next_up[0] == "C"
 
     _run(body)

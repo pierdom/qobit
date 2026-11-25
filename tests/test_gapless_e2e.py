@@ -79,7 +79,7 @@ def rig(ui_app, monkeypatch, tmp_path):
         doing then (running? a gapless entry queued? mpv's exit code?)."""
         gen, running = player.snapshot()
         proc = player._proc
-        queued = ui_app._next_up[0] if ui_app._next_up else None
+        queued = ui_app.gapless_queue.next_up[0] if ui_app.gapless_queue.next_up else None
         code = proc.poll() if proc else "no proc"
         LOG.append(
             f"{time.monotonic() - _T0[0]:5.2f}s advance: gen={gen} running={running} "
@@ -103,14 +103,14 @@ def rig(ui_app, monkeypatch, tmp_path):
 
     monkeypatch.setattr(player, "get_property", get_property)
 
-    real_transition = ui_app._on_gapless_transition
+    real_transition = ui_app.gapless_queue.on_transition
 
     def transition():
-        queued = ui_app._next_up[0] if ui_app._next_up else None
+        queued = ui_app.gapless_queue.next_up[0] if ui_app.gapless_queue.next_up else None
         LOG.append(f"{time.monotonic() - _T0[0]:5.2f}s gapless transition, next_up={queued}")
         return real_transition()
 
-    monkeypatch.setattr(ui_app, "_on_gapless_transition", transition)
+    monkeypatch.setattr(ui_app.gapless_queue, "on_transition", transition)
     LOG_SOURCES.clear()
     LOG_SOURCES.append(procs)
     ui_app._player = player
@@ -159,13 +159,13 @@ async def _play_through(app, player, pilot, after_queued=None) -> list[tuple[str
         state = (
             app.now_playing.id if app.now_playing else None,
             player._proc.pid if player._proc is not None else None,
-            app._next_up[0] if app._next_up else None,
+            app.gapless_queue.next_up[0] if app.gapless_queue.next_up else None,
             app.is_playing,
         )
         if state != last:
             last = state
             LOG.append(f"{time.monotonic() - start:5.2f}s now/pid/next_up/playing={state}")
-        if after_queued is not None and app._next_up is not None:
+        if after_queued is not None and app.gapless_queue.next_up is not None:
             after_queued()
             after_queued = None
         now = app.now_playing.id if app.now_playing else None
