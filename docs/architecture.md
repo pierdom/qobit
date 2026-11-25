@@ -25,7 +25,8 @@ refactor moves a responsibility, update the table below in the same PR.
    qobuz/      API client, models, stream resolution, radio and mixes, OAuth
    connect/    Qobuz Connect renderer (protocol, session, queue mirror)
    lyrics/     LRC parsing, matching, cache, providers, service
-   config, store, token_store, library_cache, account_data, _fs, doctor
+   library (favourites in memory), library_cache (on disk), config, store,
+   token_store, account_data, _fs, doctor
 ```
 
 The shared look (themes, nav, transport bar, art, list widgets, row mixins)
@@ -43,7 +44,7 @@ of the app, `screens/`, `qobuz/`, `config` or the state modules there.
 | Stream URL resolution and the quality memory | `qobuz/streams.py` `StreamResolver` (`app.streams`) | `_play_stream`, gapless prefetch |
 | The track queued in mpv behind the playing one, prefetch state | `gapless.py` `GaplessQueue` (`app.gapless_queue`) | the app (`watch_queue_version`, `_play_stream`, the poll) |
 | Lyrics, offset, lookup/retry/prefetch state | `lyrics_controller.py` | widgets via `app.lyrics`, `lyrics_offset`; reactives `lyrics_status/line/version` stay on the app |
-| Favourites, playlists | caches on `QobitApp` (`ensure_*`), disk copy in `library_cache` | screens via `app.favorite_*`, `user_playlists` |
+| Favourites, followed artists, playlists | `library.py` `Library` (`app.library`): loading, toggling, background refresh; disk copy in `library_cache` | screens via `app.library.tracks`, `track_ids`, `albums`, `artists`, `playlists` |
 | Session token | `token_store` (keyring, else `config.json`) | `QobuzClient` |
 | Persistent runtime state | `store` (player/queue JSON in `DATA_DIR`) | the app at start and on change |
 
@@ -82,9 +83,10 @@ each can be tested without the UI. Done, in merge order:
 | Radio and mixes | `qobuz/suggestions.py` | the two thin methods that gather history and favourites |
 | Poll tick and end-of-track rule | `audio/watch.py` | the poll thread (`_poll_player`): applies a `Reading` to the reactives, the 5 s state save |
 | Grid navigation and lazy cards | `ui/widgets/grid.py` (`GridNav`), cards in `screens/cards.py` | the Albums, Artists, Playlists tabs and the artist page |
+| Library (favourites, playlists) | `library.py` | `toggle_*` (flash), `_on_library_change` (redraws tabs and hearts) |
 | Gapless state and logic | `ui/gapless.py` | `step_to_next` (cursor + transport), `next_track`, `is_local`, `extend_timeline` |
 
-Next: favourites and library, then the context menu. The transport
+Next: the context menu. The transport
 actions and `_play_stream` stay in the app: they are thin glue over the player
 and the play contexts. A step is done when the app only wires the collaborator
 and its tests run without a `QobitApp`.

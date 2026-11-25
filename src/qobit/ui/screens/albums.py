@@ -255,7 +255,7 @@ class AlbumsView(TypeToFilter, Widget):
         grid = self.query_one("#fav-albums-grid", AlbumGrid)
         grid.border_subtitle = "loading…"
         try:
-            self._albums = list(await app.ensure_favorite_albums())
+            self._albums = list(await app.library.ensure_albums())
         except Exception as e:
             grid.border_subtitle = ""
             await grid.mount(status_line(str(e), error=True))
@@ -269,10 +269,10 @@ class AlbumsView(TypeToFilter, Widget):
         cache, the cursor on the album it was on. Before the first load
         there's nothing to redraw; the load reads the cache anyway."""
         app = qapp(self)
-        if self._loaded and app.favorite_albums is not None:
+        if self._loaded and app.library.albums is not None:
             card = self.query_one("#fav-albums-grid", AlbumGrid).selected_card()
             self._reselect = card._album.id if isinstance(card, AlbumCard) else None
-            self._albums = list(app.favorite_albums)
+            self._albums = list(app.library.albums)
             self._update_subtitle()
             self._render_grid()
 

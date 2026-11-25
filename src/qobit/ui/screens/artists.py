@@ -276,7 +276,7 @@ class ArtistsView(TypeToFilter, Widget):
         grid = self.query_one("#fav-artists-grid", ArtistGrid)
         grid.border_subtitle = "loading…"
         try:
-            self._artists = list(await app.ensure_favorite_artists())
+            self._artists = list(await app.library.ensure_artists())
         except Exception as e:
             grid.border_subtitle = ""
             await grid.mount(status_line(str(e), error=True))
@@ -290,10 +290,10 @@ class ArtistsView(TypeToFilter, Widget):
         cache, the cursor on the artist it was on. Before the first load
         there's nothing to redraw; the load reads the cache anyway."""
         app = qapp(self)
-        if self._loaded and app.favorite_artists is not None:
+        if self._loaded and app.library.artists is not None:
             card = self.query_one("#fav-artists-grid", ArtistGrid).selected_card()
             self._reselect = card.artist.id if isinstance(card, ArtistCard) else None
-            self._artists = list(app.favorite_artists)
+            self._artists = list(app.library.artists)
             self._update_subtitle()
             self._render_grid()
 

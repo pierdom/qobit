@@ -179,14 +179,14 @@ async def test_logout_erases_the_account_and_offers_a_login(ui_app):
         ui_app._client.login_oauth = LoginClient.login_oauth.__get__(ui_app._client)
         ui_app._timeline, ui_app._cursor = [_track(1), _track(2), _track(3)], 1
         ui_app.now_playing = _track(2)
-        ui_app._fav_ids = {"9"}
+        ui_app.library.track_ids = {"9"}
         await ui_app.action_logout()
         await _until(pilot, lambda: isinstance(ui_app.screen, LoginScreen))
         await pilot.pause(1.3)  # past the queue-save debounce: nothing written back
         assert config.get_oauth_session() == ("", "", [])
         assert ui_app._client.user_auth_token is None
         assert (ui_app._timeline, ui_app._cursor, ui_app.now_playing) == ([], -1, None)
-        assert not ui_app._fav_ids  # the previous account's {"9"} is gone
+        assert not ui_app.library.track_ids  # the previous account's {"9"} is gone
         for name in ("queue_state.json", "player_state.json", "mixes_cache.json"):
             assert not (store.DATA_DIR / name).exists(), name
         assert list(covers.iterdir()) == []

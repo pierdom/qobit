@@ -959,7 +959,7 @@ def test_a_long_favourite_title_keeps_its_heart_and_its_length(lyr):
             lyr.app._timeline = [_track("T"), long]
             lyr.app._cursor = 0
             lyr.app.queue_version += 1
-            lyr.app._fav_ids = {"L"}
+            lyr.app.library.track_ids = {"L"}
             await quiet(pilot)
             out.extend(s.text for s in lyr.app.screen._compositor.render_strips())
 

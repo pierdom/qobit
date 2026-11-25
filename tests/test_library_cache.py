@@ -105,7 +105,7 @@ def test_tracks_show_from_disk_then_update_keeping_the_cursor(ui_app):
                 pilot, lambda: getattr(lv.highlighted_child, "track", None) is not None
             )
             await wait_until(pilot, lambda: lv.highlighted_child.track.id == "3")
-            assert ui_app._fav_ids == {"9", "1", "3", "4", "5"}
+            assert ui_app.library.track_ids == {"9", "1", "3", "4", "5"}
             # Written by a thread worker: poll.
             await wait_until(
                 pilot,
@@ -172,11 +172,11 @@ def test_a_toggle_during_the_refresh_wins(ui_app):
 
     async def run():
         async with ui_app.run_test(size=(130, 40)) as pilot:
-            await wait_until(pilot, lambda: ui_app._fav_tracks is not None)
+            await wait_until(pilot, lambda: ui_app.library.tracks is not None)
             await ui_app.toggle_favorite(_tracks([7])[0])
             release.set()
             await pilot.pause(0.5)
-            assert [t.id for t in ui_app._fav_tracks] == ["1", "2", "7"]
+            assert [t.id for t in ui_app.library.tracks] == ["1", "2", "7"]
             await wait_until(
                 pilot,
                 lambda: (
@@ -236,12 +236,12 @@ def test_logout_in_the_app_wipes_it(ui_app):
     async def run():
         async with ui_app.run_test(size=(130, 40)) as pilot:
             ui_app.request_login = lambda *_a, **_k: None  # the stub can't log in
-            await wait_until(pilot, lambda: ui_app._fav_tracks is not None)
-            ui_app._save_library("tracks")  # a save on its way, then logout
+            await wait_until(pilot, lambda: ui_app.library.tracks is not None)
+            ui_app.library._save("tracks")  # a save on its way, then logout
             await ui_app.action_logout()
             await pilot.pause(0.5)
             assert not (library_cache.path("tracks")).exists()
-            assert ui_app._fav_tracks is None and ui_app._user_playlists is None
+            assert ui_app.library.tracks is None and ui_app.library.playlists is None
             assert library_cache.load("tracks", ACCOUNT) is None
 
     asyncio.run(run())

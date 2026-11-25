@@ -448,7 +448,7 @@ class NowPlayingHero(Widget):
         t = app.now_playing
         if not t:
             return
-        ids = await app.ensure_favorite_ids()
+        ids = await app.library.ensure_track_ids()
         if self.is_attached and app.now_playing is t:
             self._favorite = str(t.id) in ids
             self._render_meta()
@@ -646,7 +646,7 @@ class QueueView(Widget):
             # The list doesn't wait for the favourites: fetching a whole
             # library kept the queue blank for seconds at startup. Rows show
             # no hearts until they arrive, then one more reconcile adds them.
-            fav_ids = app.favorite_ids
+            fav_ids = app.library.track_ids
             if fav_ids is None:
                 self._hearts_when_loaded()
             # Gone mid-way: logout rebuilds every view (App.recompose) while
@@ -657,9 +657,9 @@ class QueueView(Widget):
     @work(exclusive=True, group="_hearts_when_loaded")
     async def _hearts_when_loaded(self) -> None:
         app = qapp(self)
-        await app.ensure_favorite_ids()
+        await app.library.ensure_track_ids()
         # Not loaded (the fetch failed): no retry loop; the next change retries.
-        if app.favorite_ids is not None and self.is_attached:
+        if app.library.track_ids is not None and self.is_attached:
             self._on_queue_changed(app.queue_version)
 
     async def _reconcile(self, app: QobitApp, fav_ids: set[str]) -> None:

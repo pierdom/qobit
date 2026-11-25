@@ -85,7 +85,7 @@ def test_the_beat_and_the_cursor_skip_the_layout_pass(ui_app, monkeypatch):
             await wait_until(pilot, lambda: lv.highlighted_child is not None)
             lv.focus()
             # The hearts' reconcile, once the favourites are in, is a layout.
-            await wait_until(pilot, lambda: ui_app._fav_ids is not None)
+            await wait_until(pilot, lambda: ui_app.library.track_ids is not None)
             await quiet(pilot)  # a late layout pass would count against the spy
 
             layouts: list[str] = []

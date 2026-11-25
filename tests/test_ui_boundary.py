@@ -150,3 +150,44 @@ def test_the_import_check_sees_a_runtime_import_and_skips_type_checking(tmp_path
     mods = [m for _, m in _runtime_imports(probe, ["qobit", "ui"])]
     assert "qobit.qobuz.models" in mods and "qobit.ui.screens.search" in mods
     assert not any(m.startswith("qobit.ui.app") for m in mods)
+
+
+# ── nothing below the UI imports Textual ────────────────────────────────────
+#
+# The layers under ui/ (docs/architecture.md) are testable on their own and
+# take what they need from the app by injection (a worker runner, a callback).
+
+NO_TEXTUAL = [
+    "qobit.library",
+    "qobit.library_cache",
+    "qobit.config",
+    "qobit.store",
+    "qobit.doctor",
+    "qobit.qobuz.client",
+    "qobit.qobuz.models",
+    "qobit.qobuz.streams",
+    "qobit.qobuz.suggestions",
+    "qobit.audio.player",
+    "qobit.audio.watch",
+    "qobit.audio.verify",
+    "qobit.audio.device",
+    "qobit.lyrics",
+    "qobit.connect",
+]
+
+
+def _imports_textual(modules: list[str]) -> bool:
+    import subprocess
+    import sys
+
+    code = "import sys, " + ", ".join(modules) + "; sys.exit('textual' in sys.modules)"
+    return subprocess.run([sys.executable, "-c", code]).returncode != 0
+
+
+@pytest.mark.parametrize("module", NO_TEXTUAL)
+def test_the_layers_under_the_ui_do_not_import_textual(module):
+    assert not _imports_textual([module]), f"{module} imports Textual"
+
+
+def test_the_textual_check_sees_a_module_that_does():
+    assert _imports_textual(["qobit.ui._utils"])

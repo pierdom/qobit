@@ -207,7 +207,7 @@ class SearchView(NowPlayingViewMixin, Widget):
                 app._client.search(query, type="tracks", limit=5),
                 app._client.search(query, type="albums", limit=5),
                 app._client.search(query, type="artists", limit=5),
-                app.ensure_favorite_ids(),
+                app.library.ensure_track_ids(),
             )
         except QobuzError as e:
             if version != self._search_version:

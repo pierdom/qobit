@@ -241,7 +241,9 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
             return
         app = qapp(self)
         self.query_one(".detail-title", Label).update(
-            Content.assemble(self.album.title, heart_suffix(app.is_favorite_album(self.album.id)))
+            Content.assemble(
+                self.album.title, heart_suffix(app.library.is_favorite_album(self.album.id))
+            )
         )
 
     @work(exclusive=True, group="_load_heart")  # a newer album cancels a stale one
@@ -250,7 +252,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         draw the heart. A failed load just leaves it off."""
         app = qapp(self)
         try:
-            await app.ensure_favorite_albums()
+            await app.library.ensure_albums()
         except QobuzError:
             return
         if self.is_attached and self.album is not None and self.album.id == album_id:
@@ -325,7 +327,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         if not full.tracks:
             return
 
-        fav_ids = await app.ensure_favorite_ids()
+        fav_ids = await app.library.ensure_track_ids()
 
         if not self.is_attached:
             return

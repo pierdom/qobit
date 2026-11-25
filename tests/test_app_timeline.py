@@ -426,8 +426,8 @@ def test_failed_favourites_fetch_is_retried_not_cached(app, monkeypatch):
 
     monkeypatch.setattr(app._client, "get_all_favorite_tracks", fetch)
     monkeypatch.setattr(app._client, "user_auth_token", "tok")  # logged in: it fetches
-    assert asyncio.run(app.ensure_favorite_ids()) == set()
-    assert asyncio.run(app.ensure_favorite_ids()) == {"7"}
+    assert asyncio.run(app.library.ensure_track_ids()) == set()
+    assert asyncio.run(app.library.ensure_track_ids()) == {"7"}
 
 
 # ── "Play radio" from the i menu ────────────────────────────────────────────

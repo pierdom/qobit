@@ -27,6 +27,8 @@ src/qobit/
 │                        tests), parsers for mpv/ALSA/PipeWire output, render
 ├── account_data.py      what an account leaves on disk; erase (logout), the
 │                        running-TUI lock (qobit.lock)
+├── library.py           Library: favourites, followed artists, playlists in memory;
+│                        loading, toggling, disk copy + refresh (no Textual)
 ├── library_cache.py     the library lists on disk (shown at start, refreshed)
 ├── lyrics/              lyrics, UI-agnostic: lrc.py (LRC + plain), matching.py
 │                        (fold, pick: does it belong to the track), cache.py
@@ -367,15 +369,20 @@ display name.
 
 **Hearts on pages.** `AlbumDetailPanel` (after the title, `heart_suffix`) and
 `ArtistHeader` (bio panel's border title; `theme_color(HEART)`, redrawn on a
-theme change) show ♥ from `is_favorite_album` / `is_followed_artist` (cache
-reads), after awaiting `ensure_favorite_*` in a `_load_heart` worker. The
-album/artist toggles call `_refresh_hearts()`, which walks every screen.
+theme change) show ♥ from `app.library.is_favorite_album` / `is_followed_artist`
+(cache reads), after awaiting `app.library.ensure_*` in a `_load_heart` worker.
+The album/artist toggles end in `_refresh_hearts()`, which walks every screen.
 
-**Favourites.** `ensure_favorite_tracks/albums/artists()` and
-`ensure_user_playlists()` load once each (one lock per list, the favourites
-in parallel at startup); a failed load isn't cached.
-`toggle_favorite`, `toggle_favorite_album` and `toggle_follow_artist` update
-the caches and patch the Tracks/Albums/Artists tabs, so nothing re-fetches.
+**Favourites** (`library.py` `Library`, `app.library`; no Textual: the app
+injects `run_worker` and an `on_change` callback; `tests/test_library.py` needs
+no app). `library.ensure_tracks/track_ids/albums/artists/playlists()` load once
+each (one lock per list, the favourites in parallel at startup); a failed load
+isn't cached; `None` is "not loaded", not empty. The lists are plain attributes
+(`library.tracks`, `track_ids`, `albums`, `artists`, `playlists`). The app's
+`toggle_favorite`, `toggle_favorite_album` and `toggle_follow_artist` call
+`library.toggle_*` (which raises `LibraryError` with the user's message), flash,
+and the library's `Change` event reaches `QobitApp._on_library_change`, which
+patches the Tracks/Albums/Artists tabs and the hearts, so nothing re-fetches.
 
 **Library on disk** (`library_cache.py`: `~/.cache/qobit/library/<kind>.json`
 (`$XDG_CACHE_HOME` honoured, like the covers; a cache, not state: Qobuz has
@@ -383,20 +390,20 @@ it all), one file per list so a toggle rewrites one list; each names its
 account and a format `VERSION`, a mismatch reads as empty; nothing kept in
 memory there; logout erases it through `library_cache.clear()`, not
 `ACCOUNT_FILES`, which is DATA_DIR only).
-`QobitApp._load_library` returns the disk copy at once and starts
-`_refresh_library`, which fetches again and, only if the list differs
-(dataclass `==`), saves it, replaces it and calls `_library_changed`
-(Tracks `library_changed`, Albums/Artists `favorites_changed`, Playlists
+`Library._load` returns the disk copy at once and starts
+`_refresh`, which fetches again and, only if the list differs
+(dataclass `==`), saves it, replaces it and emits `Change(kind, "refresh")`;
+`_on_library_change` redraws (Tracks `library_changed`, Albums/Artists `favorites_changed`, Playlists
 `library_changed`: each redraws and puts the cursor back with
 `select_where`, which mounts only through that item). Unchanged: nothing is
-written. A toggle calls `_library_edited` (saves, and bumps
-`_library_edits` so a refresh started before it is dropped); a refresh is
+written. A toggle calls `Library._edited` (saves, and bumps
+`_edits` so a refresh started before it is dropped); a refresh is
 also dropped after an account change. Saves run in a thread worker and
 carry `library_cache.epoch()` from when their list was asked for (an erase
 calls `cancel_saves()` first: a save begun before logout is dropped instead
 of writing the old account's library back) and a `ticket()` from when they
 were decided (a pool thread finishing late can't overwrite a newer list).
-`_load_library` refuses while logged out, and `action_logout` clears the
+`Library._load` refuses while logged out, and `action_logout` clears the
 token before `_erase_account` (the rebuilt views ask for the library at
 once; with the token still set they fetched and saved it again). Models
 round-trip through `dataclasses.asdict`: a model field change that old
@@ -405,8 +412,8 @@ library alone while a TUI runs (it would write it back).
 
 **What screens and widgets may read from the app.** Its reactives and its public
 read-only names (`history`, `up_next`, `current_track`, `queue_position`,
-`favorite_tracks/ids/albums/artists`, `user_playlists`, `last_stream`), plus
-`_client` (every screen asks it for data). Never the underscore state:
+`last_stream`), plus `library` (the favourites, followed artists and playlists:
+`app.library.tracks` and so on) and `_client` (every screen asks it for data). Never the underscore state:
 `tests/test_ui_boundary.py` fails on `app._something` in `screens/`, `widgets/`
 and the shared UI modules. The play contexts and `app.py` are the app's
 collaborators and are not checked. A new read a screen needs gets a public

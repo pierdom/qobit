@@ -25,7 +25,6 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher, ListView, Tab, Tabs
 from textual.worker import get_current_worker
 
-from .. import library_cache
 from ..audio.media_keys import MediaKeys
 from ..audio.player import MpvPlayer
 from ..audio.verify import Signal, check_signal
@@ -61,9 +60,10 @@ from ..config import (
     token_location,
 )
 from ..config import set_image_mode as save_image_mode
+from ..library import Change, Library, LibraryError
 from ..lyrics import Lyrics
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
-from ..qobuz.models import Album, Artist, NoStreamError, Playlist, StreamUrl, Track
+from ..qobuz.models import Album, Artist, NoStreamError, StreamUrl, Track
 from ..qobuz.streams import StreamResolver
 from ..qobuz.suggestions import SuggestionService
 from ..store import load as load_state
@@ -414,20 +414,14 @@ class QobitApp(App[None]):
         # Favourite tracks, fetched once and shared by TracksView (full list)
         # and the heart glyph in other track lists (id set). None = not loaded.
         # Kept in sync by toggle_favorite so all views stay current.
-        self._fav_tracks: list[Track] | None = None
-        self._fav_ids: set[str] | None = None
-        self._fav_lock = asyncio.Lock()
-        # Favourite albums / followed artists: fetched once, shared by the
-        # Albums and Artists tabs and the `i` menu, kept in sync by the toggles.
-        self._fav_albums: list[Album] | None = None
-        self._fav_artists: list[Artist] | None = None
-        self._fav_albums_lock = asyncio.Lock()  # one lock per list: they load in parallel
-        self._fav_artists_lock = asyncio.Lock()
-        self._user_playlists: list[Playlist] | None = None
-        self._playlists_lock = asyncio.Lock()
-        # Per library kind: bumped by each toggle, so a background refresh
-        # that started before it doesn't overwrite it (_refresh_library).
-        self._library_edits: dict[str, int] = {}
+        # Favourites, followed artists and playlists: loaded once, shared by the
+        # tabs and the `i` menu, kept in step by the toggles (library.py).
+        self.library = Library(
+            self._client,
+            account_key=lambda: self._account_key(),
+            run_worker=lambda work, **kw: self.run_worker(work, **kw),
+            on_change=lambda change: self._on_library_change(change),
+        )
         # Prevents two concurrent _advance_queue calls from both seeing an empty
         # queue and both fetching radio + starting playback.
         self._advance_lock = asyncio.Lock()
@@ -563,9 +557,7 @@ class QobitApp(App[None]):
     def _reload_after_login(self) -> None:
         """Refetch what failed (or belonged to another account): the
         favourites caches and the library tabs, which load on activation."""
-        self._fav_tracks = self._fav_ids = None
-        self._fav_albums = self._fav_artists = None
-        self._user_playlists = None
+        self.library.reset()
         for tab_view in self.screen_stack[0].query("ContentSwitcher > *"):
             if hasattr(tab_view, "_loaded"):
                 tab_view._loaded = False
@@ -611,9 +603,7 @@ class QobitApp(App[None]):
         if self._queue_save_timer is not None:
             self._queue_save_timer.stop()
             self._queue_save_timer = None
-        self._fav_tracks = self._fav_ids = None
-        self._fav_albums = self._fav_artists = None
-        self._user_playlists = None
+        self.library.reset()
         self._client.clear_caches()
         _IMAGE_CACHE.clear()
         erase_account_data()
@@ -805,202 +795,38 @@ class QobitApp(App[None]):
         with contextlib.suppress(Exception):
             self.query_one("#search-input").focus()
 
-    # ── favourite tracks (heart glyph in track lists) ─────────────────────────
-
-    async def ensure_favorite_tracks(self) -> list[Track]:
-        """Favourite tracks, fetched exactly once and cached as `Track`s.
-
-        Double-checked locking serialises concurrent first callers (TracksView's
-        list load, the mount-time heart warm, the QueueView refresh, each
-        track-list builder) so the paginated favourites endpoint is hit once.
-        Raises on fetch failure (without caching) so callers can retry."""
-        if self._fav_tracks is not None:
-            return self._fav_tracks
-        async with self._fav_lock:
-            if self._fav_tracks is None:
-                self._fav_tracks = await self._load_library("tracks")
-            return self._fav_tracks
-
-    async def ensure_favorite_ids(self) -> set[str]:
-        """Set of favourited track ids, derived from the shared favourites
-        cache. A failed fetch gives an empty set (no hearts) but isn't cached,
-        so the next call retries; caching it hid every favourite for the rest
-        of the session after one failed request at startup."""
-        if self._fav_ids is None:
-            try:
-                tracks = await self.ensure_favorite_tracks()
-            except Exception:
-                return set()
-            self._fav_ids = {t.id for t in tracks}
-        return self._fav_ids
-
-    async def toggle_favorite(self, track: Track) -> bool:
-        """Add/remove a track from the user's Qobuz favourites, keep the shared
-        caches in sync, and refresh the Tracks tab. Returns the new favourite
-        state (unchanged on API error)."""
-        tid = str(track.id)
-        ids = await self.ensure_favorite_ids()  # also loads _fav_tracks
-        if self._fav_ids is None:  # couldn't load them: don't guess the state
-            self._flash_status("Couldn't load favourites")
-            return False
-        try:
-            if tid in ids:
-                await self._client.set_favorite("track", tid, False)
-                ids.discard(tid)
-                if self._fav_tracks is not None:
-                    self._fav_tracks = [t for t in self._fav_tracks if t.id != tid]
-                new_state = False
-            else:
-                await self._client.set_favorite("track", tid, True)
-                ids.add(tid)
-                if self._fav_tracks is not None and not any(t.id == tid for t in self._fav_tracks):
-                    added = dataclasses.replace(track, favorited_at=int(time.time()))
-                    self._fav_tracks.append(added)
-                new_state = True
-        except Exception:
-            self._flash_status("Couldn't update favourite")
-            return tid in ids
-        self._library_edited("tracks")
-        with contextlib.suppress(Exception):
-            self.query_one(TracksView).favorite_changed(tid, new_state)
-        # Refresh the Queue so hearts on history/now-playing/up-next rows update.
-        self.queue_version += 1
-        return new_state
-
-    @work
-    async def _warm_favorite_ids(self) -> None:
-        """Load the favourites caches up front: track hearts, and the album and
-        artist state the `i` menu labels its toggles with (it would otherwise
-        wait on the first fetch before opening)."""
-        await asyncio.gather(
-            self.ensure_favorite_ids(),
-            self.ensure_favorite_albums(),
-            self.ensure_favorite_artists(),
-            return_exceptions=True,  # a failed list is fetched again on first use
-        )
-
-    # ── favourite albums and followed artists ────────────────────────────────
-
-    async def ensure_favorite_albums(self) -> list[Album]:
-        """Favourite albums, fetched once. Raises on failure (nothing cached)."""
-        async with self._fav_albums_lock:
-            if self._fav_albums is None:
-                self._fav_albums = await self._load_library("albums")
-            return self._fav_albums
-
-    async def ensure_favorite_artists(self) -> list[Artist]:
-        """Followed (favourite) artists, fetched once. Raises on failure."""
-        async with self._fav_artists_lock:
-            if self._fav_artists is None:
-                self._fav_artists = await self._load_library("artists")
-            return self._fav_artists
-
-    async def ensure_user_playlists(self) -> list[Playlist]:
-        """The user's playlists, fetched once. Raises on failure."""
-        async with self._playlists_lock:
-            if self._user_playlists is None:
-                self._user_playlists = await self._load_library("playlists")
-            return self._user_playlists
-
-    # ── the library on disk (library_cache) ──────────────────────────────────
-    # Each list shows from the disk copy at once, then is fetched again in the
-    # background (_refresh_library); a fetch only replaces it if it differs.
-
-    _LIBRARY: dict[str, tuple[str, Any, str]] = {  # kind → (app attribute, model, client method)
-        "tracks": ("_fav_tracks", Track, "get_all_favorite_tracks"),
-        "albums": ("_fav_albums", Album, "get_all_favorite_albums"),
-        "artists": ("_fav_artists", Artist, "get_all_favorite_artists"),
-        "playlists": ("_user_playlists", Playlist, "get_all_user_playlists"),
-    }
+    # ── the library (library.py) ─────────────────────────────────────────────
+    #
+    # The lists, their loading and their disk copy are `app.library`. These are
+    # what the app does about them: the user-facing toggles, and redrawing what
+    # shows a list when one changed.
 
     def _account_key(self) -> str:
         """Whose library the disk copy is: the saved account's name."""
         return (self._client.account or {}).get("name") or get_account().get("name") or ""
 
-    async def _load_library(self, kind: str) -> list:
-        """The disk copy (and a refresh in the background), else a fetch.
-        Nothing while logged out: after a logout the rebuilt views still ask
-        (the queue's hearts), and a fetch would save a copy for nobody."""
-        if not self._client.user_auth_token:
-            raise QobuzError("Not logged in")
-        since = library_cache.epoch()  # a logout during the awaits drops the save
-        # In a thread: thousands of tracks take a moment to parse on a Pi.
-        cached = await asyncio.to_thread(library_cache.load, kind, self._account_key())
-        if cached is not None:
-            self._refresh_library(kind)
-            return cached
-        items = await self._fetch_library(kind)
-        self._save_library(kind, items, since)
-        return items
+    @work
+    async def _warm_favorite_ids(self) -> None:
+        await self.library.warm()
 
-    async def _fetch_library(self, kind: str) -> list:
-        _attr, model, method = self._LIBRARY[kind]
-        raw = await getattr(self._client, method)()
-        return [model.from_api(r) for r in raw]
-
-    def _save_library(self, kind: str, items: list | None = None, since: int | None = None) -> None:
-        """Write the list (default: the app's) to the disk copy, in a thread.
-        ``since``: the ``library_cache.epoch()`` when the list was asked for
-        (default: now); an erase after it (logout) drops the save."""
-        if items is None:
-            items = getattr(self, self._LIBRARY[kind][0])
-        if items is None:
-            return
-        if since is None:
-            since = library_cache.epoch()
-        number = library_cache.ticket()  # decided now: an older save can't win
-        self._write_library(kind, list(items), self._account_key(), since, number)
-
-    @work(thread=True, group="_write_library")
-    def _write_library(self, kind: str, items: list, account: str, since: int, number: int) -> None:
-        with contextlib.suppress(Exception):  # a read-only disk: no copy, no harm
-            # Dropped if logout erased the files meanwhile (`since`), or a
-            # newer save of this list was written first (`number`).
-            library_cache.save(kind, items, account, since, number)
-
-    def _library_edited(self, kind: str) -> None:
-        """A toggle changed the list: save it, and drop any refresh in flight
-        (its answer may predate the change)."""
-        self._library_edits[kind] = self._library_edits.get(kind, 0) + 1
-        self._save_library(kind)
-
-    @work(group="_refresh_library")
-    async def _refresh_library(self, kind: str) -> None:
-        edits, account = self._library_edits.get(kind, 0), self._account_key()
-        since = library_cache.epoch()
-        try:
-            fresh = await self._fetch_library(kind)
-        except Exception:
-            return  # offline: the disk copy stays on screen
-        attr = self._LIBRARY[kind][0]
-        current = getattr(self, attr)
-        if (
-            current is None
-            or self._library_edits.get(kind, 0) != edits
-            or self._account_key() != account
-        ):
-            return  # logged out, edited meanwhile (the edit saved it), or another account
-        if fresh == current:
-            return  # the disk copy is right too: nothing to write
-        self._save_library(kind, fresh, since)
-        setattr(self, attr, fresh)
-        self._library_changed(kind)
-
-    def _library_changed(self, kind: str) -> None:
-        """A refresh brought a different list: update what shows it."""
+    def _on_library_change(self, change: Change) -> None:
+        """A list changed (a toggle, or a background refresh brought a different
+        one): update what shows it."""
         from .screens.playlists import PlaylistsView
 
         base = self.screen_stack[0]
-        if kind == "tracks":
-            self._fav_ids = {t.id for t in self._fav_tracks or ()}
+        if change.kind == "tracks":
             with contextlib.suppress(Exception):
-                base.query_one(TracksView).library_changed()
+                if change.cause == "toggle" and change.item_id is not None:
+                    self.query_one(TracksView).favorite_changed(change.item_id, bool(change.state))
+                else:
+                    base.query_one(TracksView).library_changed()
             self.queue_version += 1  # the hearts in every track list
-        elif kind == "albums":
+        elif change.kind == "albums":
             self._refresh_hearts()
             with contextlib.suppress(Exception):
                 base.query_one(AlbumsView).favorites_changed()
-        elif kind == "artists":
+        elif change.kind == "artists":
             self._refresh_hearts()
             self._refresh_followed_tiles()
             with contextlib.suppress(Exception):
@@ -1009,13 +835,34 @@ class QobitApp(App[None]):
             with contextlib.suppress(Exception):
                 base.query_one(PlaylistsView).library_changed()
 
-    def is_favorite_album(self, album_id: str) -> bool:
-        """From the cache: False until ensure_favorite_albums has loaded it."""
-        return any(a.id == album_id for a in self._fav_albums or ())
+    async def toggle_favorite(self, track: Track) -> bool:
+        """Add/remove a track from the user's Qobuz favourites. Returns the new
+        favourite state (unchanged on error)."""
+        try:
+            return await self.library.toggle_track(track)
+        except LibraryError as e:
+            self._flash_status(str(e))
+            return str(track.id) in (self.library.track_ids or ())
 
-    def is_followed_artist(self, artist_id: str) -> bool:
-        """From the cache: False until ensure_favorite_artists has loaded it."""
-        return any(a.id == artist_id for a in self._fav_artists or ())
+    async def toggle_favorite_album(self, album: Album) -> None:
+        try:
+            on = await self.library.toggle_album(album)
+        except LibraryError as e:
+            self._flash_status(str(e))
+            return
+        self._flash_status(
+            f"Added to favourites: {album.title}"
+            if on
+            else f"Removed from favourites: {album.title}"
+        )
+
+    async def toggle_follow_artist(self, artist: Artist) -> None:
+        try:
+            on = await self.library.toggle_artist(artist)
+        except LibraryError as e:
+            self._flash_status(str(e))
+            return
+        self._flash_status(f"Following {artist.name}" if on else f"Unfollowed {artist.name}")
 
     def _refresh_hearts(self) -> None:
         """Redraw the ♥ on every open album panel and artist header (pages
@@ -1028,51 +875,12 @@ class QobitApp(App[None]):
                 with contextlib.suppress(NoMatches):  # not composed yet
                     widget.refresh_heart()
 
-    async def toggle_favorite_album(self, album: Album) -> None:
-        albums = await self.ensure_favorite_albums()
-        on = not any(a.id == album.id for a in albums)
-        try:
-            await self._client.set_favorite("album", album.id, on)
-        except QobuzError:
-            self._flash_status("Couldn't update favourite")
-            return
-        if on:
-            albums.append(dataclasses.replace(album, favorited_at=int(time.time())))
-            self._flash_status(f"Added to favourites: {album.title}")
-        else:
-            albums[:] = [a for a in albums if a.id != album.id]
-            self._flash_status(f"Removed from favourites: {album.title}")
-        self._library_edited("albums")
-        self._refresh_hearts()
-        with contextlib.suppress(Exception):
-            self.query_one(AlbumsView).favorites_changed()
-
-    async def toggle_follow_artist(self, artist: Artist) -> None:
-        artists = await self.ensure_favorite_artists()
-        on = not any(a.id == artist.id for a in artists)
-        try:
-            await self._client.set_favorite("artist", artist.id, on)
-        except QobuzError:
-            self._flash_status("Couldn't update followed artists")
-            return
-        if on:
-            artists.append(dataclasses.replace(artist, favorited_at=int(time.time())))
-            self._flash_status(f"Following {artist.name}")
-        else:
-            artists[:] = [a for a in artists if a.id != artist.id]
-            self._flash_status(f"Unfollowed {artist.name}")
-        self._library_edited("artists")
-        self._refresh_hearts()
-        self._refresh_followed_tiles()
-        with contextlib.suppress(Exception):
-            self.query_one(ArtistsView).favorites_changed()
-
     def _refresh_followed_tiles(self) -> None:
         """The ♥ on artist tiles (Similar artists) after the followed artists
         changed: a toggle, or a background refresh of the library."""
         from .screens.cards import ArtistCard
 
-        followed = {a.id for a in self._fav_artists or ()}
+        followed = {a.id for a in self.library.artists or ()}
         for screen in self.screen_stack:
             for card in screen.query(ArtistCard):
                 card.set_followed(card.artist.id in followed)
@@ -1150,31 +958,6 @@ class QobitApp(App[None]):
     def queue_position(self) -> tuple[int, int] | None:
         """(1-based place of the cursor, timeline length), None with no cursor."""
         return (self._cursor + 1, len(self._timeline)) if self._cursor >= 0 else None
-
-    @property
-    def favorite_tracks(self) -> list[Track] | None:
-        """The cached favourites: None until ensure_favorite_tracks has fetched them."""
-        return self._fav_tracks
-
-    @property
-    def favorite_ids(self) -> set[str] | None:
-        """The cached favourite track ids: None until ensure_favorite_ids has them."""
-        return self._fav_ids
-
-    @property
-    def favorite_albums(self) -> list[Album] | None:
-        """The cached favourite albums: None until ensure_favorite_albums has them."""
-        return self._fav_albums
-
-    @property
-    def favorite_artists(self) -> list[Artist] | None:
-        """The cached followed artists: None until ensure_favorite_artists has them."""
-        return self._fav_artists
-
-    @property
-    def user_playlists(self) -> list[Playlist] | None:
-        """The cached playlists: None until ensure_user_playlists has them."""
-        return self._user_playlists
 
     @property
     def lyrics(self) -> Lyrics | None:
@@ -1494,7 +1277,7 @@ class QobitApp(App[None]):
         """A DailyQ/WeeklyQ mix from the history and the favourites."""
         favourites: list[Track] = []
         with contextlib.suppress(Exception):
-            favourites = await self.ensure_favorite_tracks()
+            favourites = await self.library.ensure_tracks()
         return await self.suggestions.mix(self.history, favourites)
 
     async def _do_play(self, track: Track, start: float = 0.0) -> None:
@@ -1834,17 +1617,17 @@ class QobitApp(App[None]):
         try:
             options = []
             if track is not None:
-                fav = str(track.id) in await self.ensure_favorite_ids()
+                fav = str(track.id) in await self.library.ensure_track_ids()
                 options += track_options(
                     favorite=fav, in_queue=getattr(row, "role", None) == "next"
                 )
             if album is not None:
-                fav_albums = await self.ensure_favorite_albums()
+                fav_albums = await self.library.ensure_albums()
                 options.append(album_option(any(a.id == album.id for a in fav_albums)))
                 if track is None and artist is None:  # not already on its artist's page
                     options.append(album_artist_option())
             if artist is not None:
-                followed = await self.ensure_favorite_artists()
+                followed = await self.library.ensure_artists()
                 options.append(artist_option(any(a.id == artist.id for a in followed)))
         except QobuzError:
             self._flash_status("Couldn't load favourites")
@@ -1932,7 +1715,7 @@ class QobitApp(App[None]):
 
     @work
     async def _toggle_favorite_from_menu(self, track: Track, row: object) -> None:
-        was = str(track.id) in await self.ensure_favorite_ids()
+        was = str(track.id) in await self.library.ensure_track_ids()
         on = await self.toggle_favorite(track)
         if on == was:
             return  # failed; toggle_favorite said so
