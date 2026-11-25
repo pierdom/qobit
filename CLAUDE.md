@@ -7,9 +7,11 @@ mpv plays; device routing keeps the system mixer away from the signal. Never
 add software gain (mpv `set volume`) or DSP unless it's opt-in and off by
 default: on `hw:` output it corrupts the samples.
 
-Python 3.11+, Textual 8 for the UI, mpv for audio, packaged with uv. User docs:
-README (overview), `docs/usage.md` (keys, tabs), `docs/audio.md` (bit-perfect
-setup); keep feature detail there, not in the README.
+Python 3.11+, Textual 8 for the UI, mpv for audio, packaged with uv. The map of
+the parts and who owns what is `docs/architecture.md`: update it when a
+refactor moves a responsibility. User docs: README (overview), `docs/usage.md`
+(keys, tabs), `docs/audio.md` (bit-perfect setup); keep feature detail there,
+not in the README.
 
 ## Module layout
 
@@ -34,6 +36,7 @@ src/qobit/
 │                        every API call (see "Qobuz API")
 ├── qobuz/oauth.py       login link + redirect server + pasted-address LoginPrompt
 ├── qobuz/models.py      Track, Album, Artist, Playlist, StreamUrl
+├── qobuz/streams.py     StreamResolver: quality fallback, previews vs restrictions
 ├── audio/device.py      mpv devices + synthesized alsa/hw:CARD=…,DEV=… entries,
 │                        bit-perfect ones flagged and sorted first
 ├── audio/player.py      mpv subprocess + IPC, bit-perfect flags, _stop_gen,
@@ -647,7 +650,7 @@ must not annotate `-> None` (read as the string "None": TypeError at import).
   (4 requests at a time). Endpoints cap silently (`artist/get` returned 100 of
   291 albums; `playlist/get` stops at 500): use it for any long list.
 - Stream URLs expire after ~10 min; re-fetch on track start. Quality fallback
-  FLAC_24_192 → 24_96 → CD (`_resolve_stream`). Tracks the account can't stream
+  FLAC_24_192 → 24_96 → CD (`StreamResolver.resolve`, `qobuz/streams.py`). Tracks the account can't stream
   return `"sample": true` (30 s MP3) at every quality: `StreamUrl.sample` flags
   it and qobit never plays it (flash + skip).
 - `Album.from_api` backfills its id, title and image onto nested tracks, which

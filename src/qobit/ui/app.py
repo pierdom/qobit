@@ -59,6 +59,7 @@ from ..config import set_image_mode as save_image_mode
 from ..lyrics import Lyrics
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, NoStreamError, Playlist, StreamUrl, Track
+from ..qobuz.streams import StreamResolver
 from ..store import load as load_state
 from ..store import save as save_state
 from . import lyrics_controller
@@ -377,6 +378,7 @@ class QobitApp(App[None]):
         self._connect_lock: object | None = None  # flock'd file while Connect is on
         self._local_ctx = LocalPlayContext(self)
         self._client = QobuzClient()
+        self.streams = StreamResolver(self._client)
         # Software volume is loaded here too (not just into the `volume` /
         # `software_volume_enabled` reactives in on_mount) so the very first
         # play() of the session already carries --volume, instead of racing
@@ -421,7 +423,6 @@ class QobitApp(App[None]):
         self._advance_lock = asyncio.Lock()
         # Maps track_id → last successful stream quality so _do_play tries the
         # known-good format first instead of always starting at FLAC_24_192.
-        self._track_quality_cache: dict[str, str] = {}
         # Bumped by every _play_stream call: a call whose stream resolved after
         # a newer one started is stale and must not touch the player.
         self._play_gen = 0
@@ -1610,46 +1611,6 @@ class QobitApp(App[None]):
             out.append(track)
         return out
 
-    async def _resolve_stream(self, track_id: str) -> StreamUrl | None:
-        """Walk the quality fallback chain and return the first stream Qobuz
-        hands back, or None. A preview (``stream.sample``) is returned as-is
-        and ends the walk: Qobuz returns the same preview at every quality, so
-        trying the rest would only cost round-trips. Raises AuthExpiredError,
-        and NoStreamError when every quality was refused by a restriction (no
-        URL, no preview): unavailable, unlike a network failure (None)."""
-        # Prefer the quality that worked last time for this track; fall through to
-        # the full list on first play or if the cached quality fails.
-        all_qualities = ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
-        cached = self._track_quality_cache.get(track_id)
-        if cached:
-            qualities = [cached] + [q for q in all_qualities if q != cached]
-        else:
-            qualities = all_qualities
-        restricted: NoStreamError | None = None
-        failed = False
-        for quality in qualities:
-            try:
-                data = await self._client.get_streaming_url(track_id, quality)
-            except AuthExpiredError:
-                raise
-            except QobuzError:
-                failed = True
-                continue
-            try:
-                stream = StreamUrl.from_api(data)
-            except NoStreamError as e:
-                restricted = e
-                continue  # restricted at this quality; maybe not at the next
-            if stream.sample:
-                return stream
-            self._track_quality_cache[track_id] = quality
-            if len(self._track_quality_cache) > 1000:
-                del self._track_quality_cache[next(iter(self._track_quality_cache))]
-            return stream
-        if restricted is not None and not failed:
-            raise restricted
-        return None
-
     async def _do_play(self, track: Track, start: float = 0.0) -> None:
         """Local-context playback: start ``track``; on a preview, skip forward."""
         result = await self._play_stream(track, start)
@@ -1676,7 +1637,7 @@ class QobitApp(App[None]):
         self.status_msg = f"Loading {track.display_title}…"
         restricted = False
         try:
-            stream = await self._resolve_stream(str(track.id))
+            stream = await self.streams.resolve(str(track.id))
         except AuthExpiredError:
             self.status_msg = "Session expired: log in again"
             return "auth"
@@ -1782,7 +1743,7 @@ class QobitApp(App[None]):
         if track is None or track.id == self._prefetch_failed:
             return
         try:
-            stream = await self._resolve_stream(str(track.id))
+            stream = await self.streams.resolve(str(track.id))
         except (QobuzError, NoStreamError):
             stream = None
         if stream is None or stream.sample:

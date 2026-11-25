@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from test_stream_resolver import RESTRICTED, FakeClient
 
 import qobit.ui.app as app_module
 from qobit.qobuz.models import Track
@@ -252,24 +253,6 @@ def test_clear_history_noop_when_already_at_head(app):
     assert app.queue_version == before
 
 
-# ── _resolve_stream (quality fallback + preview detection) ──────────────────
-
-
-class _FakeClient:
-    """Answers get_streaming_url from a per-quality script; records calls."""
-
-    def __init__(self, script: dict):
-        self.script = script
-        self.calls: list[str] = []
-
-    async def get_streaming_url(self, track_id: str, quality: str) -> dict:
-        self.calls.append(quality)
-        answer = self.script[quality]
-        if isinstance(answer, Exception):
-            raise answer
-        return answer
-
-
 class _FakePlayer:
     running = False
 
@@ -284,83 +267,9 @@ class _FakePlayer:
         self.running = True
 
 
-_FLAC = {"url": "u", "format_id": 7, "sampling_rate": 96, "bit_depth": 24}
-_PREVIEW = {"url": "p", "format_id": 5, "sample": True, "sampling_rate": 44.1}
-
-
-def test_resolve_stream_returns_first_working_quality_and_caches_it(app):
-    from qobit.qobuz.client import QobuzError
-
-    app._client = _FakeClient({"FLAC_24_192": QobuzError("nope"), "FLAC_24_96": _FLAC})
-    stream = asyncio.run(app._resolve_stream("42"))
-    assert stream is not None and not stream.sample
-    assert app._client.calls == ["FLAC_24_192", "FLAC_24_96"]
-    assert app._track_quality_cache["42"] == "FLAC_24_96"
-
-
-def test_resolve_stream_stops_at_a_preview_and_does_not_cache_it(app):
-    # Qobuz returns the same preview at every quality — no point walking on.
-    app._client = _FakeClient(
-        {"FLAC_24_192": _PREVIEW, "FLAC_24_96": _PREVIEW, "FLAC_CD": _PREVIEW}
-    )
-    stream = asyncio.run(app._resolve_stream("42"))
-    assert stream is not None and stream.sample
-    assert app._client.calls == ["FLAC_24_192"]
-    assert "42" not in app._track_quality_cache
-
-
-def test_resolve_stream_none_when_every_quality_fails(app):
-    from qobit.qobuz.client import QobuzError
-
-    err = QobuzError("nope")
-    app._client = _FakeClient({"FLAC_24_192": err, "FLAC_24_96": err, "FLAC_CD": err})
-    assert asyncio.run(app._resolve_stream("42")) is None
-
-
-# What Qobuz sent for a track the account can't stream, not even as a
-# preview: no URL, only a restriction code. The KeyError closed the app.
-_RESTRICTED = {
-    "track_id": 31052309,
-    "duration": 219,
-    "restrictions": [{"code": "SampleRestrictedByRightHolders"}],
-    "sampling_rate": 192,
-    "bit_depth": 24,
-}
-
-
-def test_resolve_stream_raises_when_every_quality_is_restricted(app):
-    from qobit.qobuz.models import NoStreamError
-
-    app._client = _FakeClient(
-        {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _RESTRICTED, "FLAC_CD": _RESTRICTED}
-    )
-    with pytest.raises(NoStreamError, match="SampleRestrictedByRightHolders"):
-        asyncio.run(app._resolve_stream("42"))
-    assert app._client.calls == ["FLAC_24_192", "FLAC_24_96", "FLAC_CD"]
-    assert "42" not in app._track_quality_cache
-
-
-def test_resolve_stream_restricted_plus_failures_is_just_none(app):
-    """A request failure might hide a playable quality: not "unavailable",
-    so nothing skips on a flaky network."""
-    from qobit.qobuz.client import QobuzError
-
-    app._client = _FakeClient(
-        {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": QobuzError("x"), "FLAC_CD": _RESTRICTED}
-    )
-    assert asyncio.run(app._resolve_stream("42")) is None
-
-
-def test_resolve_stream_falls_back_past_a_restricted_quality(app):
-    app._client = _FakeClient({"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _FLAC})
-    stream = asyncio.run(app._resolve_stream("42"))
-    assert stream is not None and stream.url == "u"
-    assert app._track_quality_cache["42"] == "FLAC_24_96"
-
-
 def _all_restricted(app, monkeypatch) -> _FakePlayer:
-    app._client = _FakeClient(
-        {"FLAC_24_192": _RESTRICTED, "FLAC_24_96": _RESTRICTED, "FLAC_CD": _RESTRICTED}
+    app.streams.client = FakeClient(
+        {"FLAC_24_192": RESTRICTED, "FLAC_24_96": RESTRICTED, "FLAC_CD": RESTRICTED}
     )
     player = _FakePlayer()
     monkeypatch.setattr(app, "_player", player)
@@ -398,14 +307,6 @@ def test_a_restricted_last_track_stops(app, monkeypatch):
     app._cursor = 1
     asyncio.run(app._do_play(app._timeline[1]))
     assert player.running is False
-
-
-def test_resolve_stream_propagates_auth_expired(app):
-    from qobit.qobuz.client import AuthExpiredError
-
-    app._client = _FakeClient({"FLAC_24_192": AuthExpiredError("401")})
-    with pytest.raises(AuthExpiredError):
-        asyncio.run(app._resolve_stream("42"))
 
 
 # ── queue persistence (queue_state.json + player_state.json) ────────────────
@@ -494,7 +395,7 @@ def test_slow_stream_resolve_does_not_override_a_newer_pick(app, monkeypatch):
         return StreamUrl(url=f"url-{track_id}", format_id=27, sampling_rate=96000, bit_depth=24)
 
     player = _FakePlayer()
-    monkeypatch.setattr(app, "_resolve_stream", resolve)
+    monkeypatch.setattr(app.streams, "resolve", resolve)
     monkeypatch.setattr(app, "_player", player)
     monkeypatch.setattr(app, "_fetch_now_playing_album", lambda track: None)
 
