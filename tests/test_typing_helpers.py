@@ -9,14 +9,14 @@ from qobit.secret import Secret, secret
 from qobit.ui import _utils
 from qobit.ui._filter import TypeToFilter
 from qobit.ui._now_playing import NowPlayingRowMixin, NowPlayingViewMixin
-from qobit.ui.screens.artist_detail import _GridNav
+from qobit.ui.widgets.grid import GridNav
 
 
 def test_the_mixins_are_plain_classes_at_run_time():
     """They derive from ``WidgetBase`` for the checker only: at run time it is
     ``object``, so a mixin never brings Widget into the MRO a second time."""
     assert _utils.WidgetBase is object
-    for mixin in (NowPlayingRowMixin, NowPlayingViewMixin, TypeToFilter, _GridNav):
+    for mixin in (NowPlayingRowMixin, NowPlayingViewMixin, TypeToFilter, GridNav):
         assert mixin.__mro__ == (mixin, object)
 
 

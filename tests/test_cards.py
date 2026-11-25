@@ -12,7 +12,7 @@ from textual.widgets import Label
 
 from qobit.qobuz.models import Artist
 from qobit.ui.app import QobitApp
-from qobit.ui.screens.artist_detail import ArtistCard
+from qobit.ui.screens.cards import ArtistCard
 
 
 class _App(App):
@@ -75,7 +75,8 @@ def test_narrow_album_card_keeps_hires(ui_app, width):
     the line wrapped after the dot and the one-row label cut the rest."""
     from album_pages import ALBUM, ARTIST, stub_album_client, wait_until
 
-    from qobit.ui.screens.artist_detail import AlbumCard, ArtistScreen
+    from qobit.ui.screens.artist_detail import ArtistScreen
+    from qobit.ui.screens.cards import AlbumCard
 
     stub_album_client(ui_app)
     albums = [{**ALBUM, "id": f"a{i}", "hires_streamable": True} for i in range(4)]

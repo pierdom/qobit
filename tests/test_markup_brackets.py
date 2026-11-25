@@ -16,7 +16,7 @@ from textual.widgets import Label
 from qobit.qobuz.models import Album, Playlist
 from qobit.ui._utils import markup_escape
 from qobit.ui.app import QobitApp
-from qobit.ui.screens.artist_detail import AlbumCard
+from qobit.ui.screens.cards import AlbumCard
 from qobit.ui.screens.playlists import PlaylistCard
 
 TITLES = ["[PIAS] Recordings", "Abbey Road [Remastered]", "a [live] b", "[x/y] [/]", "plain"]

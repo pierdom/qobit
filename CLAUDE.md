@@ -68,6 +68,7 @@ src/qobit/
     ├── _filter.py       TypeToFilter: `/` filter shared by Tracks/Albums/
     │                    Artists/Playlists (Enter keeps results, Esc clears)
     ├── widgets/lists.py PagedListView (page keys move the cursor; lazy rows)
+    ├── widgets/grid.py  GridNav: the grids' Page/Home/End, lazy cards, art in view
     ├── widgets/lyrics.py  LyricsView: the lyrics as a window of rows (no widget per line)
     ├── widgets/transport.py  TransportBar (art, title, progress; click to
     │                    pause/seek)
@@ -81,9 +82,11 @@ src/qobit/
         mixes.py         DailyQ/WeeklyQ cards (d/w or Tab/←→/Enter) + tracks
         search.py        SearchView + TrackItem/AlbumItem/ArtistItem/PlaylistItem
         album_detail.py  AlbumDetailPanel (shared) + AlbumScreen
+        cards.py         AlbumCard/AlbumGrid, ArtistCard/ArtistGrid (the Albums and
+                         Artists tabs, the artist page, Similar artists)
         artist_detail.py ArtistHeader, ArtistTracks (Top Tracks + the
-                         user's favourites by the artist), AlbumCard/AlbumGrid,
-                         ArtistCard/ArtistGrid, _GridNav (all shared), ArtistScreen
+                         user's favourites by the artist), ArtistReleases,
+                         ArtistScreen
         playlist_detail.py PlaylistScreen
         lyrics.py        LyricsScreen: the lyrics page (`L`)
         context_menu.py  ContextMenu (`i`), GoToMenu (`g`)
@@ -259,7 +262,7 @@ from the device: PipeWire rate-following (needs the
 
 **Lazy mounting, no caps.** Mounting slows as a container grows (rows ~4.5 s
 per 2000, cards ~6 s per 1000). `PagedListView.set_rows` (100 rows) and
-`_GridNav.set_cards` (60 cards) mount a first page and the rest as the cursor
+`GridNav.set_cards` (60 cards) mount a first page and the rest as the cursor
 or scroll nears the end; End mounts everything. The Playback list mounts
 through the playing row plus `_UP_NEXT_PAGE` (its reconcile puts the rest
 in the `PagedListView` backlog), and draws before the favourites load
@@ -751,7 +754,7 @@ uv run pytest
   lyrics sit side by side), Ty Segall's page and album. Not a
   terminal capture. Re-run it after a UI change.
 - A refactor that must not change the look: `tests/render_dump.py` dumps what the
-  app renders (text and style of every cell, 16 scenes); run it before and after
+  app renders (text and style of every cell, 28 scenes); run it before and after
   and `diff -rq` (its docstring has the commands).
 - Verify UI headless: `app.save_screenshot()` → `rsvg-convert` → PNG (Kitty
   images show as garbage there; real captures need a Kitty-protocol terminal).
