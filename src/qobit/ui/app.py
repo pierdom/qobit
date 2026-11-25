@@ -65,6 +65,7 @@ from ..lyrics import Lyrics
 from ..qobuz.client import AuthExpiredError, QobuzClient, QobuzError
 from ..qobuz.models import Album, Artist, NoStreamError, Playlist, StreamUrl, Track
 from ..qobuz.streams import StreamResolver
+from ..qobuz.suggestions import SuggestionService
 from ..store import load as load_state
 from ..store import save as save_state
 from . import lyrics_controller
@@ -387,6 +388,7 @@ class QobitApp(App[None]):
         self._local_ctx = LocalPlayContext(self)
         self._client = QobuzClient()
         self.streams = StreamResolver(self._client)
+        self.suggestions = SuggestionService(self._client)
         # Software volume is loaded here too (not just into the `volume` /
         # `software_volume_enabled` reactives in on_mount) so the very first
         # play() of the session already carries --volume, instead of racing
@@ -1482,135 +1484,18 @@ class QobitApp(App[None]):
         else:
             self._player._volume = self.volume
 
-    @staticmethod
-    def _as_int(value: Any) -> int | None:
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
-
-    async def _analysed_entry(self, seed: Track) -> dict | None:
-        """Build one `track_to_analysed` entry (artist/label/genre ids) for the
-        seed. Reuses the already-fetched now_playing_album when it matches;
-        otherwise pulls the ids from a single track/get."""
-        artist_id: Any = None
-        label_id: Any = None
-        genre_id: Any = None
-        album = self.now_playing_album
-        if album is not None and self.now_playing is not None and self.now_playing.id == seed.id:
-            artist_id, label_id, genre_id = album.artist_id, album.label_id, album.genre_id
-        else:
-            try:
-                data = await self._client.get_track(str(seed.id))
-            except QobuzError:
-                return None
-            alb = data.get("album") or {}
-            artist = alb.get("artist") or data.get("performer") or {}
-            artist_id = artist.get("id")
-            label_id = (alb.get("label") or {}).get("id")
-            genre_id = (alb.get("genre") or {}).get("id")
-        artist_id, label_id, genre_id = (
-            self._as_int(artist_id),
-            self._as_int(label_id),
-            self._as_int(genre_id),
-        )
-        if artist_id is None and genre_id is None:
-            return None
-        return {
-            "track_id": self._as_int(seed.id),
-            "artist_id": artist_id,
-            "label_id": label_id,
-            "genre_id": genre_id,
-        }
-
     async def _fetch_radio(self, seed: Track) -> list[Track]:
-        """Fetch song-radio suggestions seeded from `seed` + recent history.
-        Returns parsed Tracks with the seed window de-duplicated out. Best-effort:
-        any failure yields an empty list and the caller leaves the queue intact."""
-        listened: list[int] = []
-        for track in [seed, *reversed(self.history)]:
-            tid = self._as_int(track.id)
-            if tid is not None and tid not in listened:
-                listened.append(tid)
-            if len(listened) >= 10:
-                break
-
-        entry = await self._analysed_entry(seed)
-        try:
-            resp = await self._client.get_dynamic_suggestions(listened, [entry] if entry else [])
-        except QobuzError:
-            return []
-
-        seen = {str(i) for i in listened}
-        out: list[Track] = []
-        for item in (resp.get("tracks") or {}).get("items") or []:
-            try:
-                track = Track.from_api(item)
-            except Exception:
-                continue
-            if str(track.id) in seen:
-                continue
-            seen.add(str(track.id))
-            out.append(track)
-        return out
+        """Song-radio suggestions for ``seed`` (see qobuz/suggestions.py)."""
+        album = self.now_playing_album
+        known = album if self.now_playing is not None and self.now_playing.id == seed.id else None
+        return await self.suggestions.radio(seed, self.history, known)
 
     async def generate_mix(self) -> list[Track]:
-        """Generate a mix from history + favourites via dynamic/suggest. DailyQ
-        and WeeklyQ use the same recipe; MixesView only caches them for a day
-        and a week respectively.
-
-        Seeds up to 50 tracks from recent history (most-recent-first) topped up
-        with favourites.  A spread of up to 12 seeds is enriched with
-        artist/label/genre metadata for the `track_to_analysed` payload.  Returns
-        an empty list when there are no seeds or the API fails."""
-        fav_tracks: list[Track] = []
+        """A DailyQ/WeeklyQ mix from the history and the favourites."""
+        favourites: list[Track] = []
         with contextlib.suppress(Exception):
-            fav_tracks = await self.ensure_favorite_tracks()
-
-        seen: set[str] = set()
-        seeds: list[Track] = []
-        for t in [*reversed(self.history), *fav_tracks]:
-            if t.id not in seen:
-                seen.add(t.id)
-                seeds.append(t)
-            if len(seeds) >= 50:
-                break
-
-        if not seeds:
-            return []
-
-        listened: list[int] = [tid for t in seeds if (tid := self._as_int(t.id)) is not None]
-
-        analyse_count = min(12, len(seeds))
-        if analyse_count > 1:
-            step = (len(seeds) - 1) / (analyse_count - 1)
-            picks = [seeds[round(i * step)] for i in range(analyse_count)]
-        else:
-            picks = seeds[:analyse_count]
-
-        analysed_results = await asyncio.gather(
-            *[self._analysed_entry(t) for t in picks], return_exceptions=True
-        )
-        analysed = [e for e in analysed_results if isinstance(e, dict)]
-
-        try:
-            resp = await self._client.get_dynamic_suggestions(listened, analysed)
-        except QobuzError:
-            return []
-
-        seed_ids = {str(i) for i in listened}
-        out: list[Track] = []
-        seen2: set[str] = set(seed_ids)
-        for item in (resp.get("tracks") or {}).get("items") or []:
-            try:
-                track = Track.from_api(item)
-            except Exception:
-                continue
-            if track.id in seen2:
-                continue
-            seen2.add(track.id)
-            out.append(track)
-        return out
+            favourites = await self.ensure_favorite_tracks()
+        return await self.suggestions.mix(self.history, favourites)
 
     async def _do_play(self, track: Track, start: float = 0.0) -> None:
         """Local-context playback: start ``track``; on a preview, skip forward."""
