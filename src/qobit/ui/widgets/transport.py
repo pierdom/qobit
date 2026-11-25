@@ -19,6 +19,7 @@ from textual_image.widget import TGPImage
 
 from ...formatting import quality_text
 from .._images import fetch_image
+from .._utils import qapp
 from ..themes import BAR_END, BAR_START, HIRES, MUTED, READOUT, theme_color, theme_text_color
 from .art import Art, square_width
 
@@ -150,7 +151,7 @@ class _TransportContent(Widget):
             self.capture_mouse()
             self._seek_from_x(event.x)
         else:
-            app: QobitApp = self.app  # type: ignore[assignment]
+            app = qapp(self)
             app.action_pause()
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
@@ -272,7 +273,7 @@ class TransportBar(Widget):
 
     def on_mount(self) -> None:
         square_width(self.query_one(TGPImage), 4)
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         self.watch(app, "now_playing", self._on_now_playing, init=True)
         self.watch(app, "is_playing", self._on_is_playing, init=True)
         self.watch(app, "is_paused", self._on_is_paused, init=True)
@@ -292,7 +293,7 @@ class TransportBar(Widget):
     def _status(self) -> str:
         # Bracket-readout style — the one piece of chrome that's always on
         # screen reads like a console status line, not a sentence.
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         tags = []
         # While Connect-active the queue is the server's, so qobit's own radio
         # refill is dormant — don't advertise it.
@@ -318,15 +319,15 @@ class TransportBar(Widget):
     def _on_radio_mode(self, _: bool) -> None:
         self.border_title = self._status()
 
-    def _on_now_playing(self, track: object) -> None:
+    def _on_now_playing(self, track: Track | None) -> None:
         content = self.query_one(_TransportContent)
         self.set_class(bool(track), "-has-track")
         if track:
-            self.query_one(Art).placeholder = track.album or track.artist  # type: ignore[union-attr]
-            content.label = f"{track.artist} — {track.display_title}"  # type: ignore[union-attr]
-            content.album = album_line(track)  # type: ignore[arg-type]
-            if track.image_url:  # type: ignore[union-attr]
-                self._fetch_art(track.image_url)  # type: ignore[union-attr]
+            self.query_one(Art).placeholder = track.album or track.artist
+            content.label = f"{track.artist} — {track.display_title}"
+            content.album = album_line(track)
+            if track.image_url:
+                self._fetch_art(track.image_url)
         else:
             content.label = ""
             content.album = ""
@@ -360,7 +361,7 @@ class TransportBar(Widget):
         self.call_after_refresh(redraw)
 
     def _update_subtitle(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         self.border_subtitle = signal_readout(app) if self._quality_label else ""
 
     def _on_pos(self, pos: float) -> None:
@@ -370,7 +371,7 @@ class TransportBar(Widget):
         self.query_one(_TransportContent).duration = dur
 
     def _on_status_msg(self, msg: str) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         content = self.query_one(_TransportContent)
         if msg:
             content.label = msg

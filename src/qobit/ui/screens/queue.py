@@ -30,7 +30,7 @@ from .._now_playing import (
     playing_icon,
     track_live,
 )
-from .._utils import focus_later, readout, status_line, strip_html
+from .._utils import focus_later, qapp, readout, status_line, strip_html
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
 from ..widgets.lyrics import LyricsView
@@ -194,7 +194,7 @@ class TimelineRow(ListItem):
             "history": "↺",
             "now": playing_icon(_GUTTER, self._is_paused),
             "next": f"{self._number}.",
-        }[self.role]
+        }[self.role or "next"]
         text = f"{t.artist} — {t.display_title}"
         heart = heart_suffix(self._favorite)
         if self.role == "next":  # the number recedes behind the title
@@ -217,7 +217,7 @@ class TimelineRow(ListItem):
         left = Content.assemble(title, suffix)
         left = left.pad_right(max(0, room - left.cell_length))
         muted = "$qobit-muted" if self.role == "next" else ""
-        parts: list[tuple[str, str] | str] = [left, "  "]
+        parts: list[Content | tuple[str, str] | str] = [left, "  "]
         if badge:
             parts.append((badge, "bold $qobit-hires"))
         parts.append((time, muted))
@@ -354,7 +354,7 @@ class NowPlayingHero(Widget):
 
     def on_mount(self) -> None:
         self._fit_art(self.size.height)
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         self.watch(app, "now_playing", self._on_now_playing, init=True)
         self.watch(app, "is_playing", self._on_is_playing, init=True)
         self.watch(app, "now_playing_album", self._on_details, init=True)
@@ -364,10 +364,16 @@ class NowPlayingHero(Widget):
         self.watch(app, "volume", self._on_quality, init=False)
         # After the refresh: theme_variables lag the theme reactive (see
         # TransportBar._on_theme).
-        self.watch(app, "theme", lambda _: self.call_after_refresh(self._on_quality), init=False)
+        self.watch(app, "theme", self._on_theme_changed, init=False)
         # toggle_favorite bumps queue_version: keeps the heart right when the
         # track is (un)favourited from a list or the `i` menu.
-        self.watch(app, "queue_version", lambda _: self._refresh_favorite(), init=False)
+        self.watch(app, "queue_version", self._on_queue_version, init=False)
+
+    def _on_theme_changed(self, _: str) -> None:
+        self.call_after_refresh(self._on_quality)
+
+    def _on_queue_version(self, _: int) -> None:
+        self._refresh_favorite()
 
     def on_resize(self, event: Resize) -> None:
         self._fit_art(event.size.height)
@@ -387,12 +393,12 @@ class NowPlayingHero(Widget):
 
     # ── reactive watchers ─────────────────────────────────────────────────────
 
-    def _on_now_playing(self, track: object) -> None:
+    def _on_now_playing(self, track: Track | None) -> None:
         self.set_class(bool(track), "-has-track")
         if track:
-            self.query_one(Art).placeholder = getattr(track, "album", "") or ""
-        if track and getattr(track, "image_url", None):
-            self._fetch_art(track.image_url)  # type: ignore[union-attr]
+            self.query_one(Art).placeholder = track.album or ""
+        if track and track.image_url:
+            self._fetch_art(track.image_url)
         self._refresh_favorite()
         self._render_meta()
 
@@ -404,7 +410,7 @@ class NowPlayingHero(Widget):
 
     def _on_quality(self, _: object = None) -> None:
         # The transport's readout, a line each (one line didn't fit the panel).
-        lamp, quality = signal_parts(self.app)  # type: ignore[arg-type]
+        lamp, quality = signal_parts(qapp(self))
         self.query_one(".hero-lamp", Label).update(lamp or "")
         self.query_one(".hero-quality", Label).update(quality or "")
 
@@ -415,7 +421,7 @@ class NowPlayingHero(Widget):
     # ── metadata render ───────────────────────────────────────────────────────
 
     def _render_meta(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         t = app.now_playing
         if not t:
             self.query_one(".hero-title", Label).update("No media playing")
@@ -438,7 +444,7 @@ class NowPlayingHero(Widget):
 
     @work
     async def _refresh_favorite(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         t = app.now_playing
         if not t:
             return
@@ -460,7 +466,7 @@ class NowPlayingHero(Widget):
         self.query_one("#hero-bio", VerticalScroll).scroll_page_down(animate=False)
 
     async def action_toggle_favorite(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         t = app.now_playing
         if not t:
             return
@@ -539,7 +545,7 @@ class QueueView(Widget):
 
     def on_mount(self) -> None:
         self.query_one("#queue-list", ListView).border_title = readout("Queue")
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         self.watch(app, "queue_version", self._on_queue_changed, init=True)
         self.watch(app, "lyrics_panel", lambda _: self._relayout(), init=False)
         self.watch(app, "lyrics_enabled", lambda _: self._relayout(), init=False)
@@ -548,7 +554,7 @@ class QueueView(Widget):
 
     def _relayout(self, size: Size | None = None) -> None:
         """Which of the hero and the lyrics show, and how (see _SIDE_MIN_W)."""
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         width, height = size or self.size
         narrow = width < self._NARROW_BELOW
         on = app.lyrics_enabled
@@ -574,7 +580,7 @@ class QueueView(Widget):
     def lyrics_swap(self) -> bool:
         """Whether the hero and the lyrics take turns here (`l` swaps them):
         there is room for the right pane but not for both."""
-        on = self.app.lyrics_enabled  # type: ignore[attr-defined]
+        on = qapp(self).lyrics_enabled
         return on and not any(self.has_class(c) for c in ("-narrow", "-side", "-stack"))
 
     def on_resize(self, event: Resize) -> None:
@@ -619,11 +625,11 @@ class QueueView(Widget):
                 row.set_paused(paused)
 
     def action_clear_queue(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         app.clear_queue()
 
     def action_clear_history(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         app.clear_history()
 
     @work
@@ -636,7 +642,7 @@ class QueueView(Widget):
         async with self._refresh_lock:
             if version != self._render_version:
                 return
-            app: QobitApp = self.app  # type: ignore[assignment]
+            app = qapp(self)
             # The list doesn't wait for the favourites: fetching a whole
             # library kept the queue blank for seconds at startup. Rows show
             # no hearts until they arrive, then one more reconcile adds them.
@@ -650,7 +656,7 @@ class QueueView(Widget):
 
     @work(exclusive=True, group="_hearts_when_loaded")
     async def _hearts_when_loaded(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         await app.ensure_favorite_ids()
         # Not loaded (the fetch failed): no retry loop; the next change retries.
         if app.favorite_ids is not None and self.is_attached:
@@ -812,7 +818,7 @@ class QueueView(Widget):
         # history, now-playing, or up-next — just moves the cursor there. Jumping
         # back resumes the line (the tracks in between return to Up Next);
         # jumping forward leaves the skipped-over tracks under Recently Played.
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         index = getattr(event.item, "timeline_index", None)
         if index is not None:
             app.jump_to(index)

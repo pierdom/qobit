@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 from datetime import date
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from textual import on, work
 from textual.app import ComposeResult
@@ -26,11 +26,11 @@ from .._now_playing import (
     meta_indent,
     playing_content,
 )
-from .._utils import focus_later, readout, status_line
+from .._utils import focus_later, qapp, readout, status_line
 from ..widgets.lists import TrackListView
 
 if TYPE_CHECKING:
-    from ..app import QobitApp
+    pass
 
 MixKind = Literal["daily", "weekly"]
 
@@ -192,7 +192,7 @@ class MixesView(NowPlayingViewMixin, Widget):
     _tracks: list[Track]
     _render_version: int = 0
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._tracks = []
 
@@ -279,7 +279,7 @@ class MixesView(NowPlayingViewMixin, Widget):
         except Exception:
             return
 
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         tracks = await app.generate_mix()
 
         if version != self._render_version or not self.is_attached:
@@ -319,7 +319,7 @@ class MixesView(NowPlayingViewMixin, Widget):
 
         fav_ids: set[str] = set()
         with contextlib.suppress(Exception):
-            fav_ids = await self.app.ensure_favorite_ids()  # type: ignore[attr-defined]
+            fav_ids = await qapp(self).ensure_favorite_ids()
 
         if version != self._render_version or not self.is_attached:
             return
@@ -340,7 +340,7 @@ class MixesView(NowPlayingViewMixin, Widget):
     def _on_track_selected(self, event: ListView.Selected) -> None:
         if not isinstance(event.item, MixTrackRow):
             return
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         lv = self.query_one("#mix-track-list", TrackListView)
         rows = list(lv.query(MixTrackRow))
         idx = rows.index(event.item)

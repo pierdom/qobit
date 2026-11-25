@@ -18,11 +18,11 @@ from rich.text import Text
 from textual.binding import Binding
 from textual.widget import Widget
 
-from .._utils import readout
+from .._utils import qapp, readout
 from ..themes import ACCENT_TEXT, MUTED, theme_color
 
 if TYPE_CHECKING:
-    from ..app import QobitApp
+    pass
 
 # What is said when there are no lines to show, by the app's lyrics_status.
 _MESSAGES = {
@@ -119,7 +119,7 @@ class LyricsView(Widget):
 
     def on_mount(self) -> None:
         self.border_title = readout("Lyrics")
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         self.watch(app, "lyrics_version", self._on_new, init=True)
         self.watch(app, "lyrics_line", self._on_line, init=False)
         self.watch(app, "theme", self._on_theme, init=False)
@@ -137,7 +137,7 @@ class LyricsView(Widget):
     hint: str = ""
 
     def refresh_subtitle(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         parts: list[str] = []
         ly = app.lyrics
         if ly is not None and ly.lines:
@@ -161,8 +161,8 @@ class LyricsView(Widget):
     # ── scrolling (lyrics with no timing; timed ones follow the music) ──────
 
     def _can_scroll(self) -> bool:
-        ly = self.app.lyrics  # type: ignore[attr-defined]
-        return ly is not None and ly.lines and not ly.synced
+        ly = qapp(self).lyrics
+        return ly is not None and bool(ly.lines) and not ly.synced
 
     def _scroll_by(self, rows: int) -> None:
         if self._can_scroll():
@@ -184,7 +184,7 @@ class LyricsView(Widget):
     # ── drawing ──────────────────────────────────────────────────────────────
 
     def _build(self, width: int) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         ly = app.lyrics
         self._rows, self._starts = [], []
         for i, line in enumerate(ly.lines if ly else ()):
@@ -193,7 +193,7 @@ class LyricsView(Widget):
         self._built_for = (id(ly), width)
 
     def render(self) -> Text:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         width, height = self.content_size
         if width <= 0 or height <= 0:
             return Text("")

@@ -73,7 +73,7 @@ class GaplessQueue:
         player: Callable[[], MpvPlayer],
         streams: StreamResolver,
         fetch_radio: Callable[[Track], Awaitable[list[Track]]],
-        advance: Callable[[], None],
+        advance: Callable[[], object],
     ) -> None:
         """``player``: the running mpv (asked each time: the app may swap it).
         ``advance``: start the next track the ordinary way."""

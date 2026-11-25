@@ -87,6 +87,8 @@ its tests run without a `QobitApp`.
 
 ## How a refactor is checked
 
+- `uv run mypy` is clean and runs in CI; a widget reads the app through
+  `qapp(self)` and mixins derive from `WidgetBase` (see CLAUDE.md, Development).
 - `tests/render_dump.py` dumps every rendered cell (text and style) for a set
   of scenes and themes; run before and after, `diff -rq` must be empty for a
   change that must not alter the look.

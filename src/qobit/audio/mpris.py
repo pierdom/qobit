@@ -124,7 +124,7 @@ class PlayerInterface(ServiceInterface):
     def __init__(
         self,
         on_play_pause: Callable[[], None],
-        on_next: Callable[[], None],
+        on_next: Callable[[], object],
         on_previous: Callable[[], None],
     ) -> None:
         super().__init__("org.mpris.MediaPlayer2.Player")
@@ -155,7 +155,7 @@ class PlayerInterface(ServiceInterface):
     def LoopStatus(self) -> DBusStr:
         return "None"
 
-    @LoopStatus.setter
+    @LoopStatus.setter  # type: ignore[no-redef]  # dbus_fast's property/setter pair
     def LoopStatus(self, value: DBusStr) -> None:
         pass
 
@@ -163,7 +163,7 @@ class PlayerInterface(ServiceInterface):
     def Rate(self) -> DBusDouble:
         return 1.0
 
-    @Rate.setter
+    @Rate.setter  # type: ignore[no-redef]  # dbus_fast's property/setter pair
     def Rate(self, value: DBusDouble) -> None:
         pass
 
@@ -171,7 +171,7 @@ class PlayerInterface(ServiceInterface):
     def Shuffle(self) -> DBusBool:
         return False
 
-    @Shuffle.setter
+    @Shuffle.setter  # type: ignore[no-redef]  # dbus_fast's property/setter pair
     def Shuffle(self, value: DBusBool) -> None:
         pass
 
@@ -183,7 +183,7 @@ class PlayerInterface(ServiceInterface):
     def Volume(self) -> DBusDouble:
         return 1.0
 
-    @Volume.setter
+    @Volume.setter  # type: ignore[no-redef]  # dbus_fast's property/setter pair
     def Volume(self, value: DBusDouble) -> None:
         pass
 
@@ -274,7 +274,7 @@ class MPRISBackend:
     def __init__(
         self,
         on_play_pause: Callable[[], None],
-        on_next: Callable[[], None],
+        on_next: Callable[[], object],
         on_previous: Callable[[], None],
         *,
         bus_address: str | None = None,

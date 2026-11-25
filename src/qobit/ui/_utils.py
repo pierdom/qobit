@@ -2,9 +2,30 @@ from __future__ import annotations
 
 import html as _html
 import re
+from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
+
+from textual.dom import DOMNode
+from textual.widget import Widget
+
+if TYPE_CHECKING:
+    from .app import QobitApp
+
+    WidgetBase = Widget
+else:
+    # Mixins are plain classes at run time (they sit before the widget in the
+    # MRO); for the type checker they are widgets, so self.query() and the like
+    # are known.
+    WidgetBase = object
 
 _BLOCK_TAG = re.compile(r"</?(?:p|br|div|li|ul|ol|h[1-6]|tr|td|blockquote)\b[^>]*>", re.I)
 _ANY_TAG = re.compile(r"<[^>]+>")
+
+
+def qapp(node: DOMNode) -> QobitApp:
+    """The app, typed: Textual's ``node.app`` is a plain ``App``. A cast, not an
+    import: the shared UI layer never imports the app at run time."""
+    return cast("QobitApp", node.app)
 
 
 def markup_escape(text: str) -> str:
@@ -16,36 +37,33 @@ def markup_escape(text: str) -> str:
     return text.rstrip("\\").replace("[", "\\[")
 
 
-def within(widget: object, css_class: str) -> bool:
+def within(widget: DOMNode | None, css_class: str) -> bool:
     """Whether ``widget`` (e.g. a click's) is, or sits inside, a widget with
     ``css_class``."""
-    return widget is not None and any(
-        w.has_class(css_class)
-        for w in widget.ancestors_with_self  # type: ignore[attr-defined]
-    )
+    return widget is not None and any(w.has_class(css_class) for w in widget.ancestors_with_self)
 
 
-def focus_later(view: object, focus: object) -> None:
+def focus_later(view: Widget, focus: Callable[[], object]) -> None:
     """Call ``focus`` after the next refresh if ``view`` (a tab's view) is
     still the one shown. A busy view's deferred focus could run after the
     user had switched tabs and pull the focus back to a hidden list: the
     Playback tab's startup focus did, behind a quick ``4``."""
 
     def run() -> None:
-        if view.is_attached and view.display:  # type: ignore[attr-defined]
-            focus()  # type: ignore[operator]
+        if view.is_attached and view.display:
+            focus()
 
-    view.call_after_refresh(run)  # type: ignore[attr-defined]
+    view.call_after_refresh(run)
 
 
-def set_own_class(widget: object, add: bool, css_class: str) -> None:
+def set_own_class(widget: Widget, add: bool, css_class: str) -> None:
     """Toggle a class that only ``widget``'s own rules use (a container's
     border), restyling just the widget. ``set_class`` restyles everything
     inside it: a whole track list on each focus change."""
-    if widget.has_class(css_class) == add:  # type: ignore[attr-defined]
+    if widget.has_class(css_class) == add:
         return
-    widget.set_class(add, css_class, update=False)  # type: ignore[attr-defined]
-    widget.app.stylesheet.update_nodes([widget], animate=True)  # type: ignore[attr-defined]
+    widget.set_class(add, css_class, update=False)
+    widget.app.stylesheet.update_nodes([widget], animate=True)
 
 
 def strip_html(text: str) -> str:

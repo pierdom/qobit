@@ -52,7 +52,7 @@ def fit_image(image: PILImage.Image, edge: int) -> PILImage.Image:
     if max(image.size) <= edge:
         return image
     small = image.copy()
-    small.thumbnail((edge, edge), PILImage.BILINEAR, reducing_gap=2.0)
+    small.thumbnail((edge, edge), PILImage.Resampling.BILINEAR, reducing_gap=2.0)
     return small
 
 
@@ -82,7 +82,7 @@ class Blocks:
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RichRenderResult:
         size = (options.max_width, options.max_height)
         if size != self._size:
-            self._segments = list(self._image.__rich_console__(console, options))
+            self._segments = list(self._image.__rich_console__(console, options))  # type: ignore[arg-type]  # textual-image yields Segments
             self._size = size
         yield from self._segments
 

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from textual import work
 from textual.binding import Binding
-from textual.widget import AwaitMount, Widget
+from textual.dom import DOMNode
+from textual.widget import AwaitMount
 from textual.widgets import ListItem, ListView
+
+from .._utils import qapp
 
 # Long lists mount in pages: mounting gets slower the more rows a list already
 # holds (~0.3 s per 200 rows, ~4.5 s for 2000), so ``set_rows`` mounts the
@@ -45,16 +49,16 @@ class PagedListView(ListView):
         entered): most of a tab switch's time. Only the highlighted row's
         look depends on the list's focus (app_css.py, ``ListView:focus >
         ListItem.-highlight``)."""
-        nodes: list[Widget] = [self]
+        nodes: list[DOMNode] = [self]
         if (row := self.highlighted_child) is not None:
             nodes.extend(row.walk_children(with_self=True))
         self.app.stylesheet.update_nodes(nodes, animate=True)
 
-    async def set_rows(self, rows: list[ListItem]) -> None:
+    async def set_rows(self, rows: Sequence[ListItem]) -> None:
         """Replace the list's rows: mount the first page now, the rest as the
         cursor approaches them."""
         await self.clear()
-        self._backlog = rows[_PAGE_ROWS:]
+        self._backlog = list(rows[_PAGE_ROWS:])
         if rows:
             await self.mount(*rows[:_PAGE_ROWS])
 
@@ -158,7 +162,7 @@ class TrackListView(PagedListView):
             self._toggle_favorite(child)
 
     @work
-    async def _toggle_favorite(self, child: ListItem) -> None:
-        new_state = await self.app.toggle_favorite(child.track)  # type: ignore[attr-defined]
+    async def _toggle_favorite(self, child: Any) -> None:
+        new_state = await qapp(self).toggle_favorite(child.track)
         if hasattr(child, "set_favorite"):
-            child.set_favorite(new_state)  # type: ignore[attr-defined]
+            child.set_favorite(new_state)

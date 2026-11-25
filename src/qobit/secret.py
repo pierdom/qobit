@@ -9,6 +9,8 @@ real value. Wrap credentials where they enter qobit: the session token
 (config, keyring, login), the Connect JWT, the OAuth codes.
 """
 
+from typing import overload
+
 
 class Secret(str):
     __slots__ = ()
@@ -17,6 +19,12 @@ class Secret(str):
         return "'<redacted>'"
 
 
+@overload
+def secret(value: str) -> str: ...
+@overload
+def secret(value: None) -> None: ...
+@overload
+def secret(value: str | None) -> str | None: ...
 def secret(value: str | None) -> str | None:
     """``value`` as a Secret (None and "" pass through)."""
     return Secret(value) if value else value

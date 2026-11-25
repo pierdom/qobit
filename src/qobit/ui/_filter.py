@@ -10,18 +10,26 @@ from __future__ import annotations
 
 from textual import events
 
+from ._utils import WidgetBase
+
 
 def filter_prompt(query: str) -> str:
     """The panel subtitle while typing."""
     return f"/ {query}_  ·  ⏎ done"
 
 
-class TypeToFilter:
+class TypeToFilter(WidgetBase):
     """Mixin for a view with ``_update_subtitle()`` and
     ``_schedule_filter()`` (re-render the results, debounced)."""
 
     _filter_active: bool = False  # typing the query
     _filter_query: str = ""  # kept after Enter: the results stay filtered
+
+    def _update_subtitle(self) -> None:
+        raise NotImplementedError
+
+    def _schedule_filter(self) -> None:
+        raise NotImplementedError
 
     def _filter_allowed(self) -> bool:
         """Whether `/` filters now (the grid tabs: not inside a detail view)."""
@@ -51,8 +59,8 @@ class TypeToFilter:
             self._filter_changed()
 
     def _filter_changed(self, rerender: bool = True) -> None:
-        self._update_subtitle()  # type: ignore[attr-defined]
+        self._update_subtitle()
         if rerender:
-            self._schedule_filter()  # type: ignore[attr-defined]
+            self._schedule_filter()
         else:  # typing started or ended: Sort/Filter keys show or hide
-            self.refresh_bindings()  # type: ignore[attr-defined]
+            self.refresh_bindings()

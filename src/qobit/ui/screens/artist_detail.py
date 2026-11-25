@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from textual import events, on, work
 from textual.app import ComposeResult
@@ -30,7 +30,7 @@ from .._now_playing import (
     plain_if_highlighted,
     playing_content,
 )
-from .._utils import markup_escape, readout, strip_html
+from .._utils import WidgetBase, markup_escape, qapp, readout, strip_html
 from ..nav import QobitFooter, page_header
 from ..themes import HEART, theme_color
 from ..widgets.art import Art, square_width
@@ -40,7 +40,7 @@ from .album_detail import AlbumDetailPanel
 from .search import ICON_TRACK
 
 if TYPE_CHECKING:
-    from ..app import QobitApp
+    pass
 
 _CARD_IMG_H = 4  # album tiles inside an artist page (title + year only)
 # Image height, in rows, shared by the library grids — Albums, Artists and
@@ -220,7 +220,7 @@ class ArtistTracks(_TitleSwitch, Widget):
 
     @work(exclusive=True, group="_load")  # a newer artist cancels a stale load
     async def _load(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         top = self.query_one("#top-tracks", TrackListView)
         await top.clear()
         await self.query_one("#artist-favs", TrackListView).clear()
@@ -241,14 +241,14 @@ class ArtistTracks(_TitleSwitch, Widget):
         await self._refresh_favs()
 
     def _favourites(self) -> list[Track]:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         if self._artist_id is None:
             return []
         tracks = [t for t in (app.favorite_tracks or []) if t.by_artist(self._artist_id)]
         return sorted(tracks, key=lambda t: t.favorited_at or 0, reverse=True)
 
     async def _refresh_favs(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         with contextlib.suppress(Exception):
             await app.ensure_favorite_tracks()
         tracks = self._favourites()
@@ -264,7 +264,7 @@ class ArtistTracks(_TitleSwitch, Widget):
         favourites list only if its tracks changed."""
         if self._artist_id is None or not self.is_attached:
             return
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         ids = app.favorite_ids or set()
         for row in self.query_one("#top-tracks", TrackListView).query(ArtistTrackRow):
             row.set_favorite(str(row.track.id) in ids)
@@ -272,7 +272,7 @@ class ArtistTracks(_TitleSwitch, Widget):
             self.run_worker(self._refresh_favs(), group="_refresh_favs", exclusive=True)
 
     def _mark_playing(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         now_id = getattr(app.now_playing, "id", None)
         for row in self.query(ArtistTrackRow):
             row.set_playing(row.track.id == now_id, paused=app.is_paused)
@@ -336,7 +336,7 @@ class ArtistTracks(_TitleSwitch, Widget):
         event.stop()
         rows = list(event.list_view.query(ArtistTrackRow))
         idx = rows.index(event.item)
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         app.play_track(event.item.track, queue=[r.track for r in rows[idx + 1 :]])
         self.call_after_refresh(event.list_view.focus)
 
@@ -500,7 +500,7 @@ class AlbumCard(Widget):
 _GRID_PAGE = 60  # cards per lazy mount (see _GridNav.set_cards)
 
 
-class _GridNav:
+class _GridNav(WidgetBase):
     """Shared Page/Home/End navigation, plus viewport-lazy art loading, for the
     card grids.
 
@@ -521,13 +521,19 @@ class _GridNav:
     re-transmitted."""
 
     _art_sync_timer: Timer | None = None
-    _backlog: list[Widget] | None = None
+    _backlog: list[Any] | None = None
+    # Provided by the grid that mixes this in (AlbumGrid, ArtistGrid, PlaylistGrid).
+    _cols: int = 3
+    _cursor: int = -1
+
+    def _visible_cards(self) -> list[Any]:
+        raise NotImplementedError
 
     def watch_has_focus(self, _has_focus: bool) -> None:
         """Restyle the grid alone on focus (its border): no card's look
         depends on it (``.grid-card.-selected`` in app_css.py). Textual
         restyled every widget of every card, on each tab switch."""
-        self.app.stylesheet.update_nodes([self], animate=True)  # type: ignore[attr-defined]
+        qapp(self).stylesheet.update_nodes([self], animate=True)
 
     # ── lazy mounting ────────────────────────────────────────────────────────
     # Mounting cards gets slower the more a grid already holds (~0.6 s for 200,
@@ -536,12 +542,12 @@ class _GridNav:
 
     async def clear_cards(self) -> None:
         self._backlog = None
-        await self.remove_children()  # type: ignore[attr-defined]
+        await self.remove_children()
 
     async def set_cards(self, cards: list[Widget]) -> None:
         """Fill an empty grid: the first page now, the rest on demand."""
         self._backlog = cards[_GRID_PAGE:]
-        await self.mount(*cards[:_GRID_PAGE])  # type: ignore[attr-defined]
+        await self.mount(*cards[:_GRID_PAGE])
         self.sync_visible_art()
 
     def _mount_more(self, everything: bool = False) -> AwaitMount | None:
@@ -550,114 +556,114 @@ class _GridNav:
         n = len(self._backlog) if everything else _GRID_PAGE
         batch, self._backlog = self._backlog[:n], self._backlog[n:]
         self.sync_visible_art()
-        return self.mount(*batch)  # type: ignore[attr-defined]
+        return self.mount(*batch)
 
     def _near_end(self) -> None:
         """Mount the next page once the cursor is within a few rows of the end."""
-        if self._backlog and self._cursor >= len(self._visible_cards()) - self._cols * 4:  # type: ignore[attr-defined]
+        if self._backlog and self._cursor >= len(self._visible_cards()) - self._cols * 4:
             self._mount_more()
 
     def sync_visible_art(self) -> None:
         """Fetch art for cards in the viewport + margin. Deferred until after
         layout so freshly mounted/filtered cards have real regions to measure."""
-        self.call_after_refresh(self._sync_visible_art_now)  # type: ignore[attr-defined]
+        self.call_after_refresh(self._sync_visible_art_now)
 
     def _schedule_sync_art(self) -> None:
         """Coalesce a burst of scroll/resize events into one sync pass."""
         if self._art_sync_timer is not None:
             self._art_sync_timer.stop()
-        self._art_sync_timer = self.set_timer(0.1, self.sync_visible_art)  # type: ignore[attr-defined]
+        self._art_sync_timer = self.set_timer(0.1, self.sync_visible_art)
 
     def _sync_visible_art_now(self) -> None:
-        cards = self._visible_cards()  # type: ignore[attr-defined]
+        cards = self._visible_cards()
         if not cards:
             return
         lo, hi = self._visible_art_range(cards)
         for card in cards[lo:hi]:
-            card.maybe_fetch_art()  # type: ignore[attr-defined]
+            card.maybe_fetch_art()
 
     def _visible_art_range(self, cards: list) -> tuple[int, int]:
         """Row-based index range covering the viewport plus one page of
         margin above and below (same row-pitch measurement as _page_rows)."""
         pitch = cards[0].region.height
-        if len(cards) > self._cols:  # type: ignore[attr-defined]
-            step = cards[self._cols].region.y - cards[0].region.y  # type: ignore[attr-defined]
+        if len(cards) > self._cols:
+            step = cards[self._cols].region.y - cards[0].region.y
             if step > 0:
                 pitch = step
         if pitch <= 0:
             pitch = 1
-        page_rows = max(1, self.scrollable_content_region.height // pitch)  # type: ignore[attr-defined]
-        first_row = max(0, int(self.scroll_y // pitch) - page_rows)  # type: ignore[attr-defined]
+        page_rows = max(1, self.scrollable_content_region.height // pitch)
+        first_row = max(0, int(self.scroll_y // pitch) - page_rows)
         row_span = page_rows * 3  # margin above + viewport + margin below
-        lo = first_row * self._cols  # type: ignore[attr-defined]
-        hi = lo + row_span * self._cols  # type: ignore[attr-defined]
+        lo = first_row * self._cols
+        hi = lo + row_span * self._cols
         return lo, hi
 
     def watch_scroll_y(self, old_value: float, new_value: float) -> None:
-        super().watch_scroll_y(old_value, new_value)  # type: ignore[misc]
+        super().watch_scroll_y(old_value, new_value)
         self._schedule_sync_art()
         # Mouse-wheel scrolling moves the view, not the cursor.
-        if self._backlog and new_value >= self.max_scroll_y - self.size.height:  # type: ignore[attr-defined]
+        if self._backlog and new_value >= self.max_scroll_y - self.size.height:
             self._mount_more()
 
     def _page_rows(self) -> int:
-        cards = self._visible_cards()  # type: ignore[attr-defined]
+        cards = self._visible_cards()
         if not cards:
             return 1
         # Row pitch = gap between a card and the one a full row below it
         # (height + gutter); fall back to a single card's height.
         pitch = cards[0].region.height
-        if len(cards) > self._cols:  # type: ignore[attr-defined]
-            step = cards[self._cols].region.y - cards[0].region.y  # type: ignore[attr-defined]
+        if len(cards) > self._cols:
+            step = cards[self._cols].region.y - cards[0].region.y
             if step > 0:
                 pitch = step
         if pitch <= 0:
             pitch = 1
-        return max(1, self.scrollable_content_region.height // pitch)  # type: ignore[attr-defined]
+        return max(1, self.scrollable_content_region.height // pitch)
 
     def action_move(self, direction: str) -> None:
-        cards = self._visible_cards()  # type: ignore[attr-defined]
+        cards = self._visible_cards()
         if not cards:
             return
-        if self._cursor == -1:  # type: ignore[attr-defined]
-            self._move_cursor(0, cards)  # type: ignore[attr-defined]
+        if self._cursor == -1:
+            self._move_cursor(0, cards)
             return
-        idx = self._cursor  # type: ignore[attr-defined]
+        idx = self._cursor
         target: int | None = None
         if direction == "right" and idx + 1 < len(cards):
             target = idx + 1
         elif direction == "left" and idx > 0:
             target = idx - 1
-        elif direction == "down" and idx + self._cols < len(cards):  # type: ignore[attr-defined]
-            target = idx + self._cols  # type: ignore[attr-defined]
-        elif direction == "up" and idx - self._cols >= 0:  # type: ignore[attr-defined]
-            target = idx - self._cols  # type: ignore[attr-defined]
+        elif direction == "down" and idx + self._cols < len(cards):
+            target = idx + self._cols
+        elif direction == "up" and idx - self._cols >= 0:
+            target = idx - self._cols
         if target is not None:
-            self._move_cursor(target, cards)  # type: ignore[attr-defined]
+            self._move_cursor(target, cards)
             self._near_end()
 
     def action_page(self, direction: str) -> None:
-        cards = self._visible_cards()  # type: ignore[attr-defined]
+        cards = self._visible_cards()
         if not cards:
             return
-        if self._cursor == -1:  # type: ignore[attr-defined]
-            self._move_cursor(0, cards, top=True)  # type: ignore[attr-defined]
+        if self._cursor == -1:
+            self._move_cursor(0, cards, top=True)
             return
-        delta = self._page_rows() * self._cols  # type: ignore[attr-defined]
+        delta = self._page_rows() * self._cols
         if direction == "up":
-            target = max(0, self._cursor - delta)  # type: ignore[attr-defined]
+            target = max(0, self._cursor - delta)
         else:
-            target = min(len(cards) - 1, self._cursor + delta)  # type: ignore[attr-defined]
-        self._move_cursor(target, cards, top=True)  # type: ignore[attr-defined]
+            target = min(len(cards) - 1, self._cursor + delta)
+        self._move_cursor(target, cards, top=True)
         self._near_end()
 
     def _move_cursor(self, idx: int, cards: list | None = None, top: bool = False) -> None:
         if cards is None:
-            cards = self._visible_cards()  # type: ignore[attr-defined]
+            cards = self._visible_cards()
         if not cards or idx < 0 or idx >= len(cards):
             return
-        if 0 <= self._cursor < len(cards):  # type: ignore[attr-defined]
-            select_card(cards[self._cursor], False)  # type: ignore[attr-defined]
+        if 0 <= self._cursor < len(cards):
+            select_card(cards[self._cursor], False)
         self._cursor = idx
         select_card(cards[idx], True)
         if top:
@@ -669,7 +675,7 @@ class _GridNav:
         """Put the cursor on the first shown card ``match`` accepts, mounting
         the backlog up to it if needed (a grid redrawn after a background
         refresh keeps the user's place). False if there's none."""
-        cards = self._visible_cards()  # type: ignore[attr-defined]
+        cards = self._visible_cards()
         idx = next((i for i, c in enumerate(cards) if match(c)), None)
         backlog = self._backlog or []
         at = next((i for i, c in enumerate(backlog) if match(c)), None)
@@ -677,40 +683,40 @@ class _GridNav:
             # Through that card and a page more, not the whole backlog
             # (mounting gets slower the more a grid holds).
             batch, self._backlog = backlog[: at + _GRID_PAGE], backlog[at + _GRID_PAGE :]
-            await self.mount(*batch)  # type: ignore[attr-defined]
+            await self.mount(*batch)
             self.sync_visible_art()
-            cards = self._visible_cards()  # type: ignore[attr-defined]
+            cards = self._visible_cards()
             idx = next((i for i, c in enumerate(cards) if match(c)), None)
         if idx is None:
             return False
-        self._move_cursor(idx, cards)  # type: ignore[attr-defined]
+        self._move_cursor(idx, cards)
         return True
 
     def select_first(self) -> None:
         """After a filter: the cursor on the first visible card, and no card
         (hidden ones included) left looking selected. It was -1 (nothing
         selected), so Enter and the ``i`` menu had no card to act on."""
-        for card in self.query(".-selected"):  # type: ignore[attr-defined]
+        for card in self.query(".-selected"):
             select_card(card, False)
         self._cursor = -1
         self._move_cursor(0, top=True)
 
     def selected_card(self) -> Widget | None:
         """The card under the cursor, or None."""
-        cards = self._visible_cards()  # type: ignore[attr-defined]
-        return cards[self._cursor] if 0 <= self._cursor < len(cards) else None  # type: ignore[attr-defined]
+        cards = self._visible_cards()
+        return cards[self._cursor] if 0 <= self._cursor < len(cards) else None
 
     def action_jump_first(self) -> None:
-        cards = self._visible_cards()  # type: ignore[attr-defined]
+        cards = self._visible_cards()
         if cards:
-            self._move_cursor(0, cards, top=True)  # type: ignore[attr-defined]
+            self._move_cursor(0, cards, top=True)
 
     async def action_jump_last(self) -> None:
         if (pending := self._mount_more(everything=True)) is not None:
             await pending
-        cards = self._visible_cards()  # type: ignore[attr-defined]
+        cards = self._visible_cards()
         if cards:
-            self._move_cursor(len(cards) - 1, cards, top=True)  # type: ignore[attr-defined]
+            self._move_cursor(len(cards) - 1, cards, top=True)
 
 
 class AlbumGrid(_GridNav, ScrollableContainer):
@@ -740,7 +746,7 @@ class AlbumGrid(_GridNav, ScrollableContainer):
     _cols: int = 3
     _cursor: int = -1
 
-    def __init__(self, *args: object, tile_min_width: int = _TILE_MIN_W, **kwargs: object) -> None:
+    def __init__(self, *args: Any, tile_min_width: int = _TILE_MIN_W, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._tile_min_width = tile_min_width
 
@@ -870,7 +876,7 @@ class ArtistCard(Widget):
         if url is None:
             # No photo in the favourites payload: the full artist record (cached,
             # reused by the artist page) falls back to the newest release cover.
-            app: QobitApp = self.app  # type: ignore[assignment]
+            app = qapp(self)
             try:
                 full = Artist.from_api(await app._client.get_artist_detail(self._artist.id))
             except QobuzError:
@@ -914,7 +920,7 @@ class ArtistGrid(_GridNav, ScrollableContainer):
     _cols: int = 3
     _cursor: int = -1
 
-    def __init__(self, *args: object, tile_min_width: int = _TILE_MIN_W, **kwargs: object) -> None:
+    def __init__(self, *args: Any, tile_min_width: int = _TILE_MIN_W, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._tile_min_width = tile_min_width
 
@@ -983,8 +989,8 @@ class ArtistReleases(_TitleSwitch, Widget):
     }
     """
 
-    def __init__(self, albums_id: str, **kwargs: object) -> None:
-        super().__init__(**kwargs)  # type: ignore[arg-type]
+    def __init__(self, albums_id: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self._albums_id = albums_id
         self._artist_id: str | None = None
         self._showing = "albums"
@@ -1014,7 +1020,7 @@ class ArtistReleases(_TitleSwitch, Widget):
 
     @work(exclusive=True, group="_check_similar")  # a newer artist cancels a stale one
     async def _check_similar(self, artist_id: str) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         try:
             items, _ = await app._client.get_similar_artists_preview(artist_id)
         except QobuzError:
@@ -1065,7 +1071,7 @@ class ArtistReleases(_TitleSwitch, Widget):
 
     @work(exclusive=True, group="_load_similar")
     async def _load_similar(self, artist_id: str) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         grid = self.query_one("#similar-artists", ArtistGrid)
         grid.border_subtitle = "loading…"
         try:
@@ -1085,14 +1091,14 @@ class ArtistReleases(_TitleSwitch, Widget):
     @on(ArtistCard.Selected)
     def _on_similar_selected(self, event: ArtistCard.Selected) -> None:
         event.stop()
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         app.open_artist(event.artist.id)
 
 
 class ArtistHeader(Widget):
     """Reusable artist image + biography header.
 
-    Call ``set_loading(name)`` immediately when switching context, then
+    Call ``show_loading(name)`` immediately when switching context, then
     ``populate(artist)`` once the API data arrives.
     """
 
@@ -1144,10 +1150,10 @@ class ArtistHeader(Widget):
     ArtistHeader .ah-similar ListItem { height: 1; padding: 0 1; }
     """
 
-    def __init__(self, *, similar: bool = False, **kwargs: object) -> None:
+    def __init__(self, *, similar: bool = False, **kwargs: Any) -> None:
         """``similar``: on wide terminals, list a few similar artists beside
         the bio (artist pages; not the album pages that reuse this header)."""
-        super().__init__(**kwargs)  # type: ignore[arg-type]
+        super().__init__(**kwargs)
         self._similar = similar
         self._similar_items: list[dict] = []
 
@@ -1164,7 +1170,7 @@ class ArtistHeader(Widget):
     artist: Artist | None = None
     """The artist shown, once ``populate`` has run."""
 
-    def set_loading(self, name: str = "Loading…") -> None:
+    def show_loading(self, name: str = "Loading…") -> None:
         self.artist = None
         self._similar_items = []
         self._layout_similar()
@@ -1194,7 +1200,7 @@ class ArtistHeader(Widget):
         (redrawn on a theme change)."""
         if self.artist is None:
             return
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         title = markup_escape(readout(self.artist.name))
         if app.is_followed_artist(self.artist.id):
             title += f"  [{theme_color(self.app, HEART)}]{ICON_FAV}[/]"
@@ -1202,7 +1208,7 @@ class ArtistHeader(Widget):
 
     @work(exclusive=True, group="_load_heart")  # a newer artist cancels a stale one
     async def _load_heart(self, artist_id: str) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         try:
             await app.ensure_favorite_artists()
         except QobuzError:
@@ -1216,7 +1222,7 @@ class ArtistHeader(Widget):
 
     @work(exclusive=True, group="_load_similar")  # a newer artist cancels a stale one
     async def _load_similar(self, artist_id: str) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         try:
             items, more = await app._client.get_similar_artists_preview(artist_id)
         except QobuzError:
@@ -1243,7 +1249,7 @@ class ArtistHeader(Widget):
         event.stop()
         idx = event.list_view.index
         if idx is not None and 0 <= idx < len(self._similar_items):
-            app: QobitApp = self.app  # type: ignore[assignment]
+            app = qapp(self)
             app.open_artist(self._similar_items[idx]["id"])
 
     @work(exclusive=True, group="_fetch_image")  # a newer request cancels a stale one
@@ -1307,7 +1313,7 @@ class ArtistScreen(Screen):
         self._album_view_active = False
 
     def compose(self) -> ComposeResult:
-        yield from page_header(self.app)  # type: ignore[arg-type]
+        yield from page_header(qapp(self))
         yield ArtistHeader(similar=True)
         with ContentSwitcher(initial="artist-view", id="main-content"):
             with Vertical(id="artist-view"):
@@ -1320,7 +1326,7 @@ class ArtistScreen(Screen):
 
     def on_mount(self) -> None:
         self.set_class(getattr(self.app, "_transparent", False), "-transparent")
-        self.query_one(ArtistHeader).set_loading()
+        self.query_one(ArtistHeader).show_loading()
         self.run_worker(self.query_one(ArtistReleases).set_artist(self._artist_id))
         self._load_detail()
         self.query_one(ArtistTracks).load(self._artist_id)
@@ -1351,17 +1357,17 @@ class ArtistScreen(Screen):
         # ignored (not displayed yet) with the grid hidden, leaving nothing
         # focused on a busy machine.
         self.call_after_refresh(panel.focus_tracklist)
-        self.app.nav_changed()  # type: ignore[attr-defined]
+        qapp(self).nav_changed()
 
     def _show_artist_view(self) -> None:
         self.query_one("#main-content", ContentSwitcher).current = "artist-view"
         self._album_view_active = False
         self.query_one("#albums", AlbumGrid).focus()
-        self.app.nav_changed()  # type: ignore[attr-defined]
+        qapp(self).nav_changed()
 
     @work
     async def _load_detail(self) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         try:
             artist = Artist.from_api(await app._client.get_artist_detail(self._artist_id))
         except Exception:
@@ -1383,5 +1389,5 @@ class ArtistScreen(Screen):
 
     @on(AlbumDetailPanel.TrackSelected)
     def _on_album_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         app.play_track(event.track, queue=event.queue)

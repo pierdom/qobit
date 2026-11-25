@@ -12,7 +12,7 @@ No Textual here: the app's poll thread calls ``read()`` and applies the result.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 from .player import EntryWatch, MpvPlayer
 
@@ -55,7 +55,7 @@ class PlayerWatch:
 
 
 def _number(value: object) -> float | None:
-    return None if value is None else float(value)  # type: ignore[arg-type]
+    return None if value is None else float(cast(float, value))
 
 
 def _flag(value: object) -> bool | None:

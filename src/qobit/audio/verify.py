@@ -3,6 +3,7 @@ import contextlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from .player import MpvPlayer
 
@@ -50,7 +51,7 @@ async def check_bit_perfect(
             error="mpv not responding — device may have rejected the stream",
         )
 
-    actual_rate = float(actual_rate_raw)
+    actual_rate = float(cast(float, actual_rate_raw))  # mpv answers a number
     rate_match = abs(actual_rate - expected_sample_rate) < 1.0
 
     # mpv may use s32 as the container format for 24-bit content; that's fine.

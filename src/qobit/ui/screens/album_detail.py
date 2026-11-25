@@ -24,14 +24,14 @@ from .._now_playing import (
     heart_suffix,
     playing_content,
 )
-from .._utils import DETAIL_HEADER_CSS, markup_escape, readout, strip_html, within
+from .._utils import DETAIL_HEADER_CSS, markup_escape, qapp, readout, strip_html, within
 from ..nav import QobitFooter, page_header
 from ..widgets.art import Art, square_width
 from ..widgets.lists import TrackListView
 from ..widgets.transport import TransportBar
 
 if TYPE_CHECKING:
-    from ..app import QobitApp
+    pass
 
 
 # A detail panel's vertical budget (fit_detail_panel: the album panel and the
@@ -239,7 +239,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
         """The title, with a ♥ when the album is in the user's favourites."""
         if self.album is None:
             return
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         self.query_one(".detail-title", Label).update(
             Content.assemble(self.album.title, heart_suffix(app.is_favorite_album(self.album.id)))
         )
@@ -248,7 +248,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
     async def _load_heart(self, album_id: str) -> None:
         """Favourite albums load at startup; if they haven't yet, wait, then
         draw the heart. A failed load just leaves it off."""
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         try:
             await app.ensure_favorite_albums()
         except QobuzError:
@@ -275,7 +275,7 @@ class AlbumDetailPanel(NowPlayingViewMixin, Widget):
 
     @work(exclusive=True, group="_fetch_full_album")  # a newer request cancels a stale one
     async def _fetch_full_album(self, album: Album) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         try:
             full = Album.from_api(await app._client.get_album(album.id))
         except Exception:
@@ -385,7 +385,7 @@ class AlbumScreen(Screen):
         # AlbumDetailPanel from this module at the top level.
         from .artist_detail import ArtistHeader
 
-        yield from page_header(self.app)  # type: ignore[arg-type]
+        yield from page_header(qapp(self))
         yield ArtistHeader()
         yield AlbumDetailPanel(id="album-panel")
         yield TransportBar()
@@ -398,7 +398,7 @@ class AlbumScreen(Screen):
         panel = self.query_one("#album-panel", AlbumDetailPanel)
         panel.load(self._album)
         header = self.query_one(ArtistHeader)
-        header.set_loading(self._album.artist or "Artist")
+        header.show_loading(self._album.artist or "Artist")
         # An album built from a track ("Go to album", `g`) has no artist id
         # (Track doesn't carry one), so the header would stay empty. Resolve it
         # from the full album; the client caches it for the panel's own fetch.
@@ -414,7 +414,7 @@ class AlbumScreen(Screen):
     async def _load_artist_info(self, artist_id: str | None) -> None:
         from .artist_detail import ArtistHeader
 
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         try:
             if not artist_id:
                 full = Album.from_api(await app._client.get_album(self._album.id))
@@ -430,5 +430,5 @@ class AlbumScreen(Screen):
 
     @on(AlbumDetailPanel.TrackSelected)
     def _on_track_selected(self, event: AlbumDetailPanel.TrackSelected) -> None:
-        app: QobitApp = self.app  # type: ignore[assignment]
+        app = qapp(self)
         app.play_track(event.track, queue=event.queue)

@@ -77,8 +77,8 @@ def parse_devices(output: str) -> list[DeviceInfo]:
                 alsa_cards.setdefault(key, description.split("/")[0].strip())
 
     synthesized: list[DeviceInfo] = []
-    for (card, dev), desc in alsa_cards.items():
-        hw_id = f"alsa/hw:CARD={card},DEV={dev}"
+    for (card_name, dev_no), desc in alsa_cards.items():
+        hw_id = f"alsa/hw:CARD={card_name},DEV={dev_no}"
         if any(d.id == hw_id for d in devices):
             continue
         synthesized.append(
