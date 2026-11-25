@@ -22,7 +22,7 @@ refactor moves a responsibility, update the table below in the same PR.
         │
  no Textual below this line (importable and testable on their own)
    audio/      mpv process + IPC, device list, bit-perfect check, media keys
-   qobuz/      API client, models, stream resolution (streams.py), OAuth
+   qobuz/      API client, models, stream resolution, radio and mixes, OAuth
    connect/    Qobuz Connect renderer (protocol, session, queue mirror)
    lyrics/     LRC parsing, matching, cache, providers, service
    config, store, token_store, library_cache, account_data, _fs, doctor
@@ -39,6 +39,7 @@ of the app, `screens/`, `qobuz/`, `config` or the state modules there.
 | Timeline (`_timeline`) and cursor | `LocalPlayContext` / `ConnectPlayContext` (the only writers) | screens via `app.history`, `up_next`, `current_track`, `queue_position` |
 | Playing track, position, pause, quality, signal lamp | reactives on `QobitApp` | every widget (self-wiring `watch()`) |
 | mpv process, stop generation | `audio/player.py` `MpvPlayer` | `audio/watch.py` `PlayerWatch` (one poll tick: position, pause, moved on, natural end vs stop); the app's poll thread applies it |
+| Radio and mix suggestions | `qobuz/suggestions.py` `SuggestionService` (`app.suggestions`) | `app._fetch_radio`, `app.generate_mix` (they supply history and favourites) |
 | Stream URL resolution and the quality memory | `qobuz/streams.py` `StreamResolver` (`app.streams`) | `_play_stream`, gapless prefetch |
 | The track queued in mpv behind the playing one, prefetch state | `gapless.py` `GaplessQueue` (`app.gapless_queue`) | the app (`watch_queue_version`, `_play_stream`, the poll) |
 | Lyrics, offset, lookup/retry/prefetch state | `lyrics_controller.py` | widgets via `app.lyrics`, `lyrics_offset`; reactives `lyrics_status/line/version` stay on the app |
@@ -78,12 +79,15 @@ each can be tested without the UI. Done, in merge order:
 | Shared-layer imports | `formatting.py`, `ICON_FAV` in `_now_playing.py` | nothing |
 | Lyrics | `ui/lyrics_controller.py` | reactives, keys, panel/page switching |
 | Stream resolution | `qobuz/streams.py` | `_play_stream` (what starting a track means) |
+| Radio and mixes | `qobuz/suggestions.py` | the two thin methods that gather history and favourites |
 | Poll tick and end-of-track rule | `audio/watch.py` | the poll thread (`_poll_player`): applies a `Reading` to the reactives, the 5 s state save |
 | Gapless state and logic | `ui/gapless.py` | `step_to_next` (cursor + transport), `next_track`, `is_local`, `extend_timeline` |
 
-Next: the transport actions (pause, seek, previous, volume), then possibly
-`_play_stream` / `_begin_track`. A step is done when the app only wires the collaborator and
-its tests run without a `QobitApp`.
+Next: split `ui/screens/artist_detail.py` (the shared grid code lives in a
+screen file), then favourites and library, then the context menu. The transport
+actions and `_play_stream` stay in the app: they are thin glue over the player
+and the play contexts. A step is done when the app only wires the collaborator
+and its tests run without a `QobitApp`.
 
 ## How a refactor is checked
 

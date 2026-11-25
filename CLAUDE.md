@@ -36,6 +36,7 @@ src/qobit/
 │                        every API call (see "Qobuz API")
 ├── qobuz/oauth.py       login link + redirect server + pasted-address LoginPrompt
 ├── qobuz/models.py      Track, Album, Artist, Playlist, StreamUrl
+├── qobuz/suggestions.py SuggestionService: song radio and the DailyQ/WeeklyQ mixes
 ├── qobuz/streams.py     StreamResolver: quality fallback, previews vs restrictions
 ├── audio/device.py      mpv devices + synthesized alsa/hw:CARD=…,DEV=… entries,
 │                        bit-perfect ones flagged and sorted first
@@ -672,8 +673,11 @@ must not annotate `-> None` (read as the string "None": TypeError at import).
   favourite artist).
 - Song radio: `POST dynamic/suggest`, JSON sent as `text/plain;charset=UTF-8`,
   fields `limit`, `listened_tracks_ids`, `track_to_analysed` (`[{track_id,
-  artist_id, label_id, genre_id}]`). `generate_mix()` reuses it for
-  DailyQ/WeeklyQ, cached per day / ISO week in `mixes_cache.json`.
+  artist_id, label_id, genre_id}]`). `SuggestionService`
+  (`qobuz/suggestions.py`, `app.suggestions`; `tests/test_suggestions.py` needs
+  no app) does radio and mixes; `app._fetch_radio` and `app.generate_mix()` only
+  gather the history and favourites for it. Mixes are DailyQ/WeeklyQ, cached per
+  day / ISO week in `mixes_cache.json`.
 
 Images: `widgets.art.Art` draws per `_images.image_mode()`: "kitty"
 (textual-image's TGP renderable), "blocks" (`art.Blocks`, coloured half
